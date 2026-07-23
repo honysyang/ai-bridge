@@ -185,6 +185,8 @@ export class MessageBridge {
             `微信回复成功: ${item.task.id} → ${wxid} (msgId=${msgId})`,
             { task_id: item.task.id, wechat_wxid: wxid, reply_msg_id: msgId, original_q: originalQ }
           );
+          // v5.1.1: 持久化发送状态到 task context
+          this.markReplySent(item.task, msgId, originalQ);
         } catch (err: any) {
           taskQueue.addLog('error', 'bridge',
             `微信回复失败: ${item.task.id} → ${wxid}: ${err.message}`,
@@ -220,6 +222,7 @@ export class MessageBridge {
         context: {
           ...(task.context as any || {}),
           wechat_reply: {
+            ...((task.context as any)?.wechat_reply || {}),
             status: 'failed',
             reason,
             failed_at: Date.now()
@@ -228,6 +231,29 @@ export class MessageBridge {
       } as any);
     } catch (e) {
       taskQueue.addLog('error', 'bridge', `markReplyFailed 失败: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * 成功标记：把"已成功发送"写到 task context，Web UI 可查
+   * v5.1.1 新增：之前只有失败标记，成功未持久化，导致用户看不到状态
+   */
+  private markReplySent(task: Task, msgId: string, originalQ: string): void {
+    try {
+      storage.updateTask(task.id, {
+        context: {
+          ...(task.context as any || {}),
+          wechat_reply: {
+            ...((task.context as any)?.wechat_reply || {}),
+            status: 'sent',
+            msg_id: msgId,
+            sent_at: Date.now(),
+            original_q: originalQ
+          }
+        }
+      } as any);
+    } catch (e) {
+      taskQueue.addLog('warn', 'bridge', `markReplySent 失败: ${(e as Error).message}`);
     }
   }
 
