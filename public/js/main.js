@@ -413,11 +413,7 @@
   }
 
   // ======== Hash Routing ========
-  function setHash(hash) {
-    if (window.location.hash === hash) return;
-    history.pushState('', document.title, window.location.pathname + window.location.search + hash);
-  }
-
+  // setHash 已移到 core.js（v5.2.1），避免 sessions/tasks 在 main.js 之前加载时拿到 undefined
   function handleHashRoute() {
     const h = window.location.hash.slice(1);
     if (!h) return;
@@ -628,7 +624,6 @@
     closeDrawer,
     closeAllDrawers,
     showModal,
-    setHash,
     handleHashRoute,
     applyColumnWidths,
     bindEvents

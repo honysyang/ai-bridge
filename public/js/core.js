@@ -366,6 +366,12 @@
     }, true);
   }
 
+  // ======== Hash Routing (v5.2.1 移到 core.js，避免 sessions/tasks 在 main.js 之前加载时拿不到 setHash) ========
+  function setHash(hash) {
+    if (window.location.hash === hash) return;
+    history.pushState('', document.title, window.location.pathname + window.location.search + hash);
+  }
+
   // 暴露到 window
   global.Core = {
     I18N,
@@ -381,6 +387,7 @@
     humanizeHttpError,
     shouldNotify,
     installGlobalErrorHandlers,
+    setHash,
     // 共享计时器（其他模块需要时通过 Core.ws/Core.heartbeatInterval 访问）
     get ws() { return ws; },
     set ws(v) { ws = v; },
