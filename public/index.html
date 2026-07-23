@@ -383,6 +383,64 @@
           </div>
         </div>
 
+        <div class="overview-quick">
+          <h3>快捷操作</h3>
+          <div class="quick-grid">
+            <button class="quick-card" data-quick="new-session">
+              <div class="quick-icon">💬</div>
+              <div class="quick-text">
+                <div class="quick-title">新建会话</div>
+                <div class="quick-hint">开始一个话题或任务</div>
+              </div>
+            </button>
+            <button class="quick-card" data-quick="add-task">
+              <div class="quick-icon">📌</div>
+              <div class="quick-text">
+                <div class="quick-title">提交任务</div>
+                <div class="quick-hint">在当前会话发送任务</div>
+              </div>
+            </button>
+            <button class="quick-card" data-quick="kb-demo">
+              <div class="quick-icon">🎁</div>
+              <div class="quick-text">
+                <div class="quick-title">演示知识库</div>
+                <div class="quick-hint">加载 6 分类 25+ 条目</div>
+              </div>
+            </button>
+            <button class="quick-card" data-quick="wf-demo">
+              <div class="quick-icon">⚙️</div>
+              <div class="quick-text">
+                <div class="quick-title">演示工作流</div>
+                <div class="quick-hint">加载 9 个示例工作流</div>
+              </div>
+            </button>
+            <button class="quick-card" data-quick="plan-demo">
+              <div class="quick-icon">📅</div>
+              <div class="quick-text">
+                <div class="quick-title">演示计划</div>
+                <div class="quick-hint">添加周/日计划样例</div>
+              </div>
+            </button>
+            <button class="quick-card" data-quick="report">
+              <div class="quick-icon">📝</div>
+              <div class="quick-text">
+                <div class="quick-title">生成周报</div>
+                <div class="quick-hint">聚合本周计划与任务</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="chart-card overview-activity">
+          <div class="chart-header">
+            <h3>🕐 最近活动</h3>
+            <span class="chart-hint" id="overview-activity-count">--</span>
+          </div>
+          <div class="chart-body" id="overview-activity-list">
+            <div class="empty-state"><div class="empty-text">加载中...</div></div>
+          </div>
+        </div>
+
         <div class="chart-card">
           <div class="chart-header"><h3>⚙️ 系统健康</h3></div>
           <div class="chart-body" id="overview-health">

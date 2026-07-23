@@ -42,6 +42,7 @@
       renderSourceDist(data.source_dist || {});
       renderHealth(data.health || {});
       renderStorage(data.storage || {});
+      renderRecentTasks(data.recent_tasks || []);
     } catch (e) {
       showNotification(`❌ 概览加载失败: ${e.message}`, 'error');
     }
@@ -150,6 +151,50 @@
     // 已并入 setStat('storage')，留空
   }
 
+  function renderRecentTasks(list) {
+    const el = document.getElementById('overview-activity-list');
+    const cnt = document.getElementById('overview-activity-count');
+    if (cnt) cnt.textContent = `${list.length} 条`;
+    if (!el) return;
+    if (list.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-text">暂无最近活动</div></div>';
+      return;
+    }
+    el.innerHTML = `<div class="activity-list">${list.map(t => {
+      const ts = new Date(t.ts);
+      const timeStr = isNaN(ts.getTime()) ? '' :
+        (() => {
+          const diff = (Date.now() - ts.getTime()) / 1000;
+          if (diff < 60) return '刚刚';
+          if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前';
+          if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前';
+          return Math.floor(diff / 86400) + ' 天前';
+        })();
+      const status = (t.status || '').toLowerCase();
+      const source = t.source || '';
+      const content = (t.content || '(无内容)').replace(/</g, '&lt;');
+      return `
+        <div class="activity-row" data-task-id="${escapeHtml(t.id)}">
+          <span class="activity-dot status-${escapeHtml(status)}"></span>
+          <span class="activity-text" title="${escapeHtml(content)}">${escapeHtml(content)}</span>
+          <span class="activity-source">${escapeHtml(source)}</span>
+          <span class="activity-time">${escapeHtml(timeStr)}</span>
+        </div>
+      `;
+    }).join('')}</div>`;
+    // 点击活动行 → 跳转到该任务所在会话
+    el.querySelectorAll('.activity-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const tid = row.dataset.taskId;
+        if (tid && global.Tasks && global.Tasks.selectTask) {
+          global.Tasks.selectTask(tid);
+          // 切到 chat tab
+          if (global.Main && global.Main.switchTab) global.Main.switchTab('chat');
+        }
+      });
+    });
+  }
+
   function bindOverviewEvents() {
     const refresh = document.getElementById('btn-overview-refresh');
     if (refresh) refresh.addEventListener('click', () => loadOverview());
@@ -163,6 +208,56 @@
       const t = document.getElementById('overview-tour');
       if (t) t.hidden = true;
     });
+
+    // 快捷操作卡片
+    document.querySelectorAll('.quick-card').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.quick;
+        handleQuickAction(action);
+      });
+    });
+  }
+
+  function handleQuickAction(action) {
+    switch (action) {
+      case 'new-session':
+        if (global.Sessions && global.Sessions.createSession) global.Sessions.createSession();
+        break;
+      case 'add-task':
+        if (global.Main && global.Main.switchTab) global.Main.switchTab('chat');
+        setTimeout(() => {
+          const input = document.getElementById('compose-input');
+          if (input) { input.focus(); }
+        }, 200);
+        break;
+      case 'kb-demo':
+        if (global.Main && global.Main.switchTab) global.Main.switchTab('kb');
+        setTimeout(() => {
+          const btn = document.getElementById('btn-kb-seed-demo');
+          if (btn) btn.click();
+        }, 300);
+        break;
+      case 'wf-demo':
+        if (global.Main && global.Main.switchTab) global.Main.switchTab('workflow');
+        setTimeout(() => {
+          const btn = document.getElementById('btn-wf-seed-demo');
+          if (btn) btn.click();
+        }, 300);
+        break;
+      case 'plan-demo':
+        if (global.Main && global.Main.switchTab) global.Main.switchTab('plan');
+        setTimeout(() => {
+          const btn = document.getElementById('btn-plan-seed-demo');
+          if (btn) btn.click();
+        }, 300);
+        break;
+      case 'report':
+        if (global.Main && global.Main.switchTab) global.Main.switchTab('plan');
+        setTimeout(() => {
+          if (typeof window.openWeeklyReportDrawer === 'function') window.openWeeklyReportDrawer();
+        }, 300);
+        break;
+    }
   }
 
   function startAutoRefresh() {
@@ -181,6 +276,8 @@
   function initOverview() {
     bindOverviewEvents();
     startAutoRefresh();
+    // 立即加载一次（确保 #tab/overview 刷新也能看到数据）
+    loadOverview();
   }
 
   global.Overview = {

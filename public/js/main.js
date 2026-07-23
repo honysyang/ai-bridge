@@ -13,14 +13,16 @@
     chat: 'panel-chat',
     kb: 'panel-kb',
     workflow: 'panel-workflow',
-    plan: 'panel-plan'
+    plan: 'panel-plan',
+    overview: 'panel-overview'    // v5.2.1
   };
 
   const TAB_INIT = {
     chat: null,            // 始终初始化（init 流程已加载）
     kb: 'initKB',
     workflow: 'initWF',
-    plan: 'initPlan'
+    plan: 'initPlan',
+    overview: 'initOverview'   // v5.2.1
   };
 
   function switchTab(tabName, opts = {}) {
@@ -601,6 +603,7 @@
     if (global.Plan) global.Plan.initPlan();
     if (global.Plan) global.Plan.initReportDrawer();
     if (global.Plan) global.Plan.startPlanReminderScheduler();
+    if (global.Overview) global.Overview.init();   // v5.2.1
     bindEvents();
     applyColumnWidths();
     const hashTab = (location.hash.match(/^#tab\/(\w+)/) || [])[1];

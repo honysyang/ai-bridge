@@ -107,6 +107,21 @@ overviewRouter.get('/stats', (_req, res) => {
         storage: storageStats,
         trend,
         source_dist: sourceDist,
+        recent_tasks: allTasks
+          .filter(t => t.created_at)
+          .sort((a: any, b: any) => {
+            const ta = a.completed_at || a.started_at || a.created_at || 0;
+            const tb = b.completed_at || b.started_at || b.created_at || 0;
+            return tb - ta;
+          })
+          .slice(0, 8)
+          .map((t: any) => ({
+            id: t.id,
+            content: typeof t.data?.content === 'string' ? t.data.content.slice(0, 60) : (t.title || t.type || ''),
+            status: t.status,
+            source: t.source,
+            ts: t.completed_at || t.started_at || t.created_at || 0
+          })),
         health
       }
     });
