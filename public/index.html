@@ -405,6 +405,20 @@
           </select>
         </div>
         <div class="form-group">
+          <label>⏰ 提醒时间（可选）</label>
+          <input type="datetime-local" id="plan-drawer-remind-input">
+          <div class="form-hint" style="font-size:11px;color:var(--text-muted);margin-top:4px">
+            到达设定时间后会通过通知中心和微信提醒
+          </div>
+        </div>
+        <div class="form-group">
+          <label>提醒渠道</label>
+          <div class="checkbox-group" style="padding:0">
+            <label><input type="checkbox" id="plan-drawer-remind-inapp" checked> 💻 网页通知</label>
+            <label><input type="checkbox" id="plan-drawer-remind-wechat"> 💬 微信推送</label>
+          </div>
+        </div>
+        <div class="form-group">
           <label>详细说明</label>
           <textarea id="plan-drawer-details-input" rows="6" maxlength="2000" placeholder="补充细节、子任务、依赖等"></textarea>
         </div>

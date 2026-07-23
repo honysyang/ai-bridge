@@ -2715,6 +2715,29 @@ html, body {
   min-width: 0;
   overflow: auto;
 }
+
+/* v5.1.1 计划提醒相关样式 */
+.badge-overdue {
+  background: #fee2e2;
+  color: #b91c1c;
+  animation: overdue-pulse 1.5s ease-in-out infinite;
+}
+.badge-upcoming {
+  background: #fef3c7;
+  color: #b45309;
+}
+.badge-remind {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.plan-item.overdue {
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+}
+@keyframes overdue-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 .plan-detail-header {
   padding: 20px 28px 16px;
   border-bottom: 1px solid #e5e7eb;

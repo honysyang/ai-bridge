@@ -144,6 +144,7 @@ function init() {
   initWF();          // v4.2.1 工作流
   initPlan();        // v5.1.0 计划
   initReportDrawer(); // v5.1.1 周报生成器
+  startPlanReminderScheduler();  // v5.1.1 计划提醒调度器
   bindEvents();
   applyColumnWidths();
   // 从 hash 恢复 tab 状态，默认 chat
@@ -2640,8 +2641,16 @@ function renderPlans() {
       </div>`;
     for (const p of groups[type]) {
       const isActive = p.id === state.currentPlanId;
+      const hasRemind = !!p.remind_at;
+      const isOverdue = hasRemind && !p.notified_at && p.remind_at < Date.now();
+      const isUpcoming = hasRemind && !p.notified_at && p.remind_at >= Date.now() && p.remind_at - Date.now() < 24*3600*1000;
+      const remindBadge = isOverdue
+        ? '<span class="badge badge-overdue">🚨 已到期</span>'
+        : (isUpcoming
+          ? '<span class="badge badge-upcoming">⏰ 即将到期</span>'
+          : (hasRemind ? '<span class="badge badge-remind">⏰ 已设提醒</span>' : ''));
       sideHtml += `
-        <div class="plan-item ${isActive ? 'active' : ''}" data-plan-id="${escapeHtml(p.id)}">
+        <div class="plan-item ${isActive ? 'active' : ''} ${isOverdue ? 'overdue' : ''}" data-plan-id="${escapeHtml(p.id)}">
           <div class="plan-item-row">
             <span class="plan-item-title">${escapeHtml(p.title)}</span>
             <span class="plan-item-date">${escapeHtml(p.date.slice(5))}</span>
@@ -2649,6 +2658,7 @@ function renderPlans() {
           <div class="plan-item-meta">
             <span class="badge status-${escapeHtml(p.status)}">${escapeHtml(PLAN_STATUS_LABEL[p.status] || p.status)}</span>
             <span class="badge priority-${escapeHtml(p.priority)}">${escapeHtml(PLAN_PRIORITY_LABEL[p.priority] || p.priority)}</span>
+            ${remindBadge}
           </div>
         </div>`;
     }
@@ -2758,8 +2768,14 @@ function openPlanDrawer(planId) {
   document.getElementById('plan-drawer-status-select').value = p ? p.status : 'pending';
   document.getElementById('plan-drawer-priority-select').value = p ? p.priority : 'normal';
   document.getElementById('plan-drawer-details-input').value = p ? (p.details || '') : '';
+  // v5.1.1 提醒字段
+  document.getElementById('plan-drawer-remind-input').value = p && p.remind_at
+    ? new Date(p.remind_at).toISOString().slice(0, 16)
+    : '';
+  document.getElementById('plan-drawer-remind-inapp').checked = !p || !p.remind_channels || p.remind_channels.includes('inapp');
+  document.getElementById('plan-drawer-remind-wechat').checked = p && p.remind_channels && p.remind_channels.includes('wechat');
   document.getElementById('plan-drawer-meta').textContent = p
-    ? `创建于 ${new Date(p.created_at).toLocaleString('zh-CN')}`
+    ? `创建于 ${new Date(p.created_at).toLocaleString('zh-CN')}` + (p.notified_at ? ` · 已提醒于 ${new Date(p.notified_at).toLocaleString('zh-CN')}` : '')
     : '';
   document.getElementById('plan-drawer-delete').style.display = p ? '' : 'none';
   document.getElementById('plan-drawer-title-input').focus();
@@ -2777,6 +2793,12 @@ async function savePlanFromDrawer() {
   const status = document.getElementById('plan-drawer-status-select').value;
   const priority = document.getElementById('plan-drawer-priority-select').value;
   const details = document.getElementById('plan-drawer-details-input').value.trim();
+  // v5.1.1 提醒字段
+  const remindRaw = document.getElementById('plan-drawer-remind-input').value;
+  const remind_at = remindRaw ? new Date(remindRaw).getTime() : null;
+  const remind_channels = [];
+  if (document.getElementById('plan-drawer-remind-inapp').checked) remind_channels.push('inapp');
+  if (document.getElementById('plan-drawer-remind-wechat').checked) remind_channels.push('wechat');
 
   if (!title) return showNotification('❌ 标题不能为空', 'error');
   if (!date) return showNotification('❌ 日期不能为空', 'error');
@@ -2790,6 +2812,10 @@ async function savePlanFromDrawer() {
       p.status = status;
       p.priority = priority;
       p.details = details;
+      p.remind_at = remind_at;
+      p.remind_channels = remind_channels.length > 0 ? remind_channels : undefined;
+      // v5.1.1: 提醒时间或渠道改变时清空 notified_at，允许重新提醒
+      p.notified_at = null;
       p.updated_at = Date.now();
     }
     showNotification('✓ 已更新', 'success');
@@ -2802,6 +2828,9 @@ async function savePlanFromDrawer() {
       status,
       priority,
       details,
+      remind_at,
+      remind_channels: remind_channels.length > 0 ? remind_channels : undefined,
+      notified_at: null,
       created_at: Date.now(),
       updated_at: Date.now()
     });
@@ -2812,6 +2841,9 @@ async function savePlanFromDrawer() {
   closeDrawer('plan-drawer');
   renderPlans();
   updateTabCounts();
+  if (remind_at) {
+    showNotification(`⏰ 已设置提醒：${new Date(remind_at).toLocaleString('zh-CN')}`, 'success');
+  }
 }
 
 function deletePlanFromDrawer() {
@@ -3213,6 +3245,99 @@ function initReportDrawer() {
   if (sel) sel.addEventListener('change', generateAndFillReport);
 }
 
+// ======== v5.1.1 计划提醒调度器 ========
+
+let planReminderTimer = null;
+
+/**
+ * 启动提醒调度器（每 30 秒检查一次）
+ */
+function startPlanReminderScheduler() {
+  if (planReminderTimer) return;
+  // 立即跑一次（处理启动时已过期的提醒）
+  checkPlanReminders();
+  planReminderTimer = setInterval(checkPlanReminders, 30_000);
+  console.log('[plan-reminder] 调度器已启动（每 30s 扫描）');
+}
+
+/**
+ * 扫描并触发到期提醒
+ */
+async function checkPlanReminders() {
+  const now = Date.now();
+  const plans = state.plans || [];
+  const due = plans.filter(p =>
+    p.remind_at &&
+    p.remind_at <= now &&
+    !p.notified_at &&
+    p.status !== 'done' &&
+    p.status !== 'cancelled'
+  );
+  if (due.length === 0) return;
+  console.log(`[plan-reminder] 发现 ${due.length} 个到期提醒`);
+  for (const p of due) {
+    await dispatchPlanReminder(p);
+    p.notified_at = now;
+  }
+  savePlansToStorage(plans);
+  renderPlans();
+}
+
+/**
+ * 触发单个计划提醒
+ */
+async function dispatchPlanReminder(plan) {
+  const text = `⏰ 计划提醒：${plan.title}\n${plan.details || ''}\n\n时间：${new Date(plan.remind_at).toLocaleString('zh-CN')}`;
+  const channels = plan.remind_channels || ['inapp'];
+
+  // 1) 网页内通知
+  if (channels.includes('inapp')) {
+    showNotification(text, 'info', 8000);
+    // 同时尝试浏览器原生通知
+    try {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('📅 计划提醒', { body: plan.title, tag: `plan-${plan.id}` });
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(p => {
+          if (p === 'granted') {
+            new Notification('📅 计划提醒', { body: plan.title, tag: `plan-${plan.id}` });
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[plan-reminder] Notification API 失败:', e);
+    }
+  }
+
+  // 2) 微信推送
+  if (channels.includes('wechat')) {
+    try {
+      // 使用最近一次微信消息的 wxid
+      const wxid = (state.claw && state.claw.status && state.claw.status.wxid) || null;
+      if (!wxid) {
+        console.warn('[plan-reminder] 无可用 wxid，跳过微信推送');
+        showNotification('⚠️ 微信未连接，跳过微信推送', 'warn');
+        return;
+      }
+      const resp = await fetch('/api/claw/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wxid, content: text })
+      });
+      const json = await resp.json();
+      if (json.success) {
+        console.log(`[plan-reminder] 微信推送成功: ${wxid}`);
+        showNotification(`✓ 微信提醒已发送`, 'success');
+      } else {
+        console.warn(`[plan-reminder] 微信推送失败: ${json.error}`);
+      }
+    } catch (e) {
+      console.error('[plan-reminder] 微信推送异常:', e);
+    }
+  }
+}
+
 // 暴露到 window 以便 switchTab 懒调用
 window.initPlan = initPlan;
 window.initReportDrawer = initReportDrawer;
+window.startPlanReminderScheduler = startPlanReminderScheduler;
