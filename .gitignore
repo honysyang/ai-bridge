@@ -25,3 +25,10 @@ Thumbs.db
 .idea/
 *.swp
 
+# Backups
+*.bak
+*.bak.*
+
+# Winston logs directory
+logs/
+

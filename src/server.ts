@@ -20,11 +20,14 @@ import { workflowRouter } from './routes/workflows.js';
 import { chatRouter } from './routes/chat.js';
 import { clawRouter, legacyWeixinRouter } from './routes/claw.js';
 import { heartbeatRouter } from './routes/heartbeat.js';
+import { overviewRouter } from './routes/overview.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
+import { childLogger, logRequest } from './lib/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const log = childLogger({ module: 'server' });
 
 const app = express();
 const server = createServer(app);
@@ -42,8 +45,19 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
   res.on('finish', () => {
     if (res.statusCode === 404 && req.method === 'GET' && !req.path.startsWith('/api/')) {
-      console.warn(`[404] ${req.method} ${req.path}`);
+      log.warn(`静态资源 404: ${req.method} ${req.path}`);
     }
+  });
+  next();
+});
+
+// HTTP 访问日志（v5.2.0：接入 winston 诊断通道）
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    // 跳过心跳/健康检查的高频噪音
+    if (req.path === '/api/heartbeat' || req.path === '/api/task/poll' || req.path === '/health') return;
+    logRequest(req.method, req.path, res.statusCode, Date.now() - start);
   });
   next();
 });
@@ -97,17 +111,17 @@ app.get('/favicon.ico', (_req, res) => {
 
 wss.on('connection', (ws) => {
   clients.add(ws);
-  taskQueue.addLog('info', 'server', `WS 客户端连接，当前 ${clients.size}`);
+  log.debug(`WS 客户端连接，当前 ${clients.size}`);
 
   ws.send(JSON.stringify({ type: 'status', data: taskQueue.getStats() }));
 
   ws.on('close', () => {
     clients.delete(ws);
-    taskQueue.addLog('info', 'server', `WS 客户端断开，当前 ${clients.size}`);
+    log.debug(`WS 客户端断开，当前 ${clients.size}`);
   });
 
   ws.on('error', (err) => {
-    taskQueue.addLog('error', 'server', `WS 错误: ${err.message}`);
+    log.error(`WS 错误: ${err.message}`);
   });
 });
 
@@ -157,6 +171,7 @@ app.use('/api/kb', kbRouter);
 app.use('/api/wf', workflowRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/claw', clawRouter);
+app.use('/api/overview', overviewRouter);
 // 旧 weixin 路径兼容（前端不再使用）
 app.use('/api', legacyWeixinRouter);
 
@@ -222,48 +237,20 @@ export function startServer(port: number = 4567) {
 
   server.listen(port, () => {
     taskQueue.addLog('success', 'bridge', `服务启动，端口 ${port}`);
-    console.log('');
-    console.log('╔══════════════════════════════════════════╗');
-    console.log('║   AI 智能体桥接器 v5.0.0 已启动          ║');
-    console.log('║   通用 Claw 适配层已挂载                 ║');
-    console.log('║   持久化：JSONL (data/*.jsonl)           ║');
-    console.log('║   路由：模块化 (src/routes/*.ts)         ║');
-    console.log('╠══════════════════════════════════════════╣');
-    console.log(`║  Web面板:   http://localhost:${port}      ║`);
-    console.log(`║  HTTP API:  http://localhost:${port}/api ║`);
-    console.log(`║  WebSocket: ws://localhost:${port}/ws    ║`);
-    console.log('╚══════════════════════════════════════════╝');
-    console.log('');
-    console.log('数据恢复:');
-    console.log(`  任务: ${loadResult.tasks} | 日志: ${loadResult.logs} | 会话: ${loadResult.sessions}`);
-    if (loadResult.corrupted > 0) {
-      console.log(`  ⚠️  发现 ${loadResult.corrupted} 行损坏数据，已移至 data/.corrupted/`);
-    }
-    console.log('');
-    console.log('Claw (v4.1.0 iLink):');
     const cfg = clawConfig.get();
-    console.log(`  状态: ${cfg.enabled ? '✅ 启用' : '❌ 禁用'}`);
-    console.log(`  adapter: iLink Bot API (官方 SDK vendor)`);
-    console.log(`  凭证位置: ~/.config/agent-canvas/secrets.env (chmod 600)`);
-    console.log(`  auto_reply: ${cfg.auto_reply}`);
-    console.log('');
-    console.log('路由模块（src/routes/）:');
-    console.log('  health.ts       /health, /api/storage');
-    console.log('  heartbeat.ts    /api/heartbeat, /api/heartbeat/snapshot');
-    console.log('  sessions.ts     /api/sessions');
-    console.log('  tasks.ts        /api/tasks, /api/task, /api/context, /api/logs');
-    console.log('  kb.ts           /api/kb');
-    console.log('  workflows.ts    /api/wf');
-    console.log('  chat.ts         /api/chat');
-    console.log('  claw.ts         /api/claw, /api/messages, /api/contacts ...');
-    console.log('');
-    console.log('中间件（src/middleware/）:');
-    console.log('  error.ts        统一错误处理 + asyncHandler');
-    console.log('  notFound.ts     404 兜底');
-    console.log('');
-    console.log('CORS 白名单:');
-    ALLOWED_ORIGINS.forEach(o => console.log(`  - ${o}`));
-    console.log('');
+    log.info('═══════════════════════════════════════════');
+    log.info('  AI 智能体桥接器 v5.2.0 已启动（winston 日志已接入）');
+    log.info('═══════════════════════════════════════════');
+    log.info('  Web面板:   http://localhost:' + port);
+    log.info('  HTTP API:  http://localhost:' + port + '/api');
+    log.info('  WebSocket: ws://localhost:' + port + '/ws');
+    log.info('  日志目录:  logs/ai-bridge-YYYY-MM-DD.log');
+    log.info('  级别:      ' + (process.env.LOG_LEVEL || 'info') + ' (LOG_LEVEL 环境变量可调)');
+    log.info('═══════════════════════════════════════════');
+    log.info(`数据恢复: 任务 ${loadResult.tasks} | 日志 ${loadResult.logs} | 会话 ${loadResult.sessions}` +
+      (loadResult.corrupted > 0 ? ` | ⚠️ 损坏 ${loadResult.corrupted}` : ''));
+    log.info(`Claw: ${cfg.enabled ? '✅ 启用' : '❌ 禁用'} | auto_reply=${cfg.auto_reply}`);
+    log.info(`CORS 白名单: ${ALLOWED_ORIGINS.join(', ')}`);
   });
 }
 
