@@ -77,8 +77,8 @@
   }
 
   async function createSession() {
-    if (global.Core.showModal) {
-      global.Core.showModal({
+    if (global.Main && global.Main.showModal) {
+      global.Main.showModal({
         title: '新建会话',
         fields: [
           { name: 'name', label: '会话名称', placeholder: '如：商品价格监控', required: true },
@@ -101,8 +101,8 @@
   async function renameSession(sessionId) {
     const s = state.sessions.find(s => s.id === sessionId);
     if (!s) return;
-    if (global.Core.showModal) {
-      global.Core.showModal({
+    if (global.Main && global.Main.showModal) {
+      global.Main.showModal({
         title: '重命名会话',
         fields: [
           { name: 'name', label: '会话名称', value: s.name, required: true },
