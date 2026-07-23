@@ -209,6 +209,26 @@ function switchTab(tabName, opts = {}) {
   // 4) 更新 tab 计数徽章
   updateTabCounts();
 
+  // 6) v5.1.1: 截图模式 URL hash 扩展（#tab/kb/graph 触发图谱视图，#tab/plan/report 打开周报抽屉）
+  if (tabName === 'kb' && /graph$/.test(location.hash)) {
+    setTimeout(() => {
+      const btn = document.querySelector('#kb-view-tabs .tab[data-view="graph"]');
+      if (btn) btn.click();
+    }, 500);
+  }
+  if (tabName === 'plan' && /report$/.test(location.hash)) {
+    setTimeout(() => {
+      if (typeof openWeeklyReportDrawer === 'function') openWeeklyReportDrawer();
+    }, 500);
+  }
+  // v5.1.1: #tab/chat/claw 触发微信 Claw 弹窗
+  if (tabName === 'chat' && /claw$/.test(location.hash)) {
+    setTimeout(() => {
+      const badge = document.getElementById('wechat-status');
+      if (badge) badge.click();
+    }, 500);
+  }
+
   // 5) 更新 hash
   if (!opts.skipHash && location.hash !== `#tab/${tabName}`) {
     history.replaceState(null, '', `#tab/${tabName}`);

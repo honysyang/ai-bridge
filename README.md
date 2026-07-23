@@ -10,19 +10,19 @@
 
 ## 📸 界面预览
 
-> 截图待补充（建议截图 4 个 tab + 周报抽屉 + 知识图谱 + 微信二维码）
+7 个核心界面截图（1440×900，headless Chromium 截取）：
 
-| 入口 | 模块 | 说明 |
+| 截图 | 模块 | 说明 |
 |------|------|------|
 | ![chat](docs/screenshots/chat.png) | 💬 聊天 | 三栏工作台：会话 / 任务流 / 详情 |
-| ![kb](docs/screenshots/kb-list.png) | 📖 知识库 | 分类树 + 条目卡片 + 详情抽屉 |
-| ![graph](docs/screenshots/kb-graph.png) | 🕸 知识图谱 | Cytoscape 可视化，节点按分类着色 |
-| ![workflow](docs/screenshots/workflow.png) | ⚙️ 工作流 | 多步任务模板，可批量执行 |
+| ![kb](docs/screenshots/kb.png) | 📖 知识库 | 7 个分类、26+ 条目，支持搜索/筛选 |
+| ![graph](docs/screenshots/kb-graph.png) | 🕸 知识图谱 | Cytoscape 可视化，22 条关联 |
+| ![workflow](docs/screenshots/workflow.png) | ⚙️ 工作流 | 多步任务模板（3 步示例：查茅台股价 → 查飞天茅台酒价） |
 | ![plan](docs/screenshots/plan.png) | 📅 计划 | 周计划 / 日计划，状态跟踪 |
 | ![report](docs/screenshots/report.png) | 📝 周报 | 一键汇总本周数据为 Markdown |
-| ![claw](docs/screenshots/claw.png) | 💬 微信 | Claw 适配层，扫码登录、消息收发 |
+| ![claw](docs/screenshots/claw.png) | 💬 微信 Claw | iLink Bot 已登录状态、二维码扫码入口 |
 
-> 💡 截图规范建议：浏览器 1440×900，开发者工具禁用，清除通知后截取。
+> 💡 截图规范：浏览器 1440×900，headless Chromium 截取，演示数据已加载。
 
 ---
 
