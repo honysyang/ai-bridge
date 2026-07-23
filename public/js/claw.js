@@ -50,6 +50,8 @@
     if (modal) modal.hidden = false;
     await loadClawStatus();
     renderWechatModal();
+    // v5.2.1: 启动状态轮询，状态变化时自动重渲染面板
+    startClawStatusPolling();
   }
 
   function closeWechatModal() {
@@ -59,6 +61,52 @@
     if (state.claw.qrcodeTimer) {
       clearInterval(state.claw.qrcodeTimer);
       state.claw.qrcodeTimer = null;
+    }
+    stopClawStatusPolling();
+  }
+
+  // ===== v5.2.1: 动态状态轮询 =====
+  // 微信扫码后状态会从 qrcode → connecting → connected，
+  // 前端必须持续拉取 /api/claw/status 才能及时反映状态变化。
+  function startClawStatusPolling() {
+    stopClawStatusPolling();
+    if (state.claw.pollingTimer) return;
+    const lastState = state.claw.lastPolledState;
+    state.claw.lastPolledState = state.claw.status?.state || null;
+    state.claw.pollingTimer = setInterval(async () => {
+      if (!state.claw.modalOpen) {
+        stopClawStatusPolling();
+        return;
+      }
+      try {
+        const { data } = await api('/api/claw/status');
+        const prev = state.claw.status;
+        state.claw.status = data;
+        // 状态变化或 qrcode_url 变化时，重新渲染面板
+        if (!prev
+            || prev.state !== data.state
+            || (data.state === 'qrcode' && prev.qrcode_url !== data.qrcode_url)) {
+          renderClawStatus();
+          renderWechatModal();
+          // 状态变成已连接时，给个提示
+          if (data.state === 'connected' && (!prev || prev.state !== 'connected')) {
+            showNotification('✅ 微信已连接', 'success', 3000);
+          }
+          if (data.state === 'banned' && (!prev || prev.state !== 'banned')) {
+            showNotification('❌ 微信账号被封', 'error', 5000);
+          }
+        }
+      } catch (e) {
+        // 静默：避免后台噪音
+        console.warn('[claw] 状态轮询失败:', e.message);
+      }
+    }, 2000);
+  }
+
+  function stopClawStatusPolling() {
+    if (state.claw.pollingTimer) {
+      clearInterval(state.claw.pollingTimer);
+      state.claw.pollingTimer = null;
     }
   }
 
@@ -168,6 +216,9 @@
     try {
       showNotification('⏳ 正在生成二维码...', 'info', 2000);
       await api('/api/claw/login/start', { method: 'POST', body: {} });
+      // v5.2.1: 立即拉取新状态，UI 无需等下一次轮询
+      await loadClawStatus();
+      renderWechatModal();
     } catch (e) {
       showNotification(`❌ ${e.message}`, 'error');
     }
@@ -176,6 +227,9 @@
   async function refreshClawQrcode() {
     try {
       await api('/api/claw/login/start', { method: 'POST', body: {} });
+      // v5.2.1: 立即刷新面板显示新二维码
+      await loadClawStatus();
+      renderWechatModal();
     } catch (e) {
       showNotification(`❌ ${e.message}`, 'error');
     }
@@ -212,6 +266,8 @@
     closeWechatModal,
     renderWechatModal,
     startQrcodeCountdown,
+    startClawStatusPolling,   // v5.2.1
+    stopClawStatusPolling,    // v5.2.1
     startClawLogin,
     refreshClawQrcode,
     logoutClaw,

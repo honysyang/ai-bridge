@@ -60,7 +60,9 @@
       status: null,           // { state, wxid, nickname, ... }
       modalOpen: false,
       qrcodeTimer: null,
-      lastQrcodeExpiresAt: null
+      lastQrcodeExpiresAt: null,
+      pollingTimer: null,     // v5.2.1: 状态轮询定时器
+      lastPolledState: null   // v5.2.1: 上次轮询的状态（用于 diff 触发重渲染）
     },
     workflows: [],               // v4.2.1: 工作流列表
     currentWorkflowId: null,     // v4.2.1: 当前工作流
