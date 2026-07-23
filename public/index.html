@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 智能体桥接器 v5.0 - 三栏工作台</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23667eea'/%3E%3Cstop offset='1' stop-color='%23764ba2'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dominant-baseline='central' font-size='36' font-family='Arial,sans-serif' fill='white'%3E🤖%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+  <!-- Cytoscape.js for knowledge graph (v4.3.0) -->
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+</head>
+<body>
+  <!-- ========== Header ========== -->
+  <header class="app-header">
+    <div class="header-left">
+      <h1>🤖 ai-bridge <span class="version">v5.0.0</span></h1>
+      <p class="subtitle" id="header-subtitle">JSONL 持久化 · 三栏工作台 · 知识图谱 · Claw 适配</p>
+    </div>
+    <div class="header-right">
+      <!-- 微信 Claw 状态徽章（v4.0.0） -->
+      <button class="wechat-status" id="wechat-status" data-state="disconnected" title="点击管理微信连接">
+        <span class="ws-icon"></span>
+        <span class="ws-text">未连接</span>
+      </button>
+      <span id="connection-status" class="status connected">● 已连接</span>
+      <span id="queue-stats" class="queue-badge">队列: -</span>
+      <span id="sessions-count" class="queue-badge">会话: -</span>
+      <button class="header-btn" id="btn-open-logs">📜 日志</button>
+      <button class="header-btn" id="btn-open-stats">📊 存储</button>
+    </div>
+  </header>
+
+  <!-- ========== Tab 菜单 ========== -->
+  <nav class="tab-menu" role="tablist">
+    <button class="tab-btn active" data-tab="chat" role="tab" aria-selected="true">
+      <span class="tab-icon">💬</span>
+      <span class="tab-label">聊天</span>
+      <span class="tab-count" id="tab-count-chat" hidden>0</span>
+    </button>
+    <button class="tab-btn" data-tab="kb" role="tab" aria-selected="false">
+      <span class="tab-icon">📖</span>
+      <span class="tab-label">知识库</span>
+      <span class="tab-count" id="tab-count-kb" hidden>0</span>
+    </button>
+    <button class="tab-btn" data-tab="workflow" role="tab" aria-selected="false">
+      <span class="tab-icon">⚙️</span>
+      <span class="tab-label">工作流</span>
+      <span class="tab-count" id="tab-count-wf" hidden>0</span>
+    </button>
+  </nav>
+
+  <!-- ========== 多面板工作台 ========== -->
+  <div class="workspace">
+
+    <!-- ===== 面板：聊天（原三栏） ===== -->
+    <div class="panel panel-chat" id="panel-chat">
+    <!-- ===== 中左栏：会话列表 ===== -->
+    <aside class="col col-left" id="col-left">
+      <div class="col-header">
+        <h2>💬 会话</h2>
+        <button class="icon-btn" id="btn-new-session" title="新建会话">＋</button>
+      </div>
+      <div class="col-toolbar">
+        <input type="search" id="session-search" placeholder="搜索会话..." class="search-input">
+        <select id="session-filter" class="filter-select">
+          <option value="active">活跃</option>
+          <option value="archived">归档</option>
+          <option value="all">全部</option>
+        </select>
+      </div>
+      <div class="session-list" id="session-list">
+        <div class="empty-state">
+          <div class="empty-icon">💬</div>
+          <div class="empty-text">暂无会话</div>
+          <div class="empty-hint">点击右上角 ＋ 新建</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 分隔条 1 -->
+    <div class="splitter splitter-vertical" id="splitter-1" data-target="col-left"></div>
+
+    <!-- ===== 中栏：任务流 ===== -->
+    <main class="col col-middle" id="col-middle">
+      <div class="col-header">
+        <h2 id="middle-title">📌 任务流</h2>
+        <div class="col-actions">
+          <button class="icon-btn-sm" id="btn-refresh-tasks" title="刷新">↻</button>
+        </div>
+      </div>
+      <div class="col-toolbar">
+        <div class="filter-tabs" id="task-filter-tabs">
+          <button class="tab active" data-filter="all">全部</button>
+          <button class="tab" data-filter="pending">待处理</button>
+          <button class="tab" data-filter="processing">处理中</button>
+          <button class="tab" data-filter="completed">已完成</button>
+          <button class="tab" data-filter="failed">失败</button>
+        </div>
+      </div>
+      <div class="task-flow" id="task-flow">
+        <div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <div class="empty-text">请选择或新建会话</div>
+          <div class="empty-hint">在左侧会话列表中选择</div>
+        </div>
+      </div>
+
+      <!-- 底部输入区（当前会话内） -->
+      <div class="compose-bar" id="compose-bar">
+        <textarea
+          id="compose-input"
+          class="compose-input"
+          placeholder="输入消息或任务... (Enter 发送，Shift+Enter 换行)"
+          rows="1"
+          disabled
+        ></textarea>
+        <div class="compose-options">
+          <select id="compose-type" disabled>
+            <option value="chat">💬 聊天</option>
+            <option value="query_info">🔍 查询</option>
+            <option value="generate_content">✍️ 生成</option>
+            <option value="analyze_data">📊 分析</option>
+            <option value="execute_command">⚡ 命令</option>
+            <option value="multi_step">🔄 多步</option>
+          </select>
+          <select id="compose-priority" disabled>
+            <option value="normal">普通</option>
+            <option value="high">高</option>
+            <option value="urgent">紧急</option>
+            <option value="low">低</option>
+          </select>
+          <button class="compose-send" id="btn-compose-send" disabled>
+            <span>🚀</span>
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 分隔条 2 -->
+    <div class="splitter splitter-vertical" id="splitter-2" data-target="col-right"></div>
+
+    <!-- ===== 右栏：任务详情 ===== -->
+    <aside class="col col-right" id="col-right">
+      <div class="col-header">
+        <h2>🔍 详情</h2>
+        <div class="col-actions">
+          <button class="icon-btn-sm" id="btn-close-detail" title="关闭详情">×</button>
+        </div>
+      </div>
+      <div class="col-body" id="detail-body">
+        <div class="empty-state">
+          <div class="empty-icon">👈</div>
+          <div class="empty-text">选择任务查看详情</div>
+          <div class="empty-hint">点击中间栏的任务卡片</div>
+        </div>
+      </div>
+    </aside>
+      </div><!-- /triple-col -->
+    </div><!-- /panel-chat -->
+
+    <!-- ===== 面板：知识库（重做版） ===== -->
+    <div class="panel panel-kb" id="panel-kb" hidden>
+      <div class="kb-panel">
+        <div class="kb-toolbar">
+          <div class="filter-tabs" id="kb-view-tabs">
+            <button class="tab active" data-view="list">📋 列表</button>
+            <button class="tab" data-view="graph">🕸 图谱</button>
+          </div>
+          <input type="search" id="kb-search" placeholder="🔍 搜索知识..." class="search-input">
+          <select id="kb-cat-filter" class="filter-select">
+            <option value="all">全部分类</option>
+          </select>
+          <button class="btn-primary" id="btn-kb-new-category">+ 新建分类</button>
+          <button class="btn-secondary" id="btn-kb-new-item">+ 新建条目</button>
+          <button class="btn-demo" id="btn-kb-seed-demo" title="一键加载演示分类/条目/关联">🎁 演示数据</button>
+        </div>
+        <!-- 列表视图 -->
+        <div class="kb-content kb-view-list" id="kb-view-list">
+          <aside class="kb-side" id="kb-side">
+            <!-- 分类树由 JS 渲染 -->
+          </aside>
+          <main class="kb-main" id="kb-main">
+            <div class="kb-items-header">
+              <span id="kb-items-title">全部条目</span>
+              <span class="kb-items-count" id="kb-items-count">--</span>
+            </div>
+            <div class="kb-items-list" id="kb-items-list">
+              <div class="empty-state empty-state-large">
+                <div class="empty-icon">📖</div>
+                <div class="empty-text">知识库空空如也</div>
+                <div class="empty-hint">点击「🎁 演示数据」一键加载 6 个分类、25+ 条目、20+ 关联，立即体验</div>
+                <button class="btn-demo btn-demo-large" id="btn-kb-seed-demo-2">🎁 一键加载演示数据</button>
+              </div>
+            </div>
+          </main>
+        </div>
+        <!-- 图谱视图 -->
+        <div class="kb-content kb-view-graph" id="kb-view-graph" hidden>
+          <aside class="kb-graph-side" id="kb-graph-side">
+            <h3>连接条目</h3>
+            <div class="kb-graph-form">
+              <label>源条目</label>
+              <select id="kb-link-source"></select>
+              <label>目标条目</label>
+              <select id="kb-link-target"></select>
+              <label>关系类型</label>
+              <select id="kb-link-type">
+                <option value="related">相关</option>
+                <option value="depends_on">依赖</option>
+                <option value="references">引用</option>
+                <option value="contains">包含</option>
+              </select>
+              <label>标注（可选）</label>
+              <input type="text" id="kb-link-label" placeholder="如：用于查询" maxlength="32">
+              <button class="btn-primary" id="kb-link-create">+ 创建关联</button>
+            </div>
+            <h3 style="margin-top:18px">关联列表 <span id="kb-link-count" class="kb-items-count" style="background:transparent;padding:0">--</span></h3>
+            <div class="kb-link-list" id="kb-link-list"></div>
+          </aside>
+          <main class="kb-graph-main">
+            <div id="cy"></div>
+            <div class="cy-tip" id="cy-tip">点击节点查看详情 · 拖拽节点调整布局 · 滚轮缩放</div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 面板：工作流 ===== -->
+    <div class="panel panel-workflow" id="panel-workflow" hidden>
+      <div class="wf-panel">
+        <div class="wf-toolbar">
+          <input type="search" id="wf-search" placeholder="🔍 搜索工作流..." class="search-input">
+          <button class="btn-primary" id="btn-wf-new">+ 新建工作流</button>
+          <button class="btn-demo" id="btn-wf-seed-demo" title="一键加载 9 个示例工作流">🎁 演示数据</button>
+        </div>
+        <div class="wf-content">
+          <aside class="wf-side" id="wf-side">
+            <!-- 工作流列表由 JS 渲染 -->
+          </aside>
+          <main class="wf-main" id="wf-main">
+            <div class="wf-empty" id="wf-empty">
+              <div class="empty-icon">⚙️</div>
+              <div class="empty-text">工作流还是空的</div>
+              <div class="empty-hint">点击「🎁 演示数据」加载 9 个示例工作流（股票分析、天气推送、销售月报、应急响应…）</div>
+              <button class="btn-demo btn-demo-large" id="btn-wf-seed-demo-2">🎁 一键加载演示数据</button>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 抽屉：KB 条目详情/编辑 ===== -->
+    <div class="drawer" id="kb-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <h2 id="kb-drawer-title">📖 条目详情</h2>
+        <button class="drawer-close" data-close="kb-drawer" aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-body">
+        <div class="form-group">
+          <label>标题 *</label>
+          <input type="text" id="kb-drawer-title-input" maxlength="64" placeholder="如：查茅台价格">
+        </div>
+        <div class="form-group">
+          <label>分类 *</label>
+          <select id="kb-drawer-cat-select"></select>
+        </div>
+        <div class="form-group">
+          <label>正文 *<small>（点击条目会填入聊天输入框）</small></label>
+          <textarea id="kb-drawer-body-input" rows="10" maxlength="4000" placeholder="条目正文"></textarea>
+        </div>
+        <div class="form-group">
+          <label>标签<small>（用英文逗号分隔，最多 8 个）</small></label>
+          <input type="text" id="kb-drawer-tags-input" placeholder="如：股票, 茅台">
+        </div>
+        <div class="form-group form-meta">
+          <span id="kb-drawer-meta"></span>
+        </div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn-secondary" id="kb-drawer-cancel">取消</button>
+        <button class="btn-primary" id="kb-drawer-save">保存</button>
+        <button class="btn-danger" id="kb-drawer-delete" style="display:none">删除</button>
+      </div>
+    </div>
+
+    <!-- ===== 抽屉：工作流步骤编辑 ===== -->
+    <div class="drawer" id="wf-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <h2 id="wf-drawer-title">⚙️ 编辑工作流</h2>
+        <button class="drawer-close" data-close="wf-drawer" aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-body">
+        <div class="form-group">
+          <label>名称 *</label>
+          <input type="text" id="wf-drawer-name-input" maxlength="64" placeholder="如：股票分析报告">
+        </div>
+        <div class="form-group">
+          <label>图标</label>
+          <input type="text" id="wf-drawer-icon-input" maxlength="2" placeholder="📊">
+        </div>
+        <div class="form-group">
+          <label>描述</label>
+          <textarea id="wf-drawer-desc-input" rows="2" maxlength="200" placeholder="一句话说明这个工作流做什么"></textarea>
+        </div>
+        <div class="form-group">
+          <label>步骤</label>
+          <div id="wf-steps-list"></div>
+          <button class="btn-secondary" id="wf-add-step">+ 添加步骤</button>
+        </div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn-secondary" id="wf-drawer-cancel">取消</button>
+        <button class="btn-primary" id="wf-drawer-save">保存</button>
+        <button class="btn-danger" id="wf-drawer-delete" style="display:none">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 抽屉：系统日志 ========== -->
+  <div class="drawer-overlay" id="drawer-overlay"></div>
+  <div class="drawer" id="log-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <h2>📜 系统日志</h2>
+      <button class="drawer-close" data-close="log-drawer" aria-label="关闭">×</button>
+    </div>
+    <div class="drawer-toolbar">
+      <select id="log-level-filter">
+        <option value="">全部级别</option>
+        <option value="info">info</option>
+        <option value="success">success</option>
+        <option value="warn">warn</option>
+        <option value="error">error</option>
+        <option value="debug">debug</option>
+      </select>
+      <select id="log-source-filter">
+        <option value="">全部来源</option>
+        <option value="server">server</option>
+        <option value="bridge">bridge</option>
+        <option value="task">task</option>
+        <option value="agent">agent</option>
+        <option value="system">system</option>
+      </select>
+    </div>
+    <div class="drawer-body" id="log-drawer-list">
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <div class="empty-text">暂无日志</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 抽屉：存储统计 ========== -->
+  <div class="drawer" id="stats-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <h2>📊 存储统计</h2>
+      <button class="drawer-close" data-close="stats-drawer" aria-label="关闭">×</button>
+    </div>
+    <div class="drawer-body" id="stats-drawer-body">
+      <div class="empty-state">
+        <div class="empty-icon">⏳</div>
+        <div class="empty-text">加载中...</div>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="drawer-btn" id="btn-export-data">📥 导出备份</button>
+      <button class="drawer-btn drawer-btn-danger" id="btn-wipe-data">🗑 清空数据</button>
+    </div>
+  </div>
+
+  <!-- ========== 微信 Claw 弹窗（v4.0.0） ========== -->
+  <div class="wechat-modal" id="wechat-modal" hidden>
+    <div class="wechat-modal-overlay" data-close-modal></div>
+    <div class="wechat-modal-card">
+      <header class="wmc-header">
+        <h3>📱 微信连接</h3>
+        <button class="wmc-close" data-close-modal aria-label="关闭">×</button>
+      </header>
+      <div class="wmc-body" id="wechat-modal-body">
+        <!-- 动态填充 -->
+      </div>
+      <footer class="wmc-footer" id="wechat-modal-footer">
+        <!-- 动态填充 -->
+      </footer>
+    </div>
+  </div>
+
+  <!-- ========== 通知容器 ========== -->
+  <div id="notification-container"></div>
+
+  <script src="app.js?v=4.4.0"></script>
+</body>
+</html>
