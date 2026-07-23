@@ -61,7 +61,10 @@ export class MessageBridge {
 
     // adapter 错误日志
     this.adapter.on('error', (err) => {
-      taskQueue.addLog('error', 'bridge', `[claw] ${err.message}`);
+      // v5.2.1: 长轮询 abort 是正常的瞬态情况，降级到 warn 而非 error
+      const msg = err.message || '';
+      const isAbort = /aborted|AbortError/i.test(msg);
+      taskQueue.addLog(isAbort ? 'warn' : 'error', 'bridge', `[claw] ${msg}`);
     });
   }
 

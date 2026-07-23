@@ -327,8 +327,13 @@ export class IlinkAdapter extends ClawAdapter {
           }
         } catch (e: any) {
           if (signal.aborted) return;
-          if (e.name === 'AbortError') {
-            // 长轮询超时是正常的，回到循环
+          // v5.2.1: 更宽松的 abort 检测（兼顾 name='AbortError' 和 message='This operation was aborted'）
+          const isAbort =
+            e?.name === 'AbortError' ||
+            e?.code === 'ABORT_ERR' ||
+            /aborted|AbortError/i.test(String(e?.message ?? ''));
+          if (isAbort) {
+            // 长轮询超时/被中止是正常的，回到循环
             continue;
           }
           this.emit('error', e as Error);

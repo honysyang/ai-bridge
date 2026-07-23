@@ -419,7 +419,10 @@ export async function getUpdates(params: GetUpdatesParams): Promise<GetUpdatesRe
     });
     return JSON.parse(rawText) as GetUpdatesResp;
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    // v5.2.1: 更宽松的 abort 检测
+    const isAbort =
+      err instanceof Error && (err.name === 'AbortError' || /aborted/i.test(err.message));
+    if (isAbort) {
       if (params.abortSignal?.aborted) {
         logger.debug(`getUpdates: aborted by external signal`);
       } else {
