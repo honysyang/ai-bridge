@@ -28,7 +28,7 @@
       const { data, meta } = await api(`/api/tasks?${params}`);
       state.tasks = data;
       renderTasks();
-      if (meta?.queue_stats && global.Core.updateQueueStats) global.Core.updateQueueStats(meta.queue_stats);
+      if (meta?.queue_stats && global.updateQueueStats) global.updateQueueStats(meta.queue_stats);
     } catch (e) {
       console.error('loadTasks:', e);
       showNotification(`❌ 加载任务失败: ${e.message}`, 'error', 4000);

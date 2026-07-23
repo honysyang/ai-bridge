@@ -62,9 +62,9 @@
     state.currentSessionId = sessionId;
     state.currentTaskId = null;
     renderSessions();
-    // loadTasks 由 main.js 暴露（避免循环依赖）
-    if (global.Core.loadTasks) global.Core.loadTasks();
-    if (global.Core.enableCompose) global.Core.enableCompose(true);
+    // 修复 v5.2.1：loadTasks/enableCompose 在 global.Tasks，不是 global.Core
+    if (global.Tasks && global.Tasks.loadTasks) global.Tasks.loadTasks();
+    if (global.Tasks && global.Tasks.enableCompose) global.Tasks.enableCompose(true);
     document.getElementById('middle-title').textContent =
       `📌 ${state.sessions.find(s => s.id === sessionId)?.name || '任务流'}`;
     document.getElementById('detail-body').innerHTML = `
@@ -128,7 +128,8 @@
       showNotification('📦 已归档', 'success');
       if (state.currentSessionId === sessionId) {
         state.currentSessionId = null;
-        if (global.Core.enableCompose) global.Core.enableCompose(false);
+        // 修复 v5.2.1：enableCompose 在 global.Tasks
+        if (global.Tasks && global.Tasks.enableCompose) global.Tasks.enableCompose(false);
       }
       await loadSessions();
     } catch (e) {
