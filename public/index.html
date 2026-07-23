@@ -47,6 +47,11 @@
       <span class="tab-label">工作流</span>
       <span class="tab-count" id="tab-count-wf" hidden>0</span>
     </button>
+    <button class="tab-btn" data-tab="plan" role="tab" aria-selected="false">
+      <span class="tab-icon">📅</span>
+      <span class="tab-label">计划</span>
+      <span class="tab-count" id="tab-count-plan" hidden>0</span>
+    </button>
   </nav>
 
   <!-- ========== 多面板工作台 ========== -->
@@ -155,7 +160,6 @@
         </div>
       </div>
     </aside>
-      </div><!-- /triple-col -->
     </div><!-- /panel-chat -->
 
     <!-- ===== 面板：知识库（重做版） ===== -->
@@ -249,6 +253,52 @@
       </div>
     </div>
 
+    <!-- ===== 面板：计划（v5.1.0） ===== -->
+    <div class="panel panel-plan" id="panel-plan" hidden>
+      <div class="plan-panel">
+        <div class="plan-toolbar">
+          <div class="plan-toolbar-left">
+            <input type="search" id="plan-search" placeholder="🔍 搜索计划..." class="search-input">
+            <select id="plan-type-filter" class="filter-select">
+              <option value="all">全部类型</option>
+              <option value="week">📆 周计划</option>
+              <option value="day">📅 日计划</option>
+            </select>
+            <select id="plan-status-filter" class="filter-select">
+              <option value="all">全部状态</option>
+              <option value="pending">⏳ 待开始</option>
+              <option value="in_progress">⚙️ 进行中</option>
+              <option value="done">✅ 已完成</option>
+              <option value="cancelled">❌ 已取消</option>
+            </select>
+            <select id="plan-week-filter" class="filter-select">
+              <option value="current">📍 本周</option>
+              <option value="next">➡️ 下周</option>
+              <option value="all">🗓 全部</option>
+            </select>
+          </div>
+          <div class="plan-toolbar-right">
+            <button class="btn-secondary" id="btn-plan-report" title="汇总本周计划 + 完成任务，生成 Markdown 周报">📝 生成周报</button>
+            <button class="btn-primary" id="btn-plan-new">+ 新建计划</button>
+            <button class="btn-demo" id="btn-plan-seed-demo" title="一键加载示例计划">🎁 演示数据</button>
+          </div>
+        </div>
+        <div class="plan-content">
+          <aside class="plan-side" id="plan-side">
+            <!-- 计划分组列表由 JS 渲染 -->
+          </aside>
+          <main class="plan-main" id="plan-main">
+            <div class="plan-empty" id="plan-empty">
+              <div class="empty-icon">📅</div>
+              <div class="empty-text">计划还是空的</div>
+              <div class="empty-hint">点击「🎁 演示数据」加载示例计划，或点击「+ 新建计划」开始记录</div>
+              <button class="btn-demo btn-demo-large" id="btn-plan-seed-demo-2">🎁 一键加载演示数据</button>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== 抽屉：KB 条目详情/编辑 ===== -->
     <div class="drawer" id="kb-drawer" aria-hidden="true">
       <div class="drawer-header">
@@ -312,6 +362,103 @@
         <button class="btn-secondary" id="wf-drawer-cancel">取消</button>
         <button class="btn-primary" id="wf-drawer-save">保存</button>
         <button class="btn-danger" id="wf-drawer-delete" style="display:none">删除</button>
+      </div>
+    </div>
+
+    <!-- ===== 抽屉：计划条目详情/编辑（v5.1.0） ===== -->
+    <div class="drawer" id="plan-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <h2 id="plan-drawer-title">📅 计划详情</h2>
+        <button class="drawer-close" data-close="plan-drawer" aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-body">
+        <div class="form-group">
+          <label>标题 *</label>
+          <input type="text" id="plan-drawer-title-input" maxlength="64" placeholder="如：完成项目代码审查">
+        </div>
+        <div class="form-group">
+          <label>类型 *</label>
+          <select id="plan-drawer-type-select">
+            <option value="day">📅 日计划</option>
+            <option value="week">📆 周计划</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>日期 *</label>
+          <input type="date" id="plan-drawer-date-input">
+        </div>
+        <div class="form-group">
+          <label>状态</label>
+          <select id="plan-drawer-status-select">
+            <option value="pending">⏳ 待开始</option>
+            <option value="in_progress">⚙️ 进行中</option>
+            <option value="done">✅ 已完成</option>
+            <option value="cancelled">❌ 已取消</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>优先级</label>
+          <select id="plan-drawer-priority-select">
+            <option value="low">低</option>
+            <option value="normal" selected>普通</option>
+            <option value="high">高</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>详细说明</label>
+          <textarea id="plan-drawer-details-input" rows="6" maxlength="2000" placeholder="补充细节、子任务、依赖等"></textarea>
+        </div>
+        <div class="form-group form-meta">
+          <span id="plan-drawer-meta"></span>
+        </div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn-secondary" id="plan-drawer-cancel">取消</button>
+        <button class="btn-primary" id="plan-drawer-save">保存</button>
+        <button class="btn-danger" id="plan-drawer-delete" style="display:none">删除</button>
+      </div>
+    </div>
+
+    <!-- ========== 抽屉：周报生成器 ========== -->
+    <div class="drawer drawer-wide" id="report-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <h2>📝 周报生成器</h2>
+        <button class="drawer-close" data-close="report-drawer" aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>选择周</label>
+            <select id="report-week-select">
+              <option value="current">📍 本周</option>
+              <option value="last">◀ 上周</option>
+              <option value="next">▶ 下周</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>包含章节</label>
+            <div class="checkbox-group">
+              <label><input type="checkbox" id="report-sec-summary" checked> 📊 数据总览</label>
+              <label><input type="checkbox" id="report-sec-plans" checked> ✅ 本周完成</label>
+              <label><input type="checkbox" id="report-sec-progress" checked> ⚙️ 进行中</label>
+              <label><input type="checkbox" id="report-sec-tasks" checked> 📨 完成任务</label>
+              <label><input type="checkbox" id="report-sec-kb"> 📚 知识库新增</label>
+              <label><input type="checkbox" id="report-sec-next" checked> 🎯 下周计划</label>
+              <label><input type="checkbox" id="report-sec-tips"> 💡 改进建议</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>周报预览（Markdown）</label>
+          <textarea id="report-output" rows="20" readonly placeholder="点击「🔄 生成」汇总本周数据..."></textarea>
+        </div>
+        <div class="form-meta" id="report-meta"></div>
+      </div>
+      <div class="drawer-footer">
+        <button class="btn-secondary" id="report-copy" disabled>📋 复制</button>
+        <button class="btn-secondary" id="report-download" disabled>💾 下载 .md</button>
+        <button class="btn-secondary" data-close="report-drawer">关闭</button>
+        <button class="btn-primary" id="report-generate">🔄 生成</button>
       </div>
     </div>
   </div>

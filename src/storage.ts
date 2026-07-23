@@ -131,7 +131,13 @@ export class Storage {
     session_id?: string;
   }): Task[] {
     let arr = this.getAllTasks();
-    if (filter?.status) arr = arr.filter(t => t.status === filter.status);
+    if (filter?.status) {
+      // v5.1.1: 支持多状态过滤（逗号分隔），如 status=assigned,processing
+      const statuses = String(filter.status).split(',').map(s => s.trim()).filter(Boolean);
+      arr = statuses.length > 1
+        ? arr.filter(t => statuses.includes(t.status))
+        : arr.filter(t => t.status === filter!.status);
+    }
     if (filter?.type) arr = arr.filter(t => t.type === filter.type);
     if (filter?.source) arr = arr.filter(t => t.source === filter.source);
     if (filter?.session_id) arr = arr.filter(t => (t as any).session_id === filter.session_id);

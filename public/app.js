@@ -1,5 +1,42 @@
 // ======== v3.0.0 Three-Column Workspace ========
 
+// ======== i18n（统一状态/优先级/来源/类型的中文映射）========
+const I18N = {
+  status: {
+    pending: '⏳ 待处理',
+    assigned: '⚙️ 处理中',  // v5.1.1: 合并 assigned → 处理中（与 processing 同义）
+    processing: '⚙️ 处理中',
+    completed: '✅ 已完成',
+    failed: '❌ 失败'
+  },
+  priority: {
+    low: '低',
+    normal: '普通',
+    high: '高',
+    urgent: '紧急'
+  },
+  source: {
+    wechat: '💬 微信',
+    chat: '💬 聊天',
+    manual: '✍️ 手动',
+    scheduled: '⏰ 定时',
+    system: '⚙️ 系统',
+    workflow: '🔄 工作流'
+  },
+  type: {
+    chat: '聊天',
+    reply_message: '回复消息',
+    query_info: '信息查询',
+    analyze_data: '数据分析',
+    generate_content: '内容生成',
+    execute_command: '执行命令',
+    multi_step: '多步任务'
+  }
+};
+function i18n(map, key) {
+  return (I18N[map] && I18N[map][key]) || key;
+}
+
 // ======== State ========
 const state = {
   sessions: [],
@@ -25,7 +62,15 @@ const state = {
   kbItems: [],                 // v4.2.1: 知识库条目
   kbLinks: [],                 // v4.3.0: 知识图谱关联
   kbView: 'list',              // v4.3.0: KB 视图（list | graph）
-  cy: null                     // v4.3.0: Cytoscape 实例
+  cy: null,                    // v4.3.0: Cytoscape 实例
+  plans: [],                   // v5.1.0: 计划条目列表
+  currentPlanId: null,         // v5.1.0: 当前选中计划
+  planFilter: {
+    search: '',
+    type: 'all',               // all | day | week
+    status: 'all',             // all | pending | in_progress | done | cancelled
+    week: 'current'            // current | next | all
+  }
 };
 
 let ws = null;
@@ -97,6 +142,8 @@ function init() {
   loadClawStatus();  // v4.0.0
   initKB();          // 知识库 v4.1.0（修复为新结构）
   initWF();          // v4.2.1 工作流
+  initPlan();        // v5.1.0 计划
+  initReportDrawer(); // v5.1.1 周报生成器
   bindEvents();
   applyColumnWidths();
   // 从 hash 恢复 tab 状态，默认 chat
@@ -108,13 +155,15 @@ function init() {
 const TAB_PANELS = {
   chat: 'panel-chat',
   kb: 'panel-kb',
-  workflow: 'panel-workflow'
+  workflow: 'panel-workflow',
+  plan: 'panel-plan'
 };
 
 const TAB_INIT = {
   chat: null,            // 始终初始化（init 流程已加载）
   kb: 'initKB',
-  workflow: 'initWF'
+  workflow: 'initWF',
+  plan: 'initPlan'
 };
 
 function switchTab(tabName, opts = {}) {
@@ -197,6 +246,17 @@ function updateTabCounts() {
       wfCount.hidden = false;
     } else {
       wfCount.hidden = true;
+    }
+  }
+  // 计划：计划条目数
+  const planCount = document.getElementById('tab-count-plan');
+  if (planCount) {
+    const n = (state.plans || []).length;
+    if (n > 0) {
+      planCount.textContent = n;
+      planCount.hidden = false;
+    } else {
+      planCount.hidden = true;
     }
   }
 }
@@ -352,7 +412,14 @@ async function loadTasks() {
     const params = new URLSearchParams();
     params.set('session_id', state.currentSessionId);
     params.set('limit', '100');
-    if (state.currentFilter && state.currentFilter !== 'all') params.set('status', state.currentFilter);
+    if (state.currentFilter && state.currentFilter !== 'all') {
+      // v5.1.1: 「处理中」tab 同时匹配 assigned + processing 两种状态
+      if (state.currentFilter === 'processing') {
+        params.set('status', 'assigned,processing');
+      } else {
+        params.set('status', state.currentFilter);
+      }
+    }
     const { data, meta } = await api(`/api/tasks?${params}`);
     state.tasks = data;
     renderTasks();
@@ -377,23 +444,17 @@ function renderTasks() {
   container.innerHTML = state.tasks.map(t => {
     const isSelected = t.id === state.currentTaskId;
     const source = t.source || 'manual';
-    const sourceLabel = {
-      wechat: '💬 微信',
-      chat: '💬 聊天',
-      manual: '✍️ 手动',
-      scheduled: '⏰ 定时',
-      system: '⚙️ 系统'
-    }[source] || source;
+    const sourceLabel = i18n('source', source);
     return `
       <div class="task-card status-${t.status} ${isSelected ? 'selected' : ''}" data-task-id="${t.id}" data-source="${escapeHtml(source)}">
         <div class="task-card-header">
           <div class="task-card-id">${escapeHtml(t.id)}<span class="source-badge source-${escapeHtml(source)}">${escapeHtml(sourceLabel)}</span></div>
-          <span class="badge badge-${t.status}">${t.status}</span>
+          <span class="badge badge-${t.status}">${i18n('status', t.status)}</span>
         </div>
         <div class="task-card-content">${escapeHtml(t.data?.content || '(无内容)')}</div>
         <div class="task-card-meta">
-          <span class="badge badge-priority-${t.priority}">${t.priority}</span>
-          <span>${t.type}</span>
+          <span class="badge badge-priority-${t.priority}">${i18n('priority', t.priority)}</span>
+          <span>${i18n('type', t.type)}</span>
           <span>·</span>
           <span>${formatRelative(t.created_at)}</span>
         </div>
@@ -515,19 +576,19 @@ function renderDetailOverview(task, result) {
       </div>
       <div class="detail-meta-item">
         <span class="detail-meta-label">状态</span>
-        <span class="badge badge-${task.status}">${task.status}</span>
+        <span class="badge badge-${task.status}">${i18n('status', task.status)}</span>
       </div>
       <div class="detail-meta-item">
         <span class="detail-meta-label">类型</span>
-        <span class="detail-meta-value">${escapeHtml(task.type)}</span>
+        <span class="detail-meta-value">${i18n('type', task.type)}</span>
       </div>
       <div class="detail-meta-item">
         <span class="detail-meta-label">优先级</span>
-        <span class="badge badge-priority-${task.priority}">${task.priority}</span>
+        <span class="badge badge-priority-${task.priority}">${i18n('priority', task.priority)}</span>
       </div>
       <div class="detail-meta-item">
         <span class="detail-meta-label">来源</span>
-        <span class="detail-meta-value">${escapeHtml(task.source)}${task.source === 'wechat' && task.status === 'completed' ? '<span class="reply-status success">✓ 已回复</span>' : ''}</span>
+        <span class="detail-meta-value">${i18n('source', task.source)}${task.source === 'wechat' && task.status === 'completed' ? '<span class="reply-status success">✓ 已回复</span>' : ''}</span>
       </div>
       <div class="detail-meta-item">
         <span class="detail-meta-label">会话</span>
@@ -1826,79 +1887,40 @@ function switchKBView(view) {
   } else {
     listView.hidden = true;
     graphView.hidden = false;
-    renderKBGraph();
+    // 等浏览器 reflow（hidden 切走后容器才有真实尺寸），再初始化 Cytoscape
+    requestAnimationFrame(() => renderKBGraph());
   }
 }
 
 function buildCyElements() {
-  // 节点：所有条目（按分类着色）
+  // 节点：所有条目（按分类着色，样式由 cy.style() 控制，不在这里写内联 style）
   const nodes = state.kbItems.map(item => {
     const cat = getCategoryById(item.category_id);
-    const color = getCategoryColor(item.category_id);
     return {
       group: 'nodes',
       data: {
         id: item.id,
-        label: item.title.slice(0, 20),
+        label: item.title.slice(0, 14),
         fullTitle: item.title,
-        catId: item.category_id,
+        catId: item.category_id || '__orphan__',
+        catColor: getCategoryColor(item.category_id),
         catName: cat?.name || '未分类',
         catIcon: cat?.icon || '📁'
-      },
-      style: {
-        'background-color': color,
-        'border-color': color,
-        'color': '#fff',
-        'label': item.title.slice(0, 14),
-        'text-valign': 'center',
-        'text-halign': 'center',
-        'text-wrap': 'wrap',
-        'text-max-width': '120px',
-        'width': 'label',
-        'height': 'label',
-        'padding': '12px',
-        'font-size': '12px',
-        'font-weight': 600,
-        'border-width': 2
       }
     };
   });
 
-  // 边：所有关联
-  const edges = state.kbLinks.map(link => {
-    const meta = {
-      related:     { color: '#64748b', style: 'solid' },
-      depends_on:  { color: '#ef4444', style: 'solid' },
-      references:  { color: '#3b82f6', style: 'dashed' },
-      contains:    { color: '#8b5cf6', style: 'solid' }
-    }[link.type] || { color: '#64748b', style: 'solid' };
-
-    return {
-      group: 'edges',
-      data: {
-        id: link.id,
-        source: link.source_id,
-        target: link.target_id,
-        label: link.label || link.type,
-        type: link.type
-      },
-      style: {
-        'line-color': meta.color,
-        'target-arrow-color': meta.color,
-        'target-arrow-shape': 'triangle',
-        'curve-style': 'bezier',
-        'width': 2,
-        'line-style': meta.style,
-        'label': link.label || '',
-        'font-size': '10px',
-        'color': meta.color,
-        'text-background-color': '#fff',
-        'text-background-opacity': 0.8,
-        'text-background-padding': '2px',
-        'text-rotation': 'autorotate'
-      }
-    };
-  });
+  // 边：所有关联（样式由 cy.style() 控制）
+  const edges = state.kbLinks.map(link => ({
+    group: 'edges',
+    data: {
+      id: link.id,
+      source: link.source_id,
+      target: link.target_id,
+      label: link.label || '',
+      type: link.type
+    }
+  }));
 
   return [...nodes, ...edges];
 }
@@ -1936,21 +1958,50 @@ function renderKBGraph() {
     },
     style: [
       {
-        selector: 'node:selected',
+        selector: 'node',
         style: {
-          'border-width': 4,
+          'shape': 'round-rectangle',
+          'background-color': 'data(catColor)',
           'border-color': '#1e293b',
-          'overlay-opacity': 0.15
+          'border-width': 2,
+          'label': 'data(label)',
+          'color': '#fff',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'text-wrap': 'wrap',
+          'text-max-width': '160px',
+          'width': 'label',
+          'height': 'label',
+          'padding': '14px',
+          'font-size': '12px',
+          'font-weight': 600
         }
       },
       {
-        selector: 'edge:selected',
-        style: { 'width': 3.5 }
+        selector: 'edge',
+        style: {
+          'curve-style': 'bezier',
+          'width': 2,
+          'line-color': '#64748b',
+          'target-arrow-color': '#64748b',
+          'target-arrow-shape': 'triangle',
+          'label': 'data(label)',
+          'font-size': '10px',
+          'color': '#475569',
+          'text-background-color': '#fff',
+          'text-background-opacity': 0.85,
+          'text-background-padding': '2px',
+          'text-rotation': 'autorotate'
+        }
       },
-      {
-        selector: 'node.orphan',
-        style: { 'opacity': 0.4 }
-      }
+      // 边按类型着色
+      { selector: 'edge[type = "related"]',    style: { 'line-color': '#64748b', 'target-arrow-color': '#64748b' } },
+      { selector: 'edge[type = "depends_on"]', style: { 'line-color': '#ef4444', 'target-arrow-color': '#ef4444', 'line-style': 'dashed' } },
+      { selector: 'edge[type = "references"]', style: { 'line-color': '#3b82f6', 'target-arrow-color': '#3b82f6' } },
+      { selector: 'edge[type = "contains"]',   style: { 'line-color': '#8b5cf6', 'target-arrow-color': '#8b5cf6' } },
+      { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#0f172a' } },
+      { selector: 'edge:selected', style: { 'width': 3.5 } },
+      { selector: 'node.orphan',   style: { 'opacity': 0.4 } }
     ],
     minZoom: 0.3,
     maxZoom: 2.5,
@@ -2219,8 +2270,8 @@ function renderWFDetail(id) {
           <div class="wf-step-name">${escapeHtml(s.name)} ${deps}</div>
           <div class="wf-step-content">${escapeHtml(s.content)}</div>
           <div class="wf-step-meta">
-            ${s.task_type ? `<span class="badge">${escapeHtml(s.task_type)}</span>` : ''}
-            ${s.priority ? `<span class="badge badge-priority-${s.priority}">${escapeHtml(s.priority)}</span>` : ''}
+            ${s.task_type ? `<span class="badge">${i18n('type', s.task_type)}</span>` : ''}
+            ${s.priority ? `<span class="badge badge-priority-${s.priority}">${i18n('priority', s.priority)}</span>` : ''}
           </div>
         </div>
       </div>`;
@@ -2378,3 +2429,790 @@ async function deleteWFFromDrawer() {
     showNotification(`❌ ${e.message}`, 'error');
   }
 }
+
+// ======== v5.1.0 计划模块 ========
+// 数据存储：localStorage（轻量级、无后端依赖、可导出/导入）
+const PLAN_STORAGE_KEY = 'ai_bridge_plans_v1';
+const PLAN_PRIORITY_LABEL = { low: '低', normal: '普通', high: '高' };
+const PLAN_STATUS_LABEL = {
+  pending: '⏳ 待开始',
+  in_progress: '⚙️ 进行中',
+  done: '✅ 已完成',
+  cancelled: '❌ 已取消'
+};
+const PLAN_TYPE_LABEL = { day: '日计划', week: '周计划' };
+
+function loadPlansFromStorage() {
+  try {
+    const raw = localStorage.getItem(PLAN_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePlansToStorage(plans) {
+  try {
+    localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify(plans));
+  } catch (e) {
+    console.error('[plan] localStorage 保存失败:', e);
+  }
+}
+
+function generatePlanId() {
+  return `plan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
+ * 工具：获取日期所在 ISO 周（周一为周首日）的起止
+ *  返回 { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', label: 'W## 2026-07-20~07-26' }
+ */
+function getISOWeekRange(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  // 周一首日：getDay() 周日为 0，周一为 1
+  const day = d.getDay() || 7;
+  const monday = new Date(d);
+  monday.setDate(d.getDate() - (day - 1));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const iso = (d1) => d1.toISOString().slice(0, 10);
+  const weekNum = getISOWeekNumber(d);
+  return {
+    start: iso(monday),
+    end: iso(sunday),
+    label: `W${String(weekNum).padStart(2, '0')} ${monday.getMonth() + 1}/${monday.getDate()}-${sunday.getMonth() + 1}/${sunday.getDate()}`
+  };
+}
+
+function getISOWeekNumber(d) {
+  const date = new Date(d);
+  date.setHours(0, 0, 0, 0);
+  // ISO 周四所在年
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+}
+
+function getNextWeekRange() {
+  const cur = getISOWeekRange();
+  const start = new Date(cur.start);
+  start.setDate(start.getDate() + 7);
+  const end = new Date(cur.end);
+  end.setDate(end.getDate() + 7);
+  const iso = (d1) => d1.toISOString().slice(0, 10);
+  return { start: iso(start), end: iso(end) };
+}
+
+function inDateRange(dateStr, startStr, endStr) {
+  return dateStr >= startStr && dateStr <= endStr;
+}
+
+function isCurrentWeek(dateStr) {
+  const { start, end } = getISOWeekRange();
+  return inDateRange(dateStr, start, end);
+}
+
+function isNextWeek(dateStr) {
+  const { start, end } = getNextWeekRange();
+  return inDateRange(dateStr, start, end);
+}
+
+/**
+ * 初始化计划模块
+ */
+function initPlan() {
+  state.plans = loadPlansFromStorage();
+
+  // 工具栏事件
+  const searchInput = document.getElementById('plan-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      state.planFilter.search = e.target.value;
+      renderPlans();
+    });
+  }
+  const typeFilter = document.getElementById('plan-type-filter');
+  if (typeFilter) {
+    typeFilter.addEventListener('change', (e) => {
+      state.planFilter.type = e.target.value;
+      renderPlans();
+    });
+  }
+  const statusFilter = document.getElementById('plan-status-filter');
+  if (statusFilter) {
+    statusFilter.addEventListener('change', (e) => {
+      state.planFilter.status = e.target.value;
+      renderPlans();
+    });
+  }
+  const weekFilter = document.getElementById('plan-week-filter');
+  if (weekFilter) {
+    weekFilter.addEventListener('change', (e) => {
+      state.planFilter.week = e.target.value;
+      renderPlans();
+    });
+  }
+
+  // 按钮事件
+  const btnNew = document.getElementById('btn-plan-new');
+  if (btnNew) btnNew.addEventListener('click', () => openPlanDrawer(null));
+  const btnSeed = document.getElementById('btn-plan-seed-demo');
+  if (btnSeed) btnSeed.addEventListener('click', seedPlanDemo);
+  const btnSeed2 = document.getElementById('btn-plan-seed-demo-2');
+  if (btnSeed2) btnSeed2.addEventListener('click', seedPlanDemo);
+
+  // 抽屉事件
+  const drawerSave = document.getElementById('plan-drawer-save');
+  if (drawerSave) drawerSave.addEventListener('click', savePlanFromDrawer);
+  const drawerCancel = document.getElementById('plan-drawer-cancel');
+  if (drawerCancel) drawerCancel.addEventListener('click', () => closeDrawer('plan-drawer'));
+  const drawerDelete = document.getElementById('plan-drawer-delete');
+  if (drawerDelete) drawerDelete.addEventListener('click', deletePlanFromDrawer);
+
+  renderPlans();
+  updateTabCounts();
+}
+
+/**
+ * 应用过滤规则，生成显示用列表
+ */
+function getFilteredPlans() {
+  const f = state.planFilter;
+  return (state.plans || []).filter((p) => {
+    if (f.type !== 'all' && p.type !== f.type) return false;
+    if (f.status !== 'all' && p.status !== f.status) return false;
+    if (f.week === 'current' && !isCurrentWeek(p.date)) return false;
+    if (f.week === 'next' && !isNextWeek(p.date)) return false;
+    if (f.search) {
+      const q = f.search.toLowerCase();
+      const hay = `${p.title} ${p.details || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => {
+    // 排序：日期升序 → 优先级 high 优先 → 状态 pending 优先
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    const pr = { high: 0, normal: 1, low: 2 };
+    const da = pr[a.priority] ?? 1;
+    const db = pr[b.priority] ?? 1;
+    if (da !== db) return da - db;
+    return a.created_at - b.created_at;
+  });
+}
+
+/**
+ * 渲染左侧分组列表
+ */
+function renderPlans() {
+  const sideEl = document.getElementById('plan-side');
+  const mainEl = document.getElementById('plan-main');
+  const emptyEl = document.getElementById('plan-empty');
+  if (!sideEl || !mainEl) return;
+
+  const filtered = getFilteredPlans();
+
+  // 无数据 → 显示 empty
+  if (!state.plans || state.plans.length === 0) {
+    sideEl.innerHTML = '';
+    mainEl.innerHTML = '';
+    mainEl.appendChild(emptyEl);
+    if (emptyEl) emptyEl.style.display = '';
+    return;
+  }
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // 分组：按 type 分（周 / 日）
+  const groups = { week: [], day: [] };
+  for (const p of filtered) {
+    if (groups[p.type]) groups[p.type].push(p);
+  }
+
+  let sideHtml = '';
+  for (const type of ['week', 'day']) {
+    if (groups[type].length === 0) continue;
+    sideHtml += `
+      <div class="plan-group-title">
+        <span>${type === 'week' ? '📆 周计划' : '📅 日计划'}</span>
+        <span class="count">${groups[type].length}</span>
+      </div>`;
+    for (const p of groups[type]) {
+      const isActive = p.id === state.currentPlanId;
+      sideHtml += `
+        <div class="plan-item ${isActive ? 'active' : ''}" data-plan-id="${escapeHtml(p.id)}">
+          <div class="plan-item-row">
+            <span class="plan-item-title">${escapeHtml(p.title)}</span>
+            <span class="plan-item-date">${escapeHtml(p.date.slice(5))}</span>
+          </div>
+          <div class="plan-item-meta">
+            <span class="badge status-${escapeHtml(p.status)}">${escapeHtml(PLAN_STATUS_LABEL[p.status] || p.status)}</span>
+            <span class="badge priority-${escapeHtml(p.priority)}">${escapeHtml(PLAN_PRIORITY_LABEL[p.priority] || p.priority)}</span>
+          </div>
+        </div>`;
+    }
+  }
+  if (!sideHtml) {
+    sideHtml = `<div class="empty-state" style="padding:24px"><div class="empty-text">没有匹配的计划</div><div class="empty-hint">调整筛选条件试试</div></div>`;
+  }
+  sideEl.innerHTML = sideHtml;
+
+  // 绑定侧栏点击
+  sideEl.querySelectorAll('.plan-item').forEach((el) => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.planId;
+      selectPlan(id);
+    });
+  });
+
+  // 主区域：渲染详情或空状态
+  if (state.currentPlanId) {
+    const p = state.plans.find((x) => x.id === state.currentPlanId);
+    if (p) {
+      renderPlanDetail(p);
+      return;
+    }
+  }
+  // 无选中 → 显示引导
+  mainEl.innerHTML = `
+    <div class="plan-empty">
+      <div class="empty-icon">👈</div>
+      <div class="empty-text">选择计划查看详情</div>
+      <div class="empty-hint">左侧列表里点击，或「+ 新建计划」</div>
+    </div>`;
+}
+
+function selectPlan(id) {
+  state.currentPlanId = id;
+  renderPlans();
+}
+
+function renderPlanDetail(p) {
+  const mainEl = document.getElementById('plan-main');
+  if (!mainEl) return;
+  const createdAt = new Date(p.created_at).toLocaleString('zh-CN');
+  const updatedAt = p.updated_at ? new Date(p.updated_at).toLocaleString('zh-CN') : createdAt;
+  mainEl.innerHTML = `
+    <div class="plan-detail">
+      <div class="plan-detail-header">
+        <div class="plan-detail-title">${escapeHtml(p.title)}</div>
+        <div class="plan-detail-meta">
+          <span class="badge">${escapeHtml(PLAN_TYPE_LABEL[p.type] || p.type)}</span>
+          <span class="badge">📅 ${escapeHtml(p.date)}</span>
+          <span class="badge">${escapeHtml(PLAN_STATUS_LABEL[p.status] || p.status)}</span>
+          <span class="badge">优先级: ${escapeHtml(PLAN_PRIORITY_LABEL[p.priority] || p.priority)}</span>
+        </div>
+      </div>
+      <div class="plan-detail-body">${escapeHtml(p.details || '')}</div>
+      <div class="plan-detail-actions">
+        <button class="btn-secondary" id="plan-detail-edit">✎ 编辑</button>
+        <button class="btn-secondary" id="plan-detail-status-toggle">${p.status === 'done' ? '↺ 重新打开' : '✓ 标记完成'}</button>
+        <button class="btn-danger" id="plan-detail-delete">🗑 删除</button>
+      </div>
+      <div style="padding:8px 28px 24px;font-size:11px;color:#9ca3af;">
+        创建: ${escapeHtml(createdAt)} · 更新: ${escapeHtml(updatedAt)}
+      </div>
+    </div>`;
+
+  const editBtn = document.getElementById('plan-detail-edit');
+  if (editBtn) editBtn.addEventListener('click', () => openPlanDrawer(p.id));
+  const statusBtn = document.getElementById('plan-detail-status-toggle');
+  if (statusBtn) {
+    statusBtn.addEventListener('click', () => togglePlanStatus(p.id));
+  }
+  const delBtn = document.getElementById('plan-detail-delete');
+  if (delBtn) delBtn.addEventListener('click', () => {
+    if (confirm('确认删除此计划？')) {
+      state.plans = state.plans.filter((x) => x.id !== p.id);
+      savePlansToStorage(state.plans);
+      state.currentPlanId = null;
+      renderPlans();
+      updateTabCounts();
+      showNotification('✓ 已删除', 'success');
+    }
+  });
+}
+
+function togglePlanStatus(id) {
+  const p = state.plans.find((x) => x.id === id);
+  if (!p) return;
+  p.status = p.status === 'done' ? 'in_progress' : 'done';
+  p.updated_at = Date.now();
+  savePlansToStorage(state.plans);
+  renderPlans();
+  showNotification(p.status === 'done' ? '✓ 已标记完成' : '↺ 已重新打开', 'success');
+}
+
+function openPlanDrawer(planId) {
+  const drawer = document.getElementById('plan-drawer');
+  if (!drawer) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const p = planId ? state.plans.find((x) => x.id === planId) : null;
+  drawer.dataset.planId = p ? p.id : '';
+
+  document.getElementById('plan-drawer-title').textContent = p ? '✎ 编辑计划' : '📅 新建计划';
+  document.getElementById('plan-drawer-title-input').value = p ? p.title : '';
+  document.getElementById('plan-drawer-type-select').value = p ? p.type : 'day';
+  document.getElementById('plan-drawer-date-input').value = p ? p.date : today;
+  document.getElementById('plan-drawer-status-select').value = p ? p.status : 'pending';
+  document.getElementById('plan-drawer-priority-select').value = p ? p.priority : 'normal';
+  document.getElementById('plan-drawer-details-input').value = p ? (p.details || '') : '';
+  document.getElementById('plan-drawer-meta').textContent = p
+    ? `创建于 ${new Date(p.created_at).toLocaleString('zh-CN')}`
+    : '';
+  document.getElementById('plan-drawer-delete').style.display = p ? '' : 'none';
+  document.getElementById('plan-drawer-title-input').focus();
+
+  openDrawer('plan-drawer');
+}
+
+async function savePlanFromDrawer() {
+  const drawer = document.getElementById('plan-drawer');
+  if (!drawer) return;
+  const id = drawer.dataset.planId;
+  const title = document.getElementById('plan-drawer-title-input').value.trim();
+  const type = document.getElementById('plan-drawer-type-select').value;
+  const date = document.getElementById('plan-drawer-date-input').value;
+  const status = document.getElementById('plan-drawer-status-select').value;
+  const priority = document.getElementById('plan-drawer-priority-select').value;
+  const details = document.getElementById('plan-drawer-details-input').value.trim();
+
+  if (!title) return showNotification('❌ 标题不能为空', 'error');
+  if (!date) return showNotification('❌ 日期不能为空', 'error');
+
+  if (id) {
+    const p = state.plans.find((x) => x.id === id);
+    if (p) {
+      p.title = title;
+      p.type = type;
+      p.date = date;
+      p.status = status;
+      p.priority = priority;
+      p.details = details;
+      p.updated_at = Date.now();
+    }
+    showNotification('✓ 已更新', 'success');
+  } else {
+    state.plans.push({
+      id: generatePlanId(),
+      title,
+      type,
+      date,
+      status,
+      priority,
+      details,
+      created_at: Date.now(),
+      updated_at: Date.now()
+    });
+    showNotification('✓ 已创建', 'success');
+  }
+
+  savePlansToStorage(state.plans);
+  closeDrawer('plan-drawer');
+  renderPlans();
+  updateTabCounts();
+}
+
+function deletePlanFromDrawer() {
+  const drawer = document.getElementById('plan-drawer');
+  if (!drawer) return;
+  const id = drawer.dataset.planId;
+  if (!id) return;
+  if (!confirm('确认删除此计划？')) return;
+  state.plans = state.plans.filter((x) => x.id !== id);
+  savePlansToStorage(state.plans);
+  closeDrawer('plan-drawer');
+  state.currentPlanId = null;
+  renderPlans();
+  updateTabCounts();
+  showNotification('✓ 已删除', 'success');
+}
+
+/**
+ * 一键加载演示数据：基于当前周 + 下周，覆盖 8 条计划
+ */
+function seedPlanDemo() {
+  if (state.plans && state.plans.length > 0) {
+    if (!confirm(`已有 ${state.plans.length} 条计划，继续将追加 8 条示例。是否继续？`)) return;
+  }
+
+  const cur = getISOWeekRange();
+  const nxt = getNextWeekRange();
+  const now = Date.now();
+  const dayOffset = (weekStart, offset) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + offset);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const seedPlans = [
+    // ===== 本周（周计划 + 日计划）=====
+    {
+      id: generatePlanId(), type: 'week', date: cur.start,
+      title: `本周重点：完成知识库重构 & 修复 3 个 P1 bug`,
+      details: '周计划：\n• 推进知识库 2.0 架构（分类树 + 全文搜索）\n• 修复 3 个 P1 缺陷（工单 #421/#423/#427）\n• 周三 14:00 团队同步\n• 周五 16:00 周报',
+      status: 'in_progress', priority: 'high', created_at: now, updated_at: now
+    },
+    {
+      id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 0),
+      title: '代码审查：PR #158 (知识库 store 重构)',
+      details: '重点看：\n1. JSONL append-only 是否所有路径都走 storage.appendTask\n2. transition() 的状态机是否完整\n3. 错误处理是否统一',
+      status: 'done', priority: 'high', created_at: now, updated_at: now
+    },
+    {
+      id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 1),
+      title: '修复工单 #421：iLink 投递失败',
+      details: '复现路径：连续发送 3 条消息 → 平台合并/丢弃。\n临时方案：per-wxid 串行 worker。\n长期方案：等 iLink 平台解封。',
+      status: 'in_progress', priority: 'high', created_at: now, updated_at: now
+    },
+    {
+      id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 2),
+      title: '团队周中同步会议',
+      details: '议程：\n1. 本周进度回顾\n2. P1 缺陷进展\n3. 下周计划\n4. 资源协调',
+      status: 'pending', priority: 'normal', created_at: now, updated_at: now
+    },
+    {
+      id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 3),
+      title: '修复工单 #423：cytoscape 内联样式',
+      details: '原因：cytoscape 3.x 不支持 elements[] 里写 inline style。\n方案：移到 cy.style() 配置，data(catColor) 动态着色。',
+      status: 'pending', priority: 'normal', created_at: now, updated_at: now
+    },
+    {
+      id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 4),
+      title: '周报 + 下周计划',
+      details: '周报模板：\n1. 本周完成\n2. 进行中\n3. 风险/阻塞\n4. 下周计划',
+      status: 'pending', priority: 'normal', created_at: now, updated_at: now
+    },
+    // ===== 下周（周计划 + 日计划）=====
+    {
+      id: generatePlanId(), type: 'week', date: nxt.start,
+      title: `下周重点：发布 v5.1 + 启动 v6.0 规划`,
+      details: '周计划：\n• v5.1 发布（计划模块、KB 图谱改进）\n• 启动 v6.0 规划：多租户、SaaS 化\n• 周二 10:00 产品评审\n• 周四 14:00 架构评审',
+      status: 'pending', priority: 'normal', created_at: now, updated_at: now
+    },
+    {
+      id: generatePlanId(), type: 'day', date: dayOffset(nxt.start, 0),
+      title: 'v5.1 发布检查清单',
+      details: '1. 演示数据完整\n2. 文档更新（README + CHANGELOG）\n3. 单元测试覆盖 > 60%\n4. 性能压测（API p95 < 200ms）\n5. 备份当前数据',
+      status: 'pending', priority: 'high', created_at: now, updated_at: now
+    }
+  ];
+
+  state.plans = (state.plans || []).concat(seedPlans);
+  savePlansToStorage(state.plans);
+  state.planFilter.week = 'all'; // 显示全部以看到所有 seed
+  state.planFilter.type = 'all';
+  document.getElementById('plan-week-filter').value = 'all';
+  document.getElementById('plan-type-filter').value = 'all';
+  renderPlans();
+  updateTabCounts();
+  showNotification(`✓ 已加载 ${seedPlans.length} 条演示计划`, 'success');
+}
+
+// ======== v5.1.1 一键生成周报 ========
+
+/**
+ * 获取指定周的日期范围（默认本周）
+ * @param {'current'|'last'|'next'} which
+ */
+function getReportWeekRange(which = 'current') {
+  if (which === 'last') {
+    const cur = getISOWeekRange();
+    const start = new Date(cur.start);
+    start.setDate(start.getDate() - 7);
+    const end = new Date(cur.end);
+    end.setDate(end.getDate() - 7);
+    const iso = (d) => d.toISOString().slice(0, 10);
+    return { start: iso(start), end: iso(end), label: `上周 ${start.getMonth() + 1}/${start.getDate()}-${end.getMonth() + 1}/${end.getDate()}` };
+  }
+  if (which === 'next') {
+    const nxt = getNextWeekRange();
+    return { start: nxt.start, end: nxt.end, label: `下周 ${new Date(nxt.start).getMonth() + 1}/${new Date(nxt.start).getDate()}-${new Date(nxt.end).getMonth() + 1}/${new Date(nxt.end).getDate()}` };
+  }
+  const cur = getISOWeekRange();
+  return { start: cur.start, end: cur.end, label: `本周 ${cur.label.split(' ').slice(1).join(' ')}` };
+}
+
+/**
+ * 生成周报 Markdown
+ */
+async function generateWeeklyReport(which) {
+  const range = getReportWeekRange(which);
+  const sections = {
+    summary: document.getElementById('report-sec-summary')?.checked,
+    plans: document.getElementById('report-sec-plans')?.checked,
+    progress: document.getElementById('report-sec-progress')?.checked,
+    tasks: document.getElementById('report-sec-tasks')?.checked,
+    kb: document.getElementById('report-sec-kb')?.checked,
+    next: document.getElementById('report-sec-next')?.checked,
+    tips: document.getElementById('report-sec-tips')?.checked
+  };
+
+  const lines = [];
+  lines.push(`# 周报 · ${range.label}`);
+  lines.push('');
+  lines.push(`> 生成时间: ${new Date().toLocaleString('zh-CN')}`);
+  lines.push(`> 数据范围: ${range.start} ~ ${range.end}`);
+  lines.push('');
+
+  // ===== 1) 计划数据（localStorage）=====
+  const allPlans = state.plans || [];
+  const inRange = (p) => p.date >= range.start && p.date <= range.end;
+  const inWeek = (p) => {
+    if (p.type === 'week') return p.date >= range.start && p.date <= range.end;
+    return inRange(p);
+  };
+  const weekPlans = allPlans.filter(inWeek);
+  const donePlans = weekPlans.filter(p => p.status === 'done');
+  const inProgressPlans = weekPlans.filter(p => p.status === 'in_progress');
+  const pendingPlans = weekPlans.filter(p => p.status === 'pending');
+  const cancelledPlans = weekPlans.filter(p => p.status === 'cancelled');
+
+  // ===== 2) 任务数据（/api/tasks）=====
+  let completedTasks = [];
+  let taskStats = { pending: 0, processing: 0, completed: 0, failed: 0, total: 0 };
+  try {
+    const sinceMs = new Date(range.start).getTime();
+    const res = await fetch(`/api/tasks?since=${sinceMs}&limit=200`);
+    const json = await res.json();
+    if (json.success) {
+      const all = json.data || [];
+      taskStats = json.meta?.queue_stats || taskStats;
+      // 完成/失败任务
+      completedTasks = all.filter(t => t.status === 'completed' || t.status === 'failed');
+    }
+  } catch (e) {
+    console.warn('[weekly-report] 获取任务失败:', e);
+  }
+
+  // ===== 3) 知识库数据 =====
+  let kbNew = 0;
+  if (sections.kb) {
+    try {
+      const res = await fetch('/api/kb');
+      const json = await res.json();
+      if (json.success) {
+        const sinceMs = new Date(range.start).getTime();
+        const items = json.data?.items || [];
+        kbNew = items.filter(it => (it.created_at || 0) >= sinceMs).length;
+      }
+    } catch (e) { /* 静默失败 */ }
+  }
+
+  // ===== 4) 渲染各章节 =====
+  if (sections.summary) {
+    const completionRate = weekPlans.length > 0
+      ? Math.round((donePlans.length / weekPlans.length) * 100)
+      : 0;
+    lines.push('## 📊 数据总览');
+    lines.push('');
+    lines.push(`| 指标 | 数值 |`);
+    lines.push(`|------|------|`);
+    lines.push(`| 计划总数 | ${weekPlans.length} |`);
+    lines.push(`| 已完成 | ${donePlans.length} (${completionRate}%) |`);
+    lines.push(`| 进行中 | ${inProgressPlans.length} |`);
+    lines.push(`| 待开始 | ${pendingPlans.length} |`);
+    lines.push(`| 已取消 | ${cancelledPlans.length} |`);
+    lines.push(`| 完成任务 | ${taskStats.completed || 0} |`);
+    lines.push(`| 失败任务 | ${taskStats.failed || 0} |`);
+    if (sections.kb) lines.push(`| 知识库新增 | ${kbNew} |`);
+    lines.push('');
+  }
+
+  if (sections.plans) {
+    lines.push('## ✅ 本周完成');
+    lines.push('');
+    if (donePlans.length === 0) {
+      lines.push('_本周无完成的计划_');
+    } else {
+      for (const p of donePlans) {
+        const pri = PLAN_PRIORITY_LABEL[p.priority] || p.priority;
+        lines.push(`- [x] **${p.title}** _(${pri})_`);
+      }
+    }
+    lines.push('');
+  }
+
+  if (sections.progress) {
+    lines.push('## ⚙️ 进行中');
+    lines.push('');
+    if (inProgressPlans.length === 0) {
+      lines.push('_无进行中的计划_');
+    } else {
+      for (const p of inProgressPlans) {
+        const pri = PLAN_PRIORITY_LABEL[p.priority] || p.priority;
+        lines.push(`- [ ] **${p.title}** _(${pri})_`);
+      }
+    }
+    lines.push('');
+  }
+
+  if (sections.tasks) {
+    lines.push('## 📨 完成任务');
+    lines.push('');
+    if (completedTasks.length === 0) {
+      lines.push('_本周无完成的任务_');
+    } else {
+      // 按会话分组前 10 条
+      const top = completedTasks.slice(0, 10);
+      for (const t of top) {
+        const content = (t.data?.content || '').slice(0, 60).replace(/\n/g, ' ');
+        const summary = t.result?.result?.summary || '';
+        const ok = t.status === 'completed' ? '✅' : '❌';
+        lines.push(`- ${ok} ${content}${summary ? ` → ${summary.slice(0, 50)}` : ''}`);
+      }
+      if (completedTasks.length > 10) {
+        lines.push(`- _...及其他 ${completedTasks.length - 10} 条_`);
+      }
+    }
+    lines.push('');
+  }
+
+  if (sections.next) {
+    // 下周计划 = 状态为 pending 的所有计划
+    lines.push('## 🎯 下周计划');
+    lines.push('');
+    if (pendingPlans.length === 0) {
+      lines.push('_无待开始的计划_');
+    } else {
+      for (const p of pendingPlans) {
+        const pri = PLAN_PRIORITY_LABEL[p.priority] || p.priority;
+        lines.push(`- [ ] **${p.title}** _(${pri})_`);
+      }
+    }
+    lines.push('');
+  }
+
+  if (sections.tips) {
+    const tips = [];
+    const completionRate = weekPlans.length > 0
+      ? Math.round((donePlans.length / weekPlans.length) * 100)
+      : 0;
+    if (weekPlans.length > 0 && completionRate < 50) {
+      tips.push(`完成率 ${completionRate}%，建议拆解大任务或调整优先级`);
+    }
+    if (inProgressPlans.length > 5) {
+      tips.push(`进行中任务 ${inProgressPlans.length} 个偏多，建议聚焦 3 个核心`);
+    }
+    if (cancelledPlans.length > weekPlans.length * 0.3) {
+      tips.push(`取消率 ${Math.round(cancelledPlans.length / weekPlans.length * 100)}% 偏高，需审视计划制定质量`);
+    }
+    if (tips.length === 0) {
+      tips.push('本周执行健康，继续保持节奏 ✨');
+    }
+    lines.push('## 💡 改进建议');
+    lines.push('');
+    for (const t of tips) {
+      lines.push(`- ${t}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * 打开周报抽屉并自动生成
+ */
+async function openWeeklyReportDrawer() {
+  const drawer = document.getElementById('report-drawer');
+  if (!drawer) return;
+  drawer.classList.add('open');
+  drawer.setAttribute('aria-hidden', 'false');
+  document.getElementById('drawer-overlay')?.classList.add('open');
+  // 自动生成一次
+  await generateAndFillReport();
+}
+
+/**
+ * 重新生成周报
+ */
+async function generateAndFillReport() {
+  const output = document.getElementById('report-output');
+  const meta = document.getElementById('report-meta');
+  const which = document.getElementById('report-week-select')?.value || 'current';
+
+  if (output) {
+    output.value = '⏳ 正在汇总数据...';
+  }
+  if (meta) {
+    meta.textContent = '';
+  }
+  // 禁用复制/下载
+  const copyBtn = document.getElementById('report-copy');
+  const dlBtn = document.getElementById('report-download');
+  if (copyBtn) copyBtn.disabled = true;
+  if (dlBtn) dlBtn.disabled = true;
+
+  try {
+    const t0 = Date.now();
+    const md = await generateWeeklyReport(which);
+    const took = Date.now() - t0;
+    if (output) output.value = md;
+    if (meta) meta.textContent = `✓ 生成完成，耗时 ${took}ms，长度 ${md.length} 字符`;
+    if (copyBtn) copyBtn.disabled = false;
+    if (dlBtn) dlBtn.disabled = false;
+  } catch (e) {
+    if (output) output.value = `❌ 生成失败：${e.message}`;
+    if (meta) meta.textContent = '';
+  }
+}
+
+/**
+ * 复制周报到剪贴板
+ */
+async function copyWeeklyReport() {
+  const output = document.getElementById('report-output');
+  if (!output || !output.value) return;
+  try {
+    await navigator.clipboard.writeText(output.value);
+    showNotification('✓ 已复制到剪贴板', 'success');
+  } catch (e) {
+    // 降级方案
+    output.select();
+    document.execCommand('copy');
+    showNotification('✓ 已复制（兼容模式）', 'success');
+  }
+}
+
+/**
+ * 下载周报为 .md 文件
+ */
+function downloadWeeklyReport() {
+  const output = document.getElementById('report-output');
+  if (!output || !output.value) return;
+  const which = document.getElementById('report-week-select')?.value || 'current';
+  const range = getReportWeekRange(which);
+  const filename = `周报-${range.start}_${range.end}.md`;
+  const blob = new Blob([output.value], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showNotification(`✓ 已下载 ${filename}`, 'success');
+}
+
+/**
+ * 初始化周报生成器事件
+ */
+function initReportDrawer() {
+  const btnOpen = document.getElementById('btn-plan-report');
+  if (btnOpen) btnOpen.addEventListener('click', openWeeklyReportDrawer);
+  const btnGen = document.getElementById('report-generate');
+  if (btnGen) btnGen.addEventListener('click', generateAndFillReport);
+  const btnCopy = document.getElementById('report-copy');
+  if (btnCopy) btnCopy.addEventListener('click', copyWeeklyReport);
+  const btnDl = document.getElementById('report-download');
+  if (btnDl) btnDl.addEventListener('click', downloadWeeklyReport);
+  const sel = document.getElementById('report-week-select');
+  if (sel) sel.addEventListener('change', generateAndFillReport);
+}
+
+// 暴露到 window 以便 switchTab 懒调用
+window.initPlan = initPlan;
+window.initReportDrawer = initReportDrawer;
