@@ -23,9 +23,12 @@ import { heartbeatRouter } from './routes/heartbeat.js';
 import { overviewRouter } from './routes/overview.js';
 import { modelRouter } from './routes/models.js';
 import { systemRouter } from './routes/system.js';
+import { authRouter } from './routes/auth.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
+import { requireAuth } from './middleware/auth.js';
 import { childLogger, logRequest } from './lib/logger.js';
+import { users } from './lib/users.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +37,9 @@ const log = childLogger({ module: 'server' });
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
+
+// v5.4.0: 信任 X-Forwarded-For 头（反代场景）
+app.set('trust proxy', true);
 
 const clients = new Set<WebSocket>();
 app.set('wsClients', clients); // 暴露给 router 用（/health 读 WS 客户端数）
@@ -155,6 +161,10 @@ export function attachClawListeners(adapter: any) {
 
 // ======== 路由挂载（拆分子模块，详见 src/routes/*）========
 
+// v5.4.0: 业务 API 默认要求登录（本地访问 + 公开端点自动放行）
+// 必须放在 /api 路由挂载之前，否则后续 router 会先响应
+app.use('/api', requireAuth);
+
 // 健康 + 存储
 app.use('/health', healthRouter);
 app.use('/api/storage', storageRouter);
@@ -176,6 +186,8 @@ app.use('/api/claw', clawRouter);
 app.use('/api/overview', overviewRouter);
 app.use('/api/models', modelRouter);
 app.use('/api/system', systemRouter);
+// 认证路由（登录/登出/me 等）—— 内部部分端点（如 /api/auth/login）公开，其他要求登录
+app.use('/api/auth', authRouter);
 // 旧 weixin 路径兼容（前端不再使用）
 app.use('/api', legacyWeixinRouter);
 
@@ -204,6 +216,17 @@ export function startServer(port: number = 4567) {
   taskQueue.initCounters();
   // loadAll 之后确保默认会话存在
   sessionManager.ensureDefaultSession();
+  // 确保默认管理员存在（首次启动写入 secrets.env）
+  const adminInit = users.ensureDefaultAdmin();
+  if (adminInit.created) {
+    log.warn(`═══════════════════════════════════════════`);
+    log.warn(`  ⚠️  默认管理员已创建`);
+    log.warn(`  username: ${adminInit.username}`);
+    log.warn(`  password: ${adminInit.password}`);
+    log.warn(`  密码已写入 ~/.config/agent-canvas/secrets.env (chmod 600)`);
+    log.warn(`  本地访问自动放行；远程访问请用此密码登录`);
+    log.warn(`═══════════════════════════════════════════`);
+  }
   // 加载知识库（如无 kb.jsonl 则写入示例数据）
   const kbLoad = kbStore.loadAll();
   // 加载知识库关联（首次启动 seed 示例关联）

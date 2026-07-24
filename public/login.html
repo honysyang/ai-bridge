@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 · ai-bridge</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f172a'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='%23f8fafc' font-family='Arial' font-weight='700' font-size='16'%3EAB%3C/text%3E%3C/svg%3E">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --primary: #0f172a;
+      --primary-soft: #1e293b;
+      --accent: #1d4ed8;
+      --accent-soft: #dbeafe;
+      --success: #047857;
+      --danger: #b91c1c;
+      --bg: #f8fafc;
+      --bg-2: #f1f5f9;
+      --text: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+      --border: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.06);
+      --radius: 4px;
+    }
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: var(--text);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: var(--shadow-lg);
+      padding: 36px 32px;
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .login-logo {
+      width: 56px;
+      height: 56px;
+      background: var(--primary);
+      color: #f8fafc;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      margin-bottom: 16px;
+    }
+    .login-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+      letter-spacing: 0.02em;
+    }
+    .login-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      letter-spacing: 0.04em;
+    }
+    .form-input {
+      width: 100%;
+      height: 40px;
+      padding: 0 12px;
+      font-size: 14px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+    }
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.1);
+    }
+    .btn-primary {
+      width: 100%;
+      height: 40px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: background 0.15s;
+      font-family: inherit;
+    }
+    .btn-primary:hover { background: #1e40af; }
+    .btn-primary:disabled {
+      background: var(--text-muted);
+      cursor: not-allowed;
+    }
+    .alert {
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .alert.error {
+      background: #fee2e2;
+      color: var(--danger);
+      border: 1px solid #fecaca;
+      display: block;
+    }
+    .alert.success {
+      background: #d1fae5;
+      color: var(--success);
+      border: 1px solid #a7f3d0;
+      display: block;
+    }
+    .login-footer {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+    .login-footer code {
+      background: var(--bg-2);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-family: ui-monospace, monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">AB</div>
+      <div class="login-title">ai-bridge</div>
+      <div class="login-subtitle">AI 智能体桥接器 · v5.4.0</div>
+    </div>
+
+    <div class="alert" id="alert"></div>
+
+    <form id="login-form" autocomplete="on">
+      <div class="form-group">
+        <label class="form-label" for="username">用户名</label>
+        <input class="form-input" type="text" id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">密码</label>
+        <input class="form-input" type="password" id="password" name="password" autocomplete="current-password" required>
+      </div>
+      <button class="btn-primary" type="submit" id="btn-login">登 录</button>
+    </form>
+
+    <div class="login-footer">
+      默认管理员：<code>admin</code><br>
+      首次启动密码写入 <code>~/.config/agent-canvas/secrets.env</code><br>
+      本地访问（127.0.0.1）免登录
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // 已经有 token 则直接进首页
+      const existing = localStorage.getItem('aibridge_token');
+      if (existing) {
+        fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + existing } })
+          .then(r => r.ok ? location.replace('/') : Promise.reject())
+          .catch(() => {
+            localStorage.removeItem('aibridge_token');
+            localStorage.removeItem('aibridge_user');
+          });
+      }
+
+      const form = document.getElementById('login-form');
+      const btn = document.getElementById('btn-login');
+      const alertEl = document.getElementById('alert');
+
+      function showAlert(msg, type) {
+        alertEl.className = 'alert ' + type;
+        alertEl.textContent = msg;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+        if (!username || !password) {
+          showAlert('请输入用户名和密码', 'error');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = '登录中...';
+        try {
+          const r = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+          });
+          const data = await r.json();
+          if (!r.ok || !data.success) {
+            showAlert(data.error || '登录失败', 'error');
+            btn.disabled = false;
+            btn.textContent = '登 录';
+            return;
+          }
+          // 保存 token + user
+          localStorage.setItem('aibridge_token', data.data.token);
+          localStorage.setItem('aibridge_user', JSON.stringify(data.data.user));
+          showAlert('登录成功，正在跳转...', 'success');
+          setTimeout(() => location.replace('/'), 300);
+        } catch (err) {
+          showAlert('网络错误: ' + err.message, 'error');
+          btn.disabled = false;
+          btn.textContent = '登 录';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -238,13 +238,19 @@
   }
 
   /**
-   * 统一 API 调用（v5.2.0 增强错误处理）
+   * 统一 API 调用（v5.2.0 增强错误处理，v5.4.0 增加 Bearer Token 注入）
+   * - 自动从 localStorage 读取 aibridge_token 并附加到 Authorization header
+   * - 401 错误时清空 token 并跳转到 /login.html
    * - 错误 message 自动转中文（humanizeHttpError）
    * - 保留 e.technical/e.status/e.payload/e.network 用于调试与"复制详情"
-   * - 网络层失败标记 e.network=true，全局处理器据此弹"已离线"
    */
   async function api(path, options = {}) {
     const opts = { headers: { 'Content-Type': 'application/json' }, ...options };
+    // v5.4.0: 自动注入 Bearer Token
+    const token = localStorage.getItem('aibridge_token');
+    if (token && !opts.headers.Authorization) {
+      opts.headers.Authorization = 'Bearer ' + token;
+    }
     if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
 
     let resp;
@@ -258,6 +264,23 @@
       e.network = true;
       e.technical = technical;
       console.error('[api] network error', path, technical);
+      global.__lastApiError = e;
+      throw e;
+    }
+
+    // v5.4.0: 401 → 清 token + 跳登录页
+    if (resp.status === 401 && path !== '/api/auth/login') {
+      console.warn('[api] 401 未授权，跳转登录页');
+      localStorage.removeItem('aibridge_token');
+      localStorage.removeItem('aibridge_user');
+      // 仅当当前不在 login 页时才跳转
+      if (!location.pathname.endsWith('/login.html')) {
+        setTimeout(() => location.replace('/login.html'), 100);
+      }
+      const e = new Error('登录已过期，请重新登录');
+      e.status = 401;
+      e.path = path;
+      e.technical = 'Token 失效';
       global.__lastApiError = e;
       throw e;
     }
@@ -293,6 +316,16 @@
     }
 
     return data;
+  }
+
+  /**
+   * 登出（v5.4.0）：清 token + 跳转登录页
+   */
+  function logout() {
+    api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    localStorage.removeItem('aibridge_token');
+    localStorage.removeItem('aibridge_user');
+    location.replace('/login.html');
   }
 
   /**
@@ -385,6 +418,7 @@
     formatBytes,
     showNotification,
     api,
+    logout,                 // v5.4.0
     copyToClipboard,
     humanizeHttpError,
     shouldNotify,

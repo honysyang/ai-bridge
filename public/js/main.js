@@ -578,6 +578,12 @@
       });
     });
 
+    // v5.4.0: 登出按钮
+    const logoutBtn = document.getElementById('btn-logout');
+    if (logoutBtn) logoutBtn.addEventListener('click', () => {
+      if (confirm('确认登出？')) global.Core.logout();
+    });
+
     window.addEventListener('hashchange', handleHashRoute);
 
     bindSplitters();
@@ -607,10 +613,25 @@
     if (global.Plan) global.Plan.initReportDrawer();
     if (global.Plan) global.Plan.startPlanReminderScheduler();
     if (global.Overview) global.Overview.init();   // v5.2.1
+    loadUserBadge();      // v5.4.0
     bindEvents();
     applyColumnWidths();
     const hashTab = (location.hash.match(/^#tab\/(\w+)/) || [])[1];
     switchTab(hashTab || 'chat', { skipHash: true });
+  }
+
+  // ======== v5.4.0 用户徽章 =====
+  async function loadUserBadge() {
+    const badge = document.getElementById('user-badge');
+    if (!badge) return;
+    try {
+      const { data: u } = await api('/api/auth/me');
+      badge.textContent = `👤 ${u.username} (${u.role})`;
+      badge.title = `用户: ${u.display_name || u.username}\n角色: ${u.role}\n创建: ${new Date(u.created_at).toLocaleString('zh-CN')}\n上次登录: ${u.last_login_at ? new Date(u.last_login_at).toLocaleString('zh-CN') : '-'}`;
+    } catch (e) {
+      // api 失败时（401/网络等），auth.js 会自动跳登录页
+      badge.textContent = '👤 未登录';
+    }
   }
 
   // 暴露到 window

@@ -173,7 +173,7 @@ export interface Session {
 // ======== System Log ========
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug' | 'success';
-export type LogSource = 'server' | 'bridge' | 'task' | 'agent' | 'system' | 'kb';
+export type LogSource = 'server' | 'bridge' | 'task' | 'agent' | 'system' | 'kb' | 'auth';
 
 export interface LogEntry {
   id: string;

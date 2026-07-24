@@ -13,10 +13,13 @@
   <!-- ========== Header ========== -->
   <header class="app-header">
     <div class="header-left">
-      <h1>ai-bridge <span class="version">v5.3.0</span></h1>
+      <h1>ai-bridge <span class="version">v5.4.0</span></h1>
       <p class="subtitle" id="header-subtitle">智能体桥接控制台 · 知识库 · 工作流 · 计划 · 设置</p>
     </div>
     <div class="header-right">
+      <!-- v5.4.0: 用户徽章 + 登出 -->
+      <span id="user-badge" class="queue-badge" title="当前登录用户" style="cursor:default;">👤 -</span>
+      <button class="header-btn" id="btn-logout" title="登出">⎋</button>
       <!-- 微信 Claw 状态徽章（v4.0.0） -->
       <button class="wechat-status" id="wechat-status" data-state="disconnected" title="点击管理微信连接">
         <span class="ws-icon"></span>

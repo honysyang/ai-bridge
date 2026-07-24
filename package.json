@@ -1,7 +1,7 @@
 {
   "name": "ai-bridge",
-  "version": "5.3.0",
-  "description": "AI 智能体桥接器 v5.3.0 - 通用 Claw 适配层 + JSONL 持久化 + 多面板工作台 + 知识图谱 + 周报生成 + 商务风设计 + 模型/系统设置面板",
+  "version": "5.4.0",
+  "description": "AI 智能体桥接器 v5.4.0 - 通用 Claw 适配层 + JSONL 持久化 + 多面板工作台 + 知识图谱 + 周报生成 + 商务风设计 + 模型/系统设置 + 用户认证（PBKDF2+HMAC JWT）",
   "type": "module",
   "scripts": {
     "build": "tsc",
