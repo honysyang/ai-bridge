@@ -120,10 +120,12 @@ class UserManager {
     if (fs.existsSync(USERS_FILE)) {
       const content = fs.readFileSync(USERS_FILE, 'utf-8');
       const lines = content.split('\n').filter(Boolean);
+      const byId = new Map<string, User>();
       for (const line of lines) {
         try {
           const u = JSON.parse(line) as User;
-          this.cache.push(u);
+          // append-only 写入，同 ID 只保留最后一条（最新状态）
+          byId.set(u.id, u);
           // 提取最大 ID 数字
           const m = /^u-(\d+)$/.exec(u.id);
           if (m) {
@@ -134,6 +136,7 @@ class UserManager {
           log.warn(`跳过损坏行: ${line.slice(0, 50)}...`);
         }
       }
+      this.cache = Array.from(byId.values());
     }
     this.loaded = true;
     log.info(`已加载 ${this.cache.length} 个用户`);
@@ -162,6 +165,78 @@ class UserManager {
     this.ensureLoaded();
     if (!wxid) return null;
     return this.cache.find(u => u.wechat_wxid === wxid) || null;
+  }
+
+  /**
+   * 重写整个 users.jsonl 文件（用于更新/删除后持久化）
+   */
+  private rewriteAll() {
+    fs.writeFileSync(USERS_FILE, this.cache.map(u => JSON.stringify(u)).join('\n') + (this.cache.length ? '\n' : ''), { mode: 0o600 });
+  }
+
+  /**
+   * 更新用户字段（admin 用）
+   */
+  update(id: string, opts: { role?: UserRole; display_name?: string; disabled?: boolean }): User {
+    this.ensureLoaded();
+    const u = this.findById(id);
+    if (!u) throw new Error('用户不存在');
+
+    if (opts.role !== undefined) u.role = opts.role;
+    if (opts.display_name !== undefined) u.display_name = opts.display_name;
+    if (opts.disabled !== undefined) u.disabled = opts.disabled;
+
+    this.rewriteAll();
+    log.info(`更新用户 ${u.username} (${u.id})`);
+    return u;
+  }
+
+  /**
+   * 更新当前用户密码（原密码验证）
+   */
+  updatePassword(id: string, opts: { oldPassword: string; newPassword: string }): User {
+    this.ensureLoaded();
+    const u = this.findById(id);
+    if (!u) throw new Error('用户不存在');
+    if (!verifyPassword(opts.oldPassword, u.password_hash)) {
+      throw new Error('原密码错误');
+    }
+    const strength = isPasswordStrong(opts.newPassword);
+    if (!strength.ok) throw new Error(strength.reason);
+
+    u.password_hash = hashPassword(opts.newPassword);
+    this.rewriteAll();
+    log.info(`用户 ${u.username} 修改密码`);
+    return u;
+  }
+
+  /**
+   * 管理员重置密码（无需原密码）
+   */
+  resetPassword(id: string, newPassword?: string): { user: User; password: string } {
+    this.ensureLoaded();
+    const u = this.findById(id);
+    if (!u) throw new Error('用户不存在');
+    const password = newPassword || generateRandomPassword(16);
+    const strength = isPasswordStrong(password);
+    if (!strength.ok) throw new Error(strength.reason);
+
+    u.password_hash = hashPassword(password);
+    this.rewriteAll();
+    log.info(`管理员重置用户 ${u.username} 密码`);
+    return { user: u, password };
+  }
+
+  /**
+   * 删除用户（admin 用）
+   */
+  delete(id: string): void {
+    this.ensureLoaded();
+    const u = this.findById(id);
+    if (!u) throw new Error('用户不存在');
+    this.cache = this.cache.filter(user => user.id !== id);
+    this.rewriteAll();
+    log.info(`删除用户 ${u.username} (${u.id})`);
   }
 
   /**

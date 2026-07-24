@@ -93,6 +93,21 @@ authRouter.post('/logout', requireAuth, asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
+// 当前用户修改密码（无需 admin，任何已登录用户均可）
+authRouter.post('/me/password', requireAuth, asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body || {};
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ success: false, error: '请输入原密码和新密码' });
+  }
+  try {
+    users.updatePassword(req.user!.id, { oldPassword, newPassword });
+    taskQueue.addLog('success', 'auth', `用户 ${req.user!.username} 修改密码`);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+}));
+
 // ===== 管理员端点 =====
 
 authRouter.post('/register', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
@@ -129,8 +144,57 @@ authRouter.get('/users', requireAuth, requireRole('admin'), asyncHandler(async (
 }));
 
 authRouter.patch('/users/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
-  // TODO: 暂只支持 disabled 切换；后续扩展
-  res.status(501).json({ success: false, error: '暂未实现' });
+  const { id } = req.params;
+  const { role, display_name, disabled } = req.body || {};
+  try {
+    const u = users.update(id, { role, display_name, disabled });
+    taskQueue.addLog('success', 'auth', `管理员更新用户: ${u.username} (${u.role}, disabled=${u.disabled}) by ${req.user!.username}`);
+    res.json({
+      success: true,
+      data: {
+        id: u.id,
+        username: u.username,
+        role: u.role,
+        display_name: u.display_name,
+        disabled: u.disabled || false
+      }
+    });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+}));
+
+authRouter.delete('/users/:id', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (req.user!.id === id) {
+    return res.status(400).json({ success: false, error: '不能删除当前登录用户' });
+  }
+  try {
+    users.delete(id);
+    taskQueue.addLog('success', 'auth', `管理员删除用户 id=${id} by ${req.user!.username}`);
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
+  }
+}));
+
+authRouter.post('/users/:id/reset-password', requireAuth, requireRole('admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { password } = req.body || {};
+  try {
+    const { user: u, password: finalPassword } = users.resetPassword(id, password);
+    taskQueue.addLog('success', 'auth', `管理员重置用户 ${u.username} 密码 by ${req.user!.username}`);
+    res.json({
+      success: true,
+      data: {
+        id: u.id,
+        username: u.username,
+        password: finalPassword
+      }
+    });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message });
+  }
 }));
 
 // 微信用户自动 provision（不需要登录，adapter 在收到第一条消息时调用）

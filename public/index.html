@@ -500,6 +500,10 @@
               <span class="settings-nav-icon">💬</span>
               <span class="settings-nav-label">微信桥接</span>
             </button>
+            <button class="settings-nav-item" data-section="users" role="tab" aria-selected="false" data-admin-only="true">
+              <span class="settings-nav-icon">👥</span>
+              <span class="settings-nav-label">用户管理</span>
+            </button>
             <button class="settings-nav-item" data-section="security" role="tab" aria-selected="false">
               <span class="settings-nav-icon">🔐</span>
               <span class="settings-nav-label">安全</span>
@@ -531,66 +535,97 @@
 
           <div class="settings-content">
             <!-- ===== 区段：AI 模型 ===== -->
-            <section class="settings-section" id="settings-section-models" data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表">
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🤖 当前默认模型</h3>
-                  <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>默认 Provider</label>
-                    <select id="setting-model-provider" class="form-input"></select>
+            <section class="settings-section" id="settings-section-models" data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型">
+              <div class="settings-section-block">
+                <div class="settings-block-title">💬 普通模型</div>
+                <p class="settings-block-desc">日常对话与任务默认使用的模型</p>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🤖 当前默认模型</h3>
+                    <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
                   </div>
-                  <div class="form-group">
-                    <label>默认模型</label>
-                    <select id="setting-model-name" class="form-input"></select>
-                    <div class="form-hint" id="setting-model-name-hint">--</div>
+                  <div class="settings-form-grid settings-form-grid-2">
+                    <div class="form-group">
+                      <label>服务商</label>
+                      <select id="setting-model-provider" class="form-input"></select>
+                    </div>
+                    <div class="form-group">
+                      <label>模型</label>
+                      <select id="setting-model-name" class="form-input"></select>
+                      <div class="form-hint" id="setting-model-name-hint">--</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>⚙️ 生成参数</h3>
+                    <p class="settings-card-hint">控制默认生成行为</p>
+                  </div>
+                  <div class="settings-form-grid settings-form-grid-4">
+                    <div class="form-group">
+                      <label>Temperature</label>
+                      <input type="number" id="setting-model-temperature" class="form-input" min="0" max="2" step="0.1">
+                      <div class="form-hint">0=确定，1=平衡</div>
+                    </div>
+                    <div class="form-group">
+                      <label>Max Tokens</label>
+                      <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000">
+                    </div>
+                    <div class="form-group">
+                      <label>Top P</label>
+                      <input type="number" id="setting-model-top-p" class="form-input" min="0" max="1" step="0.05">
+                    </div>
+                    <div class="form-group">
+                      <label>Frequency Penalty</label>
+                      <input type="number" id="setting-model-freq-penalty" class="form-input" min="-2" max="2" step="0.1">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head settings-card-head-between">
+                    <div>
+                      <h3>🏭 自定义服务商</h3>
+                      <p class="settings-card-hint">选择服务商 → 填写 Base URL → 添加模型 → 输入 API 密钥</p>
+                    </div>
+                    <button class="btn-secondary btn-sm" id="btn-add-provider">＋ 新建服务商</button>
+                  </div>
+                  <div class="provider-list" id="custom-provider-list">
+                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                  </div>
+                </div>
+
+                <div class="settings-card settings-callout">
+                  <div class="callout-icon">🔐</div>
+                  <div class="callout-body">
+                    <strong>关于 API 密钥</strong>
+                    <p>内置服务商的密钥从 <code>~/.config/agent-canvas/secrets.env</code> 读取（只读遮罩）。自定义服务商的 API 密钥保存在服务端配置文件中，请确保 data 目录权限安全。</p>
                   </div>
                 </div>
               </div>
 
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>⚙️ 模型参数</h3>
-                  <p class="settings-card-hint">控制默认生成行为（后续版本会下发到模型调用）</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>Temperature</label>
-                    <input type="number" id="setting-model-temperature" class="form-input" min="0" max="2" step="0.1">
-                    <div class="form-hint">0=确定，1=平衡，>1=创意</div>
-                  </div>
-                  <div class="form-group">
-                    <label>Max Tokens</label>
-                    <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000">
-                  </div>
-                  <div class="form-group">
-                    <label>Top P</label>
-                    <input type="number" id="setting-model-top-p" class="form-input" min="0" max="1" step="0.05">
-                  </div>
-                  <div class="form-group">
-                    <label>Frequency Penalty</label>
-                    <input type="number" id="setting-model-freq-penalty" class="form-input" min="-2" max="2" step="0.1">
-                  </div>
-                </div>
-              </div>
+              <div class="settings-section-block">
+                <div class="settings-block-title">📚 知识库模型</div>
+                <p class="settings-block-desc">用于知识库 RAG 检索后的内容生成</p>
 
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>📚 Provider 目录</h3>
-                  <p class="settings-card-hint">系统内置可用模型与凭证状态（密钥从 <code>~/.config/agent-canvas/secrets.env</code> 读取，<strong>不</strong>在前端编辑）</p>
-                </div>
-                <div class="provider-list" id="provider-list">
-                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                </div>
-              </div>
-
-              <div class="settings-card settings-callout">
-                <div class="callout-icon">🔐</div>
-                <div class="callout-body">
-                  <strong>关于 API 密钥</strong>
-                  <p>所有 Provider 的 API key、Base URL、Model 名均通过 <code>secrets.env</code>（chmod 600）读取，不在前端编辑。新增 Provider 后，在该文件中追加 <code>XXX_API_KEY=...</code> 即可，无需重启即可热加载（部分字段需重启 adapter）。</p>
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🧠 知识库专用模型</h3>
+                    <p class="settings-card-hint">RAG 检索后生成答案时使用的模型</p>
+                  </div>
+                  <div class="settings-form-grid settings-form-grid-2">
+                    <div class="form-group">
+                      <label>服务商</label>
+                      <select id="setting-kb-provider" class="form-input"></select>
+                    </div>
+                    <div class="form-group">
+                      <label>模型</label>
+                      <select id="setting-kb-model" class="form-input"></select>
+                      <div class="form-hint" id="setting-kb-model-hint">--</div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -839,6 +874,42 @@
                 </div>
                 <div class="about-grid" id="settings-idle-status">
                   <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== 区段：用户管理 ===== -->
+            <section class="settings-section" id="settings-section-users" hidden data-search-keywords="用户管理 多用户 角色 admin operator viewer 创建用户 删除用户 重置密码 启用 禁用">
+              <div class="settings-section-block">
+                <div class="settings-block-title">👥 用户管理</div>
+                <p class="settings-block-desc">仅管理员可操作</p>
+
+                <div class="settings-card">
+                  <div class="settings-card-head settings-card-head-between">
+                    <div>
+                      <h3>📋 用户列表</h3>
+                      <p class="settings-card-hint">系统中所有用户账号</p>
+                    </div>
+                    <button class="btn-primary btn-sm" id="btn-add-user">＋ 新建用户</button>
+                  </div>
+                  <div class="user-list-wrap">
+                    <table class="data-table" id="user-list-table">
+                      <thead>
+                        <tr>
+                          <th>用户名</th>
+                          <th>显示名</th>
+                          <th>角色</th>
+                          <th>状态</th>
+                          <th>创建时间</th>
+                          <th>上次登录</th>
+                          <th class="text-right">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr><td colspan="7" class="muted">加载中...</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </section>

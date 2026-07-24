@@ -44,6 +44,17 @@ export interface ModelInfo {
   best_for?: TaskType[];
 }
 
+export interface CustomProvider {
+  id: string;
+  name: string;
+  base_url: string;
+  api_key: string;                  // 自定义 provider 的 API key，保存在 models-config.json
+  models: ModelInfo[];
+  default_model: string;
+  description?: string;
+  is_custom?: boolean;              // 标记为自定义，便于前端区分
+}
+
 export interface ModelsConfig {
   default_provider: string;
   default_model: string;
@@ -53,6 +64,11 @@ export interface ModelsConfig {
   task_routing: Partial<Record<TaskType, { provider: string; model: string }>>;
   /** v5.4.2: 路由策略 */
   routing_strategy: 'fixed' | 'smart';  // fixed=按 task_routing 固定；smart=根据提示词长度/复杂度自动选
+  /** v5.5.4: 用户自定义 provider（前端可新建） */
+  custom_providers: CustomProvider[];
+  /** v5.5.4: 知识库模型路由 */
+  kb_provider?: string;
+  kb_model?: string;
 }
 
 export const DEFAULT_TASK_ROUTING: ModelsConfig['task_routing'] = {
@@ -68,7 +84,8 @@ export const DEFAULT_MODELS_CONFIG: ModelsConfig = {
   enabled_providers: ['deepseek', 'mock'],
   provider_overrides: {},
   task_routing: { ...DEFAULT_TASK_ROUTING },
-  routing_strategy: 'fixed'
+  routing_strategy: 'fixed',
+  custom_providers: []
 };
 
 /** 静态模型目录（v5.4.2 扩展为多 provider） */
@@ -387,11 +404,12 @@ class ModelsConfigManager {
       if (fs.existsSync(CONFIG_FILE)) {
         const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
-        // v5.4.2: 合并时保留 task_routing 字段
+        // v5.4.2: 合并时保留 task_routing 字段；v5.5.4: 保留 custom_providers/kb 字段
         return {
           ...DEFAULT_MODELS_CONFIG,
           ...parsed,
-          task_routing: { ...DEFAULT_MODELS_CONFIG.task_routing, ...(parsed.task_routing || {}) }
+          task_routing: { ...DEFAULT_MODELS_CONFIG.task_routing, ...(parsed.task_routing || {}) },
+          custom_providers: Array.isArray(parsed.custom_providers) ? parsed.custom_providers : []
         };
       } else {
         const initial = { ...DEFAULT_MODELS_CONFIG };
@@ -423,8 +441,27 @@ class ModelsConfigManager {
   }
 
   /**
+   * 返回所有 provider（静态 + 自定义），自定义 provider 标记 is_custom=true
+   */
+  allProviders(): ModelProvider[] {
+    const customs: ModelProvider[] = (this.config.custom_providers || []).map(c => ({
+      id: c.id,
+      name: c.name,
+      base_url: c.base_url,
+      env_key: '',
+      env_base: '',
+      env_model: '',
+      models: c.models,
+      default_model: c.default_model,
+      description: c.description,
+      is_custom: true
+    } as ModelProvider));
+    return [...MODEL_PROVIDERS, ...customs];
+  }
+
+  /**
    * 返回给前端的目录数据：
-   *   providers —— 完整 provider 列表（含模型）
+   *   providers —— 完整 provider 列表（含模型，自定义 provider 的 api_key 被遮罩）
    *   config    —— 当前用户配置
    *   secrets   —— 每个 provider 的 env 变量名是否已配置（只遮罩、不返回值）
    *   task_types —— 所有可用 task_type 列表（供前端路由编辑器使用）
@@ -453,8 +490,16 @@ class ModelsConfigManager {
         model: modelOverride || ''
       };
     }
+    // 自定义 provider 的密钥状态：只要有 api_key 即认为已配置，并遮罩返回
+    for (const c of this.config.custom_providers || []) {
+      secrets[c.id] = {
+        api_key_configured: !!c.api_key,
+        api_key_masked: c.api_key ? `${c.api_key.slice(0, 6)}…(len=${c.api_key.length})` : '',
+        base_url: c.base_url
+      };
+    }
     return {
-      providers: MODEL_PROVIDERS,
+      providers: this.allProviders(),
       config: this.get(),
       secrets,
       task_types: ['chat', 'reply_message', 'query_info', 'analyze_data', 'execute_command', 'generate_content', 'multi_step']
@@ -464,13 +509,15 @@ class ModelsConfigManager {
   /**
    * v5.4.2: 根据 task_type 解析实际使用的 provider + model
    * 优先级：task_routing[task_type] > provider_overrides[provider].default_model > default_provider/default_model
+   * v5.5.4: 支持自定义 provider
    */
   resolve(taskType: TaskType): { provider: string; model: string; source: 'routing' | 'override' | 'default' } {
     const cfg = this.config;
+    const providers = this.allProviders();
     // 1) 任务路由
     const routed = cfg.task_routing[taskType];
     if (routed && cfg.enabled_providers.includes(routed.provider)) {
-      const p = MODEL_PROVIDERS.find(p => p.id === routed.provider);
+      const p = providers.find(p => p.id === routed.provider);
       if (p && p.models.some(m => m.id === routed.model)) {
         return { provider: routed.provider, model: routed.model, source: 'routing' };
       }
@@ -478,13 +525,26 @@ class ModelsConfigManager {
     // 2) provider override
     const overrideModel = cfg.provider_overrides[cfg.default_provider]?.default_model;
     if (overrideModel && cfg.enabled_providers.includes(cfg.default_provider)) {
-      const p = MODEL_PROVIDERS.find(p => p.id === cfg.default_provider);
+      const p = providers.find(p => p.id === cfg.default_provider);
       if (p && p.models.some(m => m.id === overrideModel)) {
         return { provider: cfg.default_provider, model: overrideModel, source: 'override' };
       }
     }
     // 3) 全局默认
     return { provider: cfg.default_provider, model: cfg.default_model, source: 'default' };
+  }
+
+  /**
+   * v5.5.4: 解析知识库模型
+   */
+  resolveKB(): { provider: string; model: string } | null {
+    const cfg = this.config;
+    if (!cfg.kb_provider || !cfg.kb_model) return null;
+    const providers = this.allProviders();
+    const p = providers.find(p => p.id === cfg.kb_provider);
+    if (!p || !cfg.enabled_providers.includes(cfg.kb_provider)) return null;
+    if (!p.models.some(m => m.id === cfg.kb_model)) return null;
+    return { provider: cfg.kb_provider, model: cfg.kb_model };
   }
 
   /** 读取 ~/.config/agent-canvas/secrets.env，仅返回关心的变量 */
@@ -506,6 +566,36 @@ class ModelsConfigManager {
       console.warn('[models] 读 secrets.env 失败:', e);
     }
     return out;
+  }
+
+  /**
+   * v5.5.4: 获取指定 provider 的有效 API key
+   * - 内置 provider 从 secrets.env 读取 env_key 变量
+   * - 自定义 provider 从 models-config.json 的 custom_providers.api_key 读取
+   */
+  getApiKey(providerId: string): string | undefined {
+    const p = MODEL_PROVIDERS.find(p => p.id === providerId);
+    if (p) {
+      if (!p.env_key) return undefined;
+      const env = this.loadSecrets();
+      return env[p.env_key];
+    }
+    const custom = (this.config.custom_providers || []).find(c => c.id === providerId);
+    return custom?.api_key;
+  }
+
+  /**
+   * v5.5.4: 获取指定 provider 的有效 base_url
+   */
+  getBaseUrl(providerId: string): string | undefined {
+    const p = MODEL_PROVIDERS.find(p => p.id === providerId);
+    if (p) {
+      if (!p.env_base) return p.base_url;
+      const env = this.loadSecrets();
+      return env[p.env_base] || p.base_url;
+    }
+    const custom = (this.config.custom_providers || []).find(c => c.id === providerId);
+    return custom?.base_url;
   }
 }
 

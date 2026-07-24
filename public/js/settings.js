@@ -21,9 +21,12 @@
     system: { label: '系统行为', icon: '🛠', load: loadSystem, save: saveSystem, reset: resetSystem },
     logs: { label: '日志与存储', icon: '📜', load: loadLogs, save: saveSystem, reset: resetSystem },
     wechat: { label: '微信桥接', icon: '💬', load: loadWechat, save: saveWechat, reset: null },
+    users: { label: '用户管理', icon: '👥', load: loadUsers, save: null, reset: null, adminOnly: true },
     security: { label: '安全', icon: '🔐', load: loadSecurity, save: null, reset: null },
     about: { label: '关于', icon: 'ℹ️', load: loadAbout, save: null, reset: null }
   };
+
+  let currentUser = null;
 
   let currentSection = 'models';
   let dirtySections = new Set();
@@ -55,8 +58,14 @@
 
   // ======== 导航 ========
 
-  function switchSection(name) {
+  async function switchSection(name) {
     if (!SECTIONS[name]) name = 'models';
+    const cfg = SECTIONS[name];
+    // admin 专属区段：非 admin 用户自动跳回 models
+    if (cfg.adminOnly && (!currentUser || currentUser.role !== 'admin')) {
+      showNotification('⛔ 该功能仅管理员可用', 'warning');
+      name = 'models';
+    }
     currentSection = name;
 
     document.querySelectorAll('.settings-nav-item').forEach(b => {
@@ -69,16 +78,14 @@
       s.hidden = s.id !== `settings-section-${name}`;
     });
 
-    const cfg = SECTIONS[name];
-    $('settings-active-icon').textContent = cfg.icon;
-    $('settings-active-label').textContent = cfg.label;
+    $('settings-active-icon').textContent = SECTIONS[name].icon;
+    $('settings-active-label').textContent = SECTIONS[name].label;
 
-    // 保存/取消按钮在有 save 回调时显示
-    const hasSave = !!cfg.save;
+    const hasSave = !!SECTIONS[name].save;
     $('btn-settings-save').hidden = !hasSave;
     $('btn-settings-cancel').hidden = !hasSave;
 
-    cfg.load();
+    SECTIONS[name].load();
     setDirty(false);
   }
 
@@ -96,21 +103,23 @@
 
   // ======== AI 模型区段 ========
 
-  function renderProviderSelect(providers, selectedId) {
-    const sel = $('setting-model-provider');
+  let editingCustomProviders = [];
+
+  function renderProviderSelect(providers, selectedId, elementId) {
+    const sel = $(elementId || 'setting-model-provider');
     if (!sel) return;
     sel.innerHTML = providers.map(p =>
       `<option value="${escapeHtml(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
     ).join('');
   }
 
-  function renderModelSelect(providers, providerId, selectedModel) {
-    const sel = $('setting-model-name');
-    const hint = $('setting-model-name-hint');
+  function renderModelSelect(providers, providerId, selectedModel, elementId, hintId) {
+    const sel = $(elementId || 'setting-model-name');
+    const hint = hintId ? $(hintId) : $('setting-model-name-hint');
     if (!sel) return;
     const p = providers.find(x => x.id === providerId);
     if (!p) {
-      sel.innerHTML = '<option value="">-- 请先选 Provider --</option>';
+      sel.innerHTML = '<option value="">-- 请先选服务商 --</option>';
       if (hint) hint.textContent = '';
       return;
     }
@@ -130,51 +139,122 @@
     }
   }
 
-  function renderProviderList(providers, secrets) {
-    const el = $('provider-list');
+  function renderCustomProviderList() {
+    const el = $('custom-provider-list');
     if (!el) return;
-    el.innerHTML = providers.map(p => {
-      const s = secrets[p.id] || {};
-      const statusBadge = s.api_key_configured
-        ? '<span class="badge badge-ok">🔑 已配置</span>'
-        : '<span class="badge badge-warn">⚠️ 未配置</span>';
-      return `
-        <div class="provider-card">
-          <div class="provider-card-head">
-            <div>
-              <div class="provider-name">${escapeHtml(p.name)} <code>${escapeHtml(p.id)}</code></div>
-              <div class="provider-desc">${escapeHtml(p.description || '')}</div>
-            </div>
-            <div class="provider-status">${statusBadge}</div>
+    if (!editingCustomProviders.length) {
+      el.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🏭</div>
+          <div class="empty-text">暂无自定义服务商</div>
+          <div class="empty-hint">点击右上角「新建服务商」添加</div>
+        </div>`;
+      return;
+    }
+    el.innerHTML = editingCustomProviders.map((p, idx) => `
+      <div class="provider-card" data-idx="${idx}">
+        <div class="provider-card-head">
+          <div class="provider-name">
+            <input type="text" class="form-input form-input-inline provider-name-input" placeholder="服务商名称" value="${escapeHtml(p.name)}">
+            <code><input type="text" class="form-input form-input-inline provider-id-input" placeholder="ID（小写英文）" value="${escapeHtml(p.id)}"></code>
           </div>
-          <div class="provider-meta">
-            <div><span class="meta-label">Base URL</span> <code>${escapeHtml(s.base_url || p.base_url)}</code></div>
-            <div><span class="meta-label">API Key</span> <code>${escapeHtml(s.api_key_masked || '(未配置)')}</code></div>
-            ${s.model ? `<div><span class="meta-label">环境模型</span> <code>${escapeHtml(s.model)}</code></div>` : ''}
-          </div>
-          <div class="provider-models">
-            ${p.models.map(m => `
-              <div class="provider-model-pill" title="${escapeHtml(m.description || '')}">
-                <span class="pill-name">${escapeHtml(m.name)}</span>
-                <code>${escapeHtml(m.id)}</code>
-                ${m.tier ? `<span class="pill-tier">${escapeHtml(m.tier)}</span>` : ''}
-              </div>
-            `).join('')}
+          <div class="provider-actions">
+            <button class="btn-secondary btn-xs btn-add-model" title="添加模型">＋ 模型</button>
+            <button class="btn-danger btn-xs btn-remove-provider" title="删除">🗑</button>
           </div>
         </div>
-      `;
-    }).join('');
+        <div class="provider-meta">
+          <div class="form-group compact">
+            <label>Base URL</label>
+            <input type="text" class="form-input provider-base-url" placeholder="https://api.example.com/v1" value="${escapeHtml(p.base_url)}">
+          </div>
+          <div class="form-group compact">
+            <label>API Key</label>
+            <input type="password" class="form-input provider-api-key" placeholder="${p.api_key ? '已保存，留空不修改' : '请输入 API Key'}" value="">
+          </div>
+          <div class="form-group compact">
+            <label>默认模型</label>
+            <select class="form-input provider-default-model">
+              <option value="">-- 选择默认模型 --</option>
+              ${p.models.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === p.default_model ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="provider-models">
+          ${p.models.map((m, mIdx) => `
+            <div class="provider-model-pill model-editing" data-midx="${mIdx}">
+              <input type="text" class="form-input form-input-inline model-id" placeholder="模型 ID" value="${escapeHtml(m.id)}">
+              <input type="text" class="form-input form-input-inline model-name" placeholder="显示名" value="${escapeHtml(m.name)}">
+              <button class="btn-danger btn-xs btn-remove-model" title="删除模型">×</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+
+    el.querySelectorAll('.provider-card').forEach(card => {
+      const idx = parseInt(card.dataset.idx, 10);
+      const p = editingCustomProviders[idx];
+
+      card.querySelector('.provider-name-input')?.addEventListener('change', e => { p.name = e.target.value; setDirty(true); });
+      card.querySelector('.provider-id-input')?.addEventListener('change', e => { p.id = e.target.value.trim().toLowerCase(); setDirty(true); });
+      card.querySelector('.provider-base-url')?.addEventListener('change', e => { p.base_url = e.target.value; setDirty(true); });
+      card.querySelector('.provider-api-key')?.addEventListener('change', e => { if (e.target.value) p.api_key = e.target.value; setDirty(true); });
+      card.querySelector('.provider-default-model')?.addEventListener('change', e => { p.default_model = e.target.value; setDirty(true); });
+
+      card.querySelector('.btn-add-model')?.addEventListener('click', () => {
+        p.models.push({ id: '', name: '' });
+        renderCustomProviderList();
+        setDirty(true);
+      });
+      card.querySelector('.btn-remove-provider')?.addEventListener('click', () => {
+        if (!confirm(`删除服务商「${p.name || p.id}」？`)) return;
+        editingCustomProviders.splice(idx, 1);
+        renderCustomProviderList();
+        setDirty(true);
+      });
+
+      card.querySelectorAll('.model-editing').forEach(pill => {
+        const mIdx = parseInt(pill.dataset.midx, 10);
+        const m = p.models[mIdx];
+        pill.querySelector('.model-id')?.addEventListener('change', e => { m.id = e.target.value.trim(); setDirty(true); });
+        pill.querySelector('.model-name')?.addEventListener('change', e => { m.name = e.target.value; setDirty(true); });
+        pill.querySelector('.btn-remove-model')?.addEventListener('click', () => {
+          p.models.splice(mIdx, 1);
+          if (p.default_model && !p.models.some(x => x.id === p.default_model)) p.default_model = '';
+          renderCustomProviderList();
+          setDirty(true);
+        });
+      });
+    });
+  }
+
+  function readCustomProvidersFromUI() {
+    return editingCustomProviders.map(p => ({
+      id: p.id || p.name?.toLowerCase().replace(/\s+/g, '_') || `custom_${Date.now()}`,
+      name: p.name || p.id,
+      base_url: p.base_url || '',
+      api_key: p.api_key || '',
+      default_model: p.default_model || '',
+      models: p.models.filter(m => m.id).map(m => ({ id: m.id, name: m.name || m.id }))
+    })).filter(p => p.id && p.name && p.models.length > 0);
   }
 
   async function loadModels() {
     try {
       const { data } = await api('/api/models');
       catalogCache = data;
-      const { providers, config, secrets } = data;
-      renderProviderSelect(providers, config.default_provider);
-      renderModelSelect(providers, config.default_provider, config.default_model);
-      renderProviderList(providers, secrets);
-      // 模型参数（先读系统配置中的 model_params，后端后续可扩展）
+      const { providers, config } = data;
+
+      renderProviderSelect(providers, config.default_provider, 'setting-model-provider');
+      renderModelSelect(providers, config.default_provider, config.default_model, 'setting-model-name', 'setting-model-name-hint');
+
+      renderProviderSelect(providers, config.kb_provider, 'setting-kb-provider');
+      renderModelSelect(providers, config.kb_provider, config.kb_model, 'setting-kb-model', 'setting-kb-model-hint');
+
+      editingCustomProviders = JSON.parse(JSON.stringify(config.custom_providers || []));
+      renderCustomProviderList();
+
       const params = config.model_params || {};
       setValue('setting-model-temperature', params.temperature !== undefined ? params.temperature : 0.7);
       setValue('setting-model-max-tokens', params.max_tokens || 2048);
@@ -189,15 +269,29 @@
     const provider = valueOf('setting-model-provider');
     const model = valueOf('setting-model-name');
     if (!provider || !model) {
-      showNotification('❌ 请先选择 Provider 和模型', 'error');
+      showNotification('❌ 请先选择默认服务商和模型', 'error');
+      return;
+    }
+    const kbProvider = valueOf('setting-kb-provider');
+    const kbModel = valueOf('setting-kb-model');
+    if (kbProvider && !kbModel) {
+      showNotification('❌ 请选择知识库模型', 'error');
       return;
     }
     try {
+      const customProviders = readCustomProvidersFromUI();
+      const enabled = new Set(catalogCache?.config?.enabled_providers || []);
+      customProviders.forEach(p => enabled.add(p.id));
+      if (kbProvider) enabled.add(kbProvider);
       await api('/api/models/config', {
         method: 'PATCH',
         body: JSON.stringify({
           default_provider: provider,
           default_model: model,
+          enabled_providers: Array.from(enabled),
+          kb_provider: kbProvider || null,
+          kb_model: kbModel || null,
+          custom_providers: customProviders,
           model_params: {
             temperature: parseFloat(valueOf('setting-model-temperature')) || 0.7,
             max_tokens: parseInt(valueOf('setting-model-max-tokens'), 10) || 2048,
@@ -470,6 +564,122 @@
     }
   }
 
+  // ======== 用户管理区段 ========
+
+  async function loadUsers() {
+    const tbody = document.querySelector('#user-list-table tbody');
+    if (!tbody) return;
+    try {
+      const [{ data: me }, { data: users }] = await Promise.all([
+        api('/api/auth/me'),
+        api('/api/auth/users')
+      ]);
+      currentUser = me;
+      if (!Array.isArray(users) || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="muted">暂无用户</td></tr>';
+        return;
+      }
+      tbody.innerHTML = users.map(u => {
+        const created = u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '—';
+        const login = u.last_login_at ? new Date(u.last_login_at).toLocaleString('zh-CN') : '—';
+        const roleClass = u.role === 'admin' ? 'role-admin' : (u.role === 'operator' ? 'role-operator' : 'role-viewer');
+        return `
+          <tr data-id="${escapeHtml(u.id)}">
+            <td><code>${escapeHtml(u.username)}</code>${u.id === me?.id ? ' <span class="badge badge-info">我</span>' : ''}</td>
+            <td>${escapeHtml(u.display_name || '—')}</td>
+            <td><span class="role-badge ${roleClass}">${escapeHtml(u.role)}</span></td>
+            <td>${u.disabled ? '<span class="badge badge-warn">已禁用</span>' : '<span class="badge badge-ok">正常</span>'}</td>
+            <td class="text-muted">${created}</td>
+            <td class="text-muted">${login}</td>
+            <td class="text-right">
+              <button class="btn-secondary btn-xs btn-edit-user" title="编辑角色/状态">编辑</button>
+              <button class="btn-secondary btn-xs btn-reset-password" title="重置密码">重置密码</button>
+              <button class="btn-danger btn-xs btn-delete-user" title="删除" ${u.id === me?.id ? 'disabled' : ''}>删除</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      tbody.querySelectorAll('.btn-edit-user').forEach(btn => {
+        btn.addEventListener('click', () => editUserRole(btn.closest('tr').dataset.id));
+      });
+      tbody.querySelectorAll('.btn-reset-password').forEach(btn => {
+        btn.addEventListener('click', () => resetUserPassword(btn.closest('tr').dataset.id));
+      });
+      tbody.querySelectorAll('.btn-delete-user').forEach(btn => {
+        btn.addEventListener('click', () => deleteUser(btn.closest('tr').dataset.id));
+      });
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="7" class="muted">加载失败: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function addUser() {
+    const username = prompt('请输入用户名（小写英文/数字/下划线）：');
+    if (!username) return;
+    const displayName = prompt('请输入显示名：') || username;
+    const role = prompt('角色（admin/operator/viewer，默认 viewer）：') || 'viewer';
+    const password = prompt('初始密码（至少 8 位，含字母和数字）：');
+    if (!password) return;
+    try {
+      await api('/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, display_name: displayName, role, password })
+      });
+      showNotification('✅ 用户已创建', 'success');
+      loadUsers();
+    } catch (e) {
+      showNotification(`❌ 创建失败: ${e.message}`, 'error');
+    }
+  }
+
+  async function editUserRole(id) {
+    const user = (await api('/api/auth/users')).data.find(u => u.id === id);
+    if (!user) return;
+    const role = prompt(`修改「${user.username}」的角色（admin/operator/viewer）：`, user.role);
+    if (!role) return;
+    const disabled = confirm(`是否禁用该用户？\n确定=禁用，取消=启用/保持正常`);
+    try {
+      await api(`/api/auth/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role, disabled })
+      });
+      showNotification('✅ 用户信息已更新', 'success');
+      loadUsers();
+    } catch (e) {
+      showNotification(`❌ 更新失败: ${e.message}`, 'error');
+    }
+  }
+
+  async function resetUserPassword(id) {
+    const user = (await api('/api/auth/users')).data.find(u => u.id === id);
+    if (!user) return;
+    const password = prompt(`为「${user.username}」设置新密码（留空则随机生成）：`);
+    try {
+      const { data } = await api(`/api/auth/users/${id}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({ password })
+      });
+      prompt(`用户「${data.username}」的密码已重置为：`, data.password);
+      showNotification('✅ 密码已重置', 'success');
+    } catch (e) {
+      showNotification(`❌ 重置失败: ${e.message}`, 'error');
+    }
+  }
+
+  async function deleteUser(id) {
+    const user = (await api('/api/auth/users')).data.find(u => u.id === id);
+    if (!user) return;
+    if (!confirm(`确定删除用户「${user.username}」？此操作不可撤销。`)) return;
+    try {
+      await api(`/api/auth/users/${id}`, { method: 'DELETE' });
+      showNotification('✅ 用户已删除', 'success');
+      loadUsers();
+    } catch (e) {
+      showNotification(`❌ 删除失败: ${e.message}`, 'error');
+    }
+  }
+
   // ======== 安全区段 ========
 
   async function loadSecurity() {
@@ -507,9 +717,9 @@
       return;
     }
     try {
-      await api('/api/auth/password', {
+      await api('/api/auth/me/password', {
         method: 'POST',
-        body: JSON.stringify({ current_password: current, new_password: next })
+        body: JSON.stringify({ oldPassword: current, newPassword: next })
       });
       showNotification('✅ 密码已修改', 'success');
       setValue('setting-current-password', '');
@@ -619,11 +829,23 @@
     $('setting-model-provider')?.addEventListener('change', (e) => {
       if (!catalogCache) return;
       const cfg = catalogCache.config;
-      renderModelSelect(catalogCache.providers, e.target.value, cfg.default_model);
+      renderModelSelect(catalogCache.providers, e.target.value, cfg.default_model, 'setting-model-name', 'setting-model-name-hint');
       setDirty(true);
     });
-    ['setting-model-name', 'setting-model-temperature', 'setting-model-max-tokens', 'setting-model-top-p', 'setting-model-freq-penalty'].forEach(id => {
+    $('setting-kb-provider')?.addEventListener('change', (e) => {
+      if (!catalogCache) return;
+      const cfg = catalogCache.config;
+      renderModelSelect(catalogCache.providers, e.target.value, cfg.kb_model, 'setting-kb-model', 'setting-kb-model-hint');
+      setDirty(true);
+    });
+    ['setting-model-name', 'setting-model-temperature', 'setting-model-max-tokens', 'setting-model-top-p', 'setting-model-freq-penalty',
+     'setting-kb-model'].forEach(id => {
       $(id)?.addEventListener('change', () => setDirty(true));
+    });
+    $('btn-add-provider')?.addEventListener('click', () => {
+      editingCustomProviders.push({ id: '', name: '', base_url: '', api_key: '', models: [], default_model: '' });
+      renderCustomProviderList();
+      setDirty(true);
     });
 
     // 系统设置字段变更
@@ -648,10 +870,22 @@
 
     // 安全
     $('btn-setting-change-password')?.addEventListener('click', changePassword);
+
+    // 用户管理
+    $('btn-add-user')?.addEventListener('click', addUser);
   }
 
   function initSettings() {
     bindEvents();
+    // 先获取当前用户，隐藏 admin 专属导航
+    api('/api/auth/me').then(({ data }) => {
+      currentUser = data;
+      document.querySelectorAll('.settings-nav-item[data-admin-only="true"]').forEach(btn => {
+        btn.hidden = !(data && data.role === 'admin');
+      });
+    }).catch(() => {
+      document.querySelectorAll('.settings-nav-item[data-admin-only="true"]').forEach(btn => { btn.hidden = true; });
+    });
     // 默认进入 models 区段
     switchSection('models');
   }
