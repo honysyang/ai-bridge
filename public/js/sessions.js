@@ -81,49 +81,214 @@
   }
 
   async function createSession() {
-    if (global.Main && global.Main.showModal) {
-      global.Main.showModal({
-        title: '新建会话',
-        fields: [
-          { name: 'name', label: '会话名称', placeholder: '如：商品价格监控', required: true },
-          { name: 'description', label: '描述（可选）', type: 'textarea', placeholder: '会话用途备注' }
-        ],
-        onSubmit: async (data) => {
-          try {
-            const { data: session } = await api('/api/sessions', { method: 'POST', body: data });
-            showNotification(`✅ 会话已创建: ${session.name}`, 'success');
-            await loadSessions();
-            selectSession(session.id);
-          } catch (e) {
-            showNotification(`❌ 创建失败: ${e.message}`, 'error');
-          }
-        }
-      });
-    }
+    await showSessionEditor({ title: '新建会话', onSubmit: async (data) => {
+      try {
+        const { data: session } = await api('/api/sessions', { method: 'POST', body: data });
+        showNotification(`✅ 会话已创建: ${session.name}`, 'success');
+        await loadSessions();
+        selectSession(session.id);
+      } catch (e) {
+        showNotification(`❌ 创建失败: ${e.message}`, 'error');
+      }
+    }});
   }
 
   async function renameSession(sessionId) {
     const s = state.sessions.find(s => s.id === sessionId);
     if (!s) return;
-    if (global.Main && global.Main.showModal) {
-      global.Main.showModal({
-        title: '编辑会话',
-        fields: [
-          { name: 'name', label: '会话名称', value: s.name, required: true },
-          { name: 'description', label: '描述（可选）', type: 'textarea', value: s.description || '' },
-          { name: 'project_dir', label: '项目目录（可选，绝对路径，留空=清除）', value: s.project_dir || '' }
-        ],
-        onSubmit: async (data) => {
-          try {
-            await api(`/api/sessions/${sessionId}`, { method: 'PATCH', body: data });
-            showNotification('✅ 已保存', 'success');
-            await loadSessions();
-          } catch (e) {
-            showNotification(`❌ 失败: ${e.message}`, 'error');
-          }
+    await showSessionEditor({
+      title: '编辑会话',
+      initial: { name: s.name, description: s.description || '', project_dir: s.project_dir || '' },
+      onSubmit: async (data) => {
+        try {
+          await api(`/api/sessions/${sessionId}`, { method: 'PATCH', body: data });
+          showNotification('✅ 已保存', 'success');
+          await loadSessions();
+        } catch (e) {
+          showNotification(`❌ 失败: ${e.message}`, 'error');
         }
-      });
+      }
+    });
+  }
+
+  /**
+   * v5.4.4: 会话编辑模态框（含项目目录预设下拉 + 自定义输入 + 实时校验）
+   */
+  async function showSessionEditor({ title, initial, onSubmit }) {
+    let presets = [];
+    let presetsMeta = { common: 0, discovered: 0, recent: 0 };
+    try {
+      const r = await api('/api/sessions/project-dirs/presets');
+      presets = r.data || [];
+      presetsMeta = (r.meta && r.meta.sources) || presetsMeta;
+    } catch (e) {
+      console.warn('加载项目目录预设失败:', e.message);
     }
+
+    const initialProject = (initial && initial.project_dir) || '';
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width: 600px;">
+        <div class="modal-header">${escapeHtml(title)}</div>
+        <div class="modal-body">
+          <label>会话名称 *</label>
+          <input type="text" name="name" required value="${escapeHtml((initial && initial.name) || '')}" placeholder="如：商品价格监控">
+
+          <label>描述（可选）</label>
+          <textarea name="description" placeholder="会话用途备注">${escapeHtml((initial && initial.description) || '')}</textarea>
+
+          <label>项目目录（可选，agent 将以此为 cwd 执行命令）</label>
+          <div class="project-dir-row">
+            <select name="project_dir_preset" class="project-dir-preset" size="1">
+              <option value="">— 选择预设目录（共 ${presets.length} 个）—</option>
+              ${presets.map(p => `<option value="${escapeHtml(p.path)}" data-category="${p.category}">${escapeHtml(p.label)} — ${escapeHtml(p.path)}</option>`).join('')}
+            </select>
+            <span class="project-dir-divider">或</span>
+            <input type="text" name="project_dir" class="project-dir-input" value="${escapeHtml(initialProject)}" placeholder="/绝对路径/项目根（必须存在）">
+          </div>
+          <div class="project-dir-status" data-status></div>
+          <div class="project-dir-meta">
+            ${renderPresetSourcesLegend(presetsMeta)}
+            <span class="project-dir-clear">
+              <button type="button" class="modal-btn" data-action="clear-dir" style="padding: 2px 8px; font-size: 11px;">✕ 清空</button>
+              <button type="button" class="modal-btn" data-action="use-home" style="padding: 2px 8px; font-size: 11px;">🏠 HOME</button>
+            </span>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn" data-action="cancel">取消</button>
+          <button class="modal-btn modal-btn-primary" data-action="confirm">确定</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const presetSel = overlay.querySelector('select[name="project_dir_preset"]');
+    const dirInput = overlay.querySelector('input[name="project_dir"]');
+    const statusEl = overlay.querySelector('.project-dir-status');
+
+    // 预设变化 → 填到输入框
+    presetSel.addEventListener('change', () => {
+      const v = presetSel.value;
+      if (v) {
+        dirInput.value = v;
+        validateDir(dirInput.value);
+      }
+    });
+
+    // 输入变化 → 清掉预设选中
+    dirInput.addEventListener('input', () => {
+      // 找到匹配的预设，取消选中
+      if (presetSel.value && presetSel.value !== dirInput.value) {
+        presetSel.value = '';
+      }
+      scheduleValidate();
+    });
+
+    // 清空
+    overlay.querySelector('[data-action="clear-dir"]').addEventListener('click', () => {
+      dirInput.value = '';
+      presetSel.value = '';
+      statusEl.innerHTML = '';
+    });
+    // HOME（从预设中找，或用 /root 兜底）
+    overlay.querySelector('[data-action="use-home"]').addEventListener('click', () => {
+      // 找预设中的 home 目录
+      const homePreset = presets.find(p => p.path === (state.userHome || '/root') || p.label.includes('HOME'));
+      const home = (homePreset && homePreset.path) || (state.userHome) || '/root';
+      dirInput.value = home;
+      presetSel.value = home;
+      validateDir(home);
+    });
+
+    // 防抖校验
+    let validateTimer = null;
+    function scheduleValidate() {
+      if (validateTimer) clearTimeout(validateTimer);
+      validateTimer = setTimeout(() => validateDir(dirInput.value), 350);
+    }
+    async function validateDir(p) {
+      if (!p || !p.trim()) {
+        statusEl.innerHTML = '<span class="dir-status-empty">未设置（任务将不绑定项目目录）</span>';
+        return;
+      }
+      statusEl.innerHTML = '<span class="dir-status-checking">⏳ 校验中…</span>';
+      try {
+        const r = await api('/api/sessions/project-dirs/validate', {
+          method: 'POST',
+          body: { path: p.trim() }
+        });
+        if (r.valid) {
+          statusEl.innerHTML = `<span class="dir-status-ok">✓ 已验证：${escapeHtml(r.normalized)}</span>`;
+        } else {
+          statusEl.innerHTML = `<span class="dir-status-err">✗ ${escapeHtml(r.error || '路径无效')}</span>`;
+        }
+      } catch (e) {
+        statusEl.innerHTML = `<span class="dir-status-err">✗ 校验失败：${escapeHtml(e.message)}</span>`;
+      }
+    }
+
+    // 初次校验
+    if (initialProject) validateDir(initialProject);
+    else statusEl.innerHTML = '<span class="dir-status-empty">未设置（任务将不绑定项目目录）</span>';
+
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('[data-action="cancel"]').addEventListener('click', close);
+    overlay.querySelector('[data-action="confirm"]').addEventListener('click', async () => {
+      const data = {
+        name: overlay.querySelector('input[name="name"]').value.trim(),
+        description: overlay.querySelector('textarea[name="description"]').value.trim(),
+        project_dir: dirInput.value.trim()
+      };
+      if (!data.name) {
+        showNotification('⚠️ 会话名称不能为空', 'warning');
+        return;
+      }
+      // 提交前再校验一次（避免空预设漏校验）
+      if (data.project_dir) {
+        try {
+          const r = await api('/api/sessions/project-dirs/validate', {
+            method: 'POST',
+            body: { path: data.project_dir }
+          });
+          if (!r.valid) {
+            showNotification(`❌ ${r.error || '项目目录无效'}`, 'error');
+            return;
+          }
+          data.project_dir = r.normalized;
+        } catch (e) {
+          showNotification(`❌ 校验失败: ${e.message}`, 'error');
+          return;
+        }
+      } else {
+        // 空字符串 → undefined（清空）
+        data.project_dir = undefined;
+      }
+      close();
+      await onSubmit(data);
+    });
+
+    const escHandler = (e) => {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    setTimeout(() => {
+      const firstInput = overlay.querySelector('input[name="name"]');
+      if (firstInput) firstInput.focus();
+    }, 100);
+  }
+
+  function renderPresetSourcesLegend(meta) {
+    return `
+      <span class="preset-source-legend">
+        <span class="src-common">🏠 常用 (${meta.common})</span>
+        <span class="src-discovered">📦 发现 (${meta.discovered})</span>
+        <span class="src-recent">🕘 最近 (${meta.recent})</span>
+      </span>
+    `;
   }
 
   async function archiveSession(sessionId) {

@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { sessionManager } from '../session.js';
+import { sessionManager, validateProjectDir } from '../session.js';
 import { taskQueue } from '../task-queue.js';
 import { SessionStatus } from '../types.js';
 import { asyncHandler } from '../middleware/error.js';
+import { getProjectDirPresets } from '../lib/project-presets.js';
 
 /**
  * 会话管理路由
@@ -12,8 +13,34 @@ import { asyncHandler } from '../middleware/error.js';
  * - PATCH  /api/sessions/:id     更新
  * - DELETE /api/sessions/:id     删除（任务重新归属默认）
  * - GET    /api/sessions/:id/tasks  会话内任务
+ * - GET    /api/sessions/project-dirs/presets   v5.4.4 项目目录预设
+ * - POST   /api/sessions/project-dirs/validate  v5.4.4 单个路径校验
  */
 export const sessionRouter = Router();
+
+// ======== v5.4.4: 项目目录预设（静态路径必须在 :id 之前注册）=======
+
+// 预设目录列表（用于前端"项目目录"字段的下拉选项）
+sessionRouter.get('/project-dirs/presets', asyncHandler((_req, res) => {
+  const out = getProjectDirPresets();
+  res.json({ success: true, data: out.presets, meta: { total: out.total, sources: out.sources } });
+}));
+
+// 校验某个路径（前端在用户输入时实时检查，避免提交时才发现路径不存在）
+sessionRouter.post('/project-dirs/validate', asyncHandler((req, res) => {
+  const { path: input } = req.body || {};
+  if (!input || typeof input !== 'string') {
+    return res.status(400).json({ success: false, valid: false, error: '缺少 path' });
+  }
+  try {
+    const normalized = validateProjectDir(input);
+    res.json({ success: true, valid: true, normalized });
+  } catch (e: any) {
+    res.json({ success: true, valid: false, error: e.message || '路径无效' });
+  }
+}));
+
+// ======== CRUD ========
 
 // 列出（支持 status 过滤 + q 搜索）
 sessionRouter.get('/', asyncHandler((req, res) => {
@@ -29,10 +56,14 @@ sessionRouter.get('/', asyncHandler((req, res) => {
 
 // 创建
 sessionRouter.post('/', asyncHandler((req, res) => {
-  const { name, description, meta } = req.body || {};
-  const session = sessionManager.createSession({ name, description, meta });
-  taskQueue.addLog('info', 'task', `会话创建: ${session.id} (${session.name})`, { session_id: session.id });
-  res.json({ success: true, data: session });
+  const { name, description, project_dir, meta } = req.body || {};
+  try {
+    const session = sessionManager.createSession({ name, description, project_dir, meta });
+    taskQueue.addLog('info', 'task', `会话创建: ${session.id} (${session.name})${session.project_dir ? ' cwd=' + session.project_dir : ''}`, { session_id: session.id });
+    res.json({ success: true, data: session });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message || '创建失败' });
+  }
 }));
 
 // 详情

@@ -1108,6 +1108,97 @@ html, body {
   cursor: help;
 }
 
+/* ======== v5.4.4: 会话编辑器 - 项目目录预设 ======== */
+.project-dir-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+  margin-top: 4px;
+}
+
+.project-dir-preset {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  outline: none;
+  color: var(--text);
+  transition: var(--transition);
+}
+.project-dir-preset:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.project-dir-divider {
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.project-dir-input {
+  flex: 1.4;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: monospace;
+  background: #ffffff;
+  outline: none;
+  color: var(--text);
+  transition: var(--transition);
+}
+.project-dir-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.project-dir-status {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  min-height: 24px;
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+}
+.project-dir-status .dir-status-empty { color: var(--text-muted); font-style: italic; }
+.project-dir-status .dir-status-checking { color: #d97706; }
+.project-dir-status .dir-status-ok { color: #059669; font-weight: 600; }
+.project-dir-status .dir-status-err { color: #dc2626; font-weight: 600; }
+
+.project-dir-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-source-legend {
+  display: inline-flex;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.preset-source-legend .src-common { color: #6366f1; }
+.preset-source-legend .src-discovered { color: #0d9488; }
+.preset-source-legend .src-recent { color: #d97706; }
+
+.project-dir-clear {
+  display: inline-flex;
+  gap: 4px;
+}
+
 /* Evidence */
 .evidence {
   display: flex;
