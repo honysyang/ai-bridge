@@ -3574,7 +3574,13 @@ html, body {
 
 /* ===== v5.3.0 / v5.5.5 设置面板（与 kb/workflow 风格统一） ===== */
 .panel-settings {
-  background: var(--bg);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -3714,13 +3720,15 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background: #f3f4f6;
+  background: #fff;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 .settings-section[hidden] {
   display: none !important;
@@ -3733,7 +3741,6 @@ html, body {
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
 }
 .settings-block-title {
   font-size: 14px;
