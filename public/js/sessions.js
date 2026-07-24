@@ -112,19 +112,12 @@
   }
 
   /**
-   * v5.4.4: 会话编辑模态框（含项目目录预设下拉 + 自定义输入 + 实时校验）
+   * v5.4.5: 会话编辑模态框
+   * - 简化：单一文本输入 + 实时路径补全（类似 shell tab 补全）
+   * - 候选项随输入变化而变化
+   * - 提交前校验；无效则禁用确定
    */
   async function showSessionEditor({ title, initial, onSubmit }) {
-    let presets = [];
-    let presetsMeta = { common: 0, discovered: 0, recent: 0 };
-    try {
-      const r = await api('/api/sessions/project-dirs/presets');
-      presets = r.data || [];
-      presetsMeta = (r.meta && r.meta.sources) || presetsMeta;
-    } catch (e) {
-      console.warn('加载项目目录预设失败:', e.message);
-    }
-
     const initialProject = (initial && initial.project_dir) || '';
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -139,20 +132,15 @@
           <textarea name="description" placeholder="会话用途备注">${escapeHtml((initial && initial.description) || '')}</textarea>
 
           <label>项目目录（可选，agent 将以此为 cwd 执行命令）</label>
-          <div class="project-dir-row">
-            <select name="project_dir_preset" class="project-dir-preset" size="1">
-              <option value="">— 选择预设目录（共 ${presets.length} 个）—</option>
-              ${presets.map(p => `<option value="${escapeHtml(p.path)}" data-category="${p.category}">${escapeHtml(p.label)} — ${escapeHtml(p.path)}</option>`).join('')}
-            </select>
-            <span class="project-dir-divider">或</span>
-            <input type="text" name="project_dir" class="project-dir-input" value="${escapeHtml(initialProject)}" placeholder="/绝对路径/项目根（必须存在）">
+          <div class="project-dir-autocomplete">
+            <input type="text" name="project_dir" class="project-dir-input" value="${escapeHtml(initialProject)}" placeholder="/输入路径，下方显示候选项" autocomplete="off" spellcheck="false">
+            <div class="project-dir-suggest" data-suggest></div>
           </div>
           <div class="project-dir-status" data-status></div>
           <div class="project-dir-meta">
-            ${renderPresetSourcesLegend(presetsMeta)}
+            <span class="project-dir-hint">💡 提示：输入路径时下方显示候选目录，点击或按 Tab 自动补全</span>
             <span class="project-dir-clear">
               <button type="button" class="modal-btn" data-action="clear-dir" style="padding: 2px 8px; font-size: 11px;">✕ 清空</button>
-              <button type="button" class="modal-btn" data-action="use-home" style="padding: 2px 8px; font-size: 11px;">🏠 HOME</button>
             </span>
           </div>
         </div>
@@ -164,75 +152,174 @@
     `;
     document.body.appendChild(overlay);
 
-    const presetSel = overlay.querySelector('select[name="project_dir_preset"]');
     const dirInput = overlay.querySelector('input[name="project_dir"]');
+    const suggestEl = overlay.querySelector('.project-dir-suggest');
     const statusEl = overlay.querySelector('.project-dir-status');
+    const confirmBtn = overlay.querySelector('[data-action="confirm"]');
 
-    // 预设变化 → 填到输入框
-    presetSel.addEventListener('change', () => {
-      const v = presetSel.value;
-      if (v) {
-        dirInput.value = v;
-        validateDir(dirInput.value);
+    // 状态：当前是否已验证（仅在用户停止输入后做完整校验）
+    let isValid = !initialProject; // 初始无值 → 允许空提交；有值则需校验
+    let lastValidated = initialProject;
+
+    // ======== 补全 ========
+    let suggestTimer = null;
+    let suggestSeq = 0;  // 防止竞态（旧响应覆盖新响应）
+
+    function scheduleSuggest() {
+      if (suggestTimer) clearTimeout(suggestTimer);
+      suggestTimer = setTimeout(fetchSuggest, 180);
+    }
+
+    async function fetchSuggest() {
+      const prefix = dirInput.value;
+      const mySeq = ++suggestSeq;
+      if (!prefix && !dirInput._touched) {
+        // 首次聚焦空输入时不主动补全（避免一开始就刷一堆）
+        suggestEl.innerHTML = '';
+        return;
       }
-    });
-
-    // 输入变化 → 清掉预设选中
-    dirInput.addEventListener('input', () => {
-      // 找到匹配的预设，取消选中
-      if (presetSel.value && presetSel.value !== dirInput.value) {
-        presetSel.value = '';
+      try {
+        const r = await api('/api/fs/suggest', {
+          method: 'POST',
+          body: { prefix }
+        });
+        if (mySeq !== suggestSeq) return; // 过期
+        const cands = (r.data && r.data.candidates) || [];
+        if (cands.length === 0) {
+          suggestEl.innerHTML = '<div class="suggest-empty">无匹配目录</div>';
+        } else {
+          suggestEl.innerHTML = cands.map((c, i) => `
+            <div class="suggest-item" data-idx="${i}" data-path="${escapeHtml(c.path)}">
+              <span class="suggest-name">${escapeHtml(c.name)}</span>
+              <span class="suggest-path">${escapeHtml(c.path)}</span>
+              ${c.marker ? `<span class="suggest-marker" title="项目标记：${escapeHtml(c.marker)}">📦</span>` : ''}
+            </div>
+          `).join('');
+          // 绑定点击
+          suggestEl.querySelectorAll('.suggest-item').forEach(el => {
+            el.addEventListener('mousedown', (ev) => {
+              // mousedown 而非 click：避免 input blur 抢先关闭建议框
+              ev.preventDefault();
+              const p = el.dataset.path;
+              dirInput.value = p + '/';
+              dirInput.focus();
+              dirInput.setSelectionRange(p.length + 1, p.length + 1);
+              scheduleSuggest();
+            });
+          });
+        }
+      } catch (e) {
+        suggestEl.innerHTML = `<div class="suggest-empty">补全失败: ${escapeHtml(e.message)}</div>`;
       }
-      scheduleValidate();
-    });
+    }
 
-    // 清空
-    overlay.querySelector('[data-action="clear-dir"]').addEventListener('click', () => {
-      dirInput.value = '';
-      presetSel.value = '';
-      statusEl.innerHTML = '';
-    });
-    // HOME（从预设中找，或用 /root 兜底）
-    overlay.querySelector('[data-action="use-home"]').addEventListener('click', () => {
-      // 找预设中的 home 目录
-      const homePreset = presets.find(p => p.path === (state.userHome || '/root') || p.label.includes('HOME'));
-      const home = (homePreset && homePreset.path) || (state.userHome) || '/root';
-      dirInput.value = home;
-      presetSel.value = home;
-      validateDir(home);
-    });
-
-    // 防抖校验
+    // ======== 校验 ========
     let validateTimer = null;
     function scheduleValidate() {
       if (validateTimer) clearTimeout(validateTimer);
-      validateTimer = setTimeout(() => validateDir(dirInput.value), 350);
+      validateTimer = setTimeout(validateDir, 400);
     }
-    async function validateDir(p) {
-      if (!p || !p.trim()) {
+
+    async function validateDir() {
+      const p = dirInput.value.trim();
+      if (!p) {
         statusEl.innerHTML = '<span class="dir-status-empty">未设置（任务将不绑定项目目录）</span>';
+        isValid = true;
+        confirmBtn.disabled = false;
+        lastValidated = '';
         return;
       }
       statusEl.innerHTML = '<span class="dir-status-checking">⏳ 校验中…</span>';
       try {
         const r = await api('/api/sessions/project-dirs/validate', {
           method: 'POST',
-          body: { path: p.trim() }
+          body: { path: p }
         });
         if (r.valid) {
-          statusEl.innerHTML = `<span class="dir-status-ok">✓ 已验证：${escapeHtml(r.normalized)}</span>`;
+          statusEl.innerHTML = `<span class="dir-status-ok">✓ ${escapeHtml(r.normalized)}</span>`;
+          isValid = true;
+          lastValidated = r.normalized;
+          confirmBtn.disabled = false;
         } else {
           statusEl.innerHTML = `<span class="dir-status-err">✗ ${escapeHtml(r.error || '路径无效')}</span>`;
+          isValid = false;
+          confirmBtn.disabled = true;
         }
       } catch (e) {
         statusEl.innerHTML = `<span class="dir-status-err">✗ 校验失败：${escapeHtml(e.message)}</span>`;
+        isValid = false;
+        confirmBtn.disabled = true;
       }
     }
 
-    // 初次校验
-    if (initialProject) validateDir(initialProject);
-    else statusEl.innerHTML = '<span class="dir-status-empty">未设置（任务将不绑定项目目录）</span>';
+    // ======== 事件 ========
+    dirInput.addEventListener('input', () => {
+      dirInput._touched = true;
+      scheduleSuggest();
+      // 输入时把校验态置为"待重新校验"
+      if (dirInput.value.trim() !== lastValidated) {
+        statusEl.innerHTML = '<span class="dir-status-pending">… 输入已变更，待校验</span>';
+        isValid = false;
+        confirmBtn.disabled = true;
+      }
+    });
+    dirInput.addEventListener('blur', () => {
+      // 延迟关闭建议（让点击 mousedown 先触发）
+      setTimeout(() => {
+        suggestEl.innerHTML = '';
+        validateDir();
+      }, 200);
+    });
+    dirInput.addEventListener('focus', () => {
+      dirInput._touched = true;
+      fetchSuggest();
+    });
+    dirInput.addEventListener('keydown', (e) => {
+      // Tab：补全第一个候选
+      if (e.key === 'Tab') {
+        const first = suggestEl.querySelector('.suggest-item');
+        if (first) {
+          e.preventDefault();
+          const p = first.dataset.path;
+          dirInput.value = p + '/';
+          dirInput.setSelectionRange(p.length + 1, p.length + 1);
+          scheduleSuggest();
+        }
+      }
+      // Enter：触发校验 + 提交
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (!isValid) {
+          validateDir().then(() => {
+            if (isValid) confirmBtn.click();
+          });
+        } else {
+          confirmBtn.click();
+        }
+      }
+    });
 
+    // 清空
+    overlay.querySelector('[data-action="clear-dir"]').addEventListener('click', () => {
+      dirInput.value = '';
+      dirInput._touched = true;
+      suggestEl.innerHTML = '';
+      statusEl.innerHTML = '<span class="dir-status-empty">未设置（任务将不绑定项目目录）</span>';
+      isValid = true;
+      lastValidated = '';
+      confirmBtn.disabled = false;
+      dirInput.focus();
+    });
+
+    // 初次校验（如有初值）
+    if (initialProject) {
+      dirInput._touched = true;
+      validateDir();
+    } else {
+      statusEl.innerHTML = '<span class="dir-status-empty">未设置（任务将不绑定项目目录）</span>';
+    }
+
+    // ======== 关闭 + 提交 ========
     const close = () => overlay.remove();
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('[data-action="cancel"]').addEventListener('click', close);
@@ -246,24 +333,19 @@
         showNotification('⚠️ 会话名称不能为空', 'warning');
         return;
       }
-      // 提交前再校验一次（避免空预设漏校验）
+      // 最终校验
       if (data.project_dir) {
-        try {
-          const r = await api('/api/sessions/project-dirs/validate', {
-            method: 'POST',
-            body: { path: data.project_dir }
-          });
-          if (!r.valid) {
-            showNotification(`❌ ${r.error || '项目目录无效'}`, 'error');
+        if (!isValid || data.project_dir !== lastValidated) {
+          await validateDir();
+          if (!isValid) {
+            showNotification('❌ 项目目录无效，无法保存', 'error');
             return;
           }
-          data.project_dir = r.normalized;
-        } catch (e) {
-          showNotification(`❌ 校验失败: ${e.message}`, 'error');
-          return;
+          data.project_dir = lastValidated;
+        } else {
+          data.project_dir = lastValidated;
         }
       } else {
-        // 空字符串 → undefined（清空）
         data.project_dir = undefined;
       }
       close();
@@ -279,16 +361,6 @@
       const firstInput = overlay.querySelector('input[name="name"]');
       if (firstInput) firstInput.focus();
     }, 100);
-  }
-
-  function renderPresetSourcesLegend(meta) {
-    return `
-      <span class="preset-source-legend">
-        <span class="src-common">🏠 常用 (${meta.common})</span>
-        <span class="src-discovered">📦 发现 (${meta.discovered})</span>
-        <span class="src-recent">🕘 最近 (${meta.recent})</span>
-      </span>
-    `;
   }
 
   async function archiveSession(sessionId) {

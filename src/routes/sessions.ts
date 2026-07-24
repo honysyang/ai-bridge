@@ -3,7 +3,6 @@ import { sessionManager, validateProjectDir } from '../session.js';
 import { taskQueue } from '../task-queue.js';
 import { SessionStatus } from '../types.js';
 import { asyncHandler } from '../middleware/error.js';
-import { getProjectDirPresets } from '../lib/project-presets.js';
 
 /**
  * 会话管理路由
@@ -13,20 +12,13 @@ import { getProjectDirPresets } from '../lib/project-presets.js';
  * - PATCH  /api/sessions/:id     更新
  * - DELETE /api/sessions/:id     删除（任务重新归属默认）
  * - GET    /api/sessions/:id/tasks  会话内任务
- * - GET    /api/sessions/project-dirs/presets   v5.4.4 项目目录预设
  * - POST   /api/sessions/project-dirs/validate  v5.4.4 单个路径校验
  */
 export const sessionRouter = Router();
 
-// ======== v5.4.4: 项目目录预设（静态路径必须在 :id 之前注册）=======
+// ======== v5.4.4: 单个路径校验（保留，前端在提交前调用）=======
 
-// 预设目录列表（用于前端"项目目录"字段的下拉选项）
-sessionRouter.get('/project-dirs/presets', asyncHandler((_req, res) => {
-  const out = getProjectDirPresets();
-  res.json({ success: true, data: out.presets, meta: { total: out.total, sources: out.sources } });
-}));
-
-// 校验某个路径（前端在用户输入时实时检查，避免提交时才发现路径不存在）
+// 校验某个路径（前端提交前最终检查）
 sessionRouter.post('/project-dirs/validate', asyncHandler((req, res) => {
   const { path: input } = req.body || {};
   if (!input || typeof input !== 'string') {

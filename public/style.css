@@ -1108,47 +1108,19 @@ html, body {
   cursor: help;
 }
 
-/* ======== v5.4.4: 会话编辑器 - 项目目录预设 ======== */
-.project-dir-row {
-  display: flex;
-  gap: 6px;
-  align-items: stretch;
+/* ======== v5.4.5: 会话编辑器 - 项目目录自动补全 ======== */
+.project-dir-autocomplete {
+  position: relative;
   margin-top: 4px;
 }
 
-.project-dir-preset {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  background: #ffffff;
-  cursor: pointer;
-  outline: none;
-  color: var(--text);
-  transition: var(--transition);
-}
-.project-dir-preset:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
-}
-
-.project-dir-divider {
-  align-self: center;
-  color: var(--text-muted);
-  font-size: 11px;
-  padding: 0 2px;
-}
-
 .project-dir-input {
-  flex: 1.4;
-  min-width: 0;
+  width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-size: 12px;
-  font-family: monospace;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, 'Courier New', monospace;
   background: #ffffff;
   outline: none;
   color: var(--text);
@@ -1156,7 +1128,70 @@ html, body {
 }
 .project-dir-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.12);
+}
+
+.project-dir-suggest {
+  margin-top: 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-sm);
+  font-size: 12px;
+}
+
+.project-dir-suggest:empty {
+  display: none;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--bg-2);
+  transition: background var(--transition);
+}
+.suggest-item:last-child {
+  border-bottom: none;
+}
+.suggest-item:hover,
+.suggest-item.focused {
+  background: var(--accent-soft);
+}
+
+.suggest-name {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.suggest-path {
+  color: var(--text-secondary);
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggest-marker {
+  font-size: 11px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.suggest-empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
 }
 
 .project-dir-status {
@@ -1171,6 +1206,7 @@ html, body {
 }
 .project-dir-status .dir-status-empty { color: var(--text-muted); font-style: italic; }
 .project-dir-status .dir-status-checking { color: #d97706; }
+.project-dir-status .dir-status-pending { color: var(--text-muted); font-style: italic; }
 .project-dir-status .dir-status-ok { color: #059669; font-weight: 600; }
 .project-dir-status .dir-status-err { color: #dc2626; font-weight: 600; }
 
@@ -1183,20 +1219,25 @@ html, body {
   gap: 8px;
 }
 
-.preset-source-legend {
-  display: inline-flex;
-  gap: 8px;
+.project-dir-hint {
   font-size: 10px;
   color: var(--text-muted);
-  flex-wrap: wrap;
+  flex: 1;
+  min-width: 200px;
 }
-.preset-source-legend .src-common { color: #6366f1; }
-.preset-source-legend .src-discovered { color: #0d9488; }
-.preset-source-legend .src-recent { color: #d97706; }
 
 .project-dir-clear {
   display: inline-flex;
   gap: 4px;
+}
+
+/* 确定按钮禁用态 */
+.modal-btn-primary:disabled,
+.modal-btn-primary[disabled] {
+  background: var(--bg-3) !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6;
 }
 
 /* Evidence */

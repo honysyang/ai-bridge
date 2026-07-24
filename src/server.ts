@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 
 import { healthRouter, storageRouter } from './routes/health.js';
 import { sessionRouter } from './routes/sessions.js';
+import { fsRouter } from './routes/fs.js';
 import { taskRouter, contextRouter, logRouter } from './routes/tasks.js';
 import { kbRouter } from './routes/kb.js';
 import { workflowRouter } from './routes/workflows.js';
@@ -175,6 +176,7 @@ app.use('/api/heartbeat', heartbeatRouter);
 
 // 业务模块
 app.use('/api/sessions', sessionRouter);
+app.use('/api/fs', fsRouter);  // v5.4.5: 路径补全
 app.use('/api/tasks', taskRouter);
 // /api/task/* (Trae Agent 长轮询、提交结果) 复用 taskRouter
 app.use('/api/task', taskRouter);
