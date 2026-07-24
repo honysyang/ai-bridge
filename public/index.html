@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ai-bridge 智能体桥接器 · 控制台</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230f172a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='central' font-size='28' font-family='-apple-system,BlinkMacSystemFont,Arial,sans-serif' font-weight='700' fill='%23f8fafc' letter-spacing='-1'%3EAB%3C/text%3E%3Crect x='14' y='44' width='36' height='2' fill='%231d4ed8'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v={VERSION}">
   <!-- Cytoscape.js for knowledge graph (v4.3.0) -->
   <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
 </head>
@@ -1059,16 +1059,16 @@
   <!-- ========== 通知容器 ========== -->
   <div id="notification-container"></div>
 
-  <!-- 客户端拆分模块（v5.2.0）：按依赖顺序加载 -->
-  <script src="js/core.js?v=5.3.0"></script>
-  <script src="js/sessions.js?v=5.3.0"></script>
-  <script src="js/tasks.js?v=5.3.0"></script>
-  <script src="js/kb.js?v=5.3.0"></script>
-  <script src="js/wf.js?v=5.3.0"></script>
-  <script src="js/plan.js?v=5.3.0"></script>
-  <script src="js/claw.js?v=5.3.0"></script>
-  <script src="js/overview.js?v=5.3.0"></script>
-  <script src="js/settings.js?v=5.3.0"></script>
-  <script src="js/main.js?v=5.3.0"></script>
+  <!-- 客户端拆分模块（v5.5.1）：按依赖顺序加载，?v= 占位由 server 中间件替换为实际版本号 -->
+  <script src="js/core.js?v={VERSION}"></script>
+  <script src="js/sessions.js?v={VERSION}"></script>
+  <script src="js/tasks.js?v={VERSION}"></script>
+  <script src="js/kb.js?v={VERSION}"></script>
+  <script src="js/wf.js?v={VERSION}"></script>
+  <script src="js/plan.js?v={VERSION}"></script>
+  <script src="js/claw.js?v={VERSION}"></script>
+  <script src="js/overview.js?v={VERSION}"></script>
+  <script src="js/settings.js?v={VERSION}"></script>
+  <script src="js/main.js?v={VERSION}"></script>
 </body>
 </html>

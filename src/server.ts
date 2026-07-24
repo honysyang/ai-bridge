@@ -9,8 +9,10 @@ import { clawConfig } from './claw/config.js';
 import { kbStore } from './kb-store.js';
 import { kbLinkStore } from './kb-link-store.js';
 import { workflowStore } from './workflow-store.js';
+import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { getAppVersion } from './lib/version.js';
 
 import { healthRouter, storageRouter } from './routes/health.js';
 import { sessionRouter } from './routes/sessions.js';
@@ -108,7 +110,31 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // ======== 静态资源 ========
 
-app.use(express.static(path.join(__dirname, '../public')));
+// v5.5.1: HTML 模板占位符替换（{VERSION} → 实际版本号）
+// 解决 v5.3.0 缓存破坏 query string 写死后无法自动更新的问题
+// - 命中范围：仅 .html 文件
+// - 处理方式：命中 .html 时 readFile + 替换 + 发送
+// - 性能：首页 / login.html 1 次读取，替换是 O(n) 简单字符串操作，无感知
+const PUBLIC_DIR = path.join(__dirname, '../public');
+
+app.get(['/', '/index.html', '/login.html'], (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const requested = req.path === '/' ? 'index.html' : req.path.replace(/^\//, '');
+    const filePath = path.join(PUBLIC_DIR, requested);
+    if (!fs.existsSync(filePath)) return next();
+    let html = fs.readFileSync(filePath, 'utf-8');
+    // 替换 {VERSION} 占位符为当前版本
+    html = html.replace(/\{VERSION\}/g, getAppVersion());
+    // 禁用 HTML 缓存（避免 304 Not Modified 命中旧的占位符）
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.send(html);
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.use(express.static(PUBLIC_DIR));
 
 // 兜底：favicon.ico 用 1x1 透明 PNG 响应（避免浏览器 404 噪声）
 app.get('/favicon.ico', (_req, res) => {
