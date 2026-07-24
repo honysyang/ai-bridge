@@ -108,6 +108,55 @@ taskRouter.post('/:id/retry', asyncHandler((req, res) => {
   res.json({ success: true, data: task, message: '任务已重新入队' });
 }));
 
+// v5.4.2: 撤回（undo）—— 把 completed/failed 任务回退到 pending，保留历史
+taskRouter.post('/:id/undo', asyncHandler((req, res) => {
+  const result = taskQueue.undoTask(req.params.id);
+  if (!result) {
+    return res.status(400).json({ success: false, error: '任务不存在或状态不允许撤回（仅 completed/failed 可撤回）' });
+  }
+  res.json({
+    success: true,
+    data: result.task,
+    history_size: result.history.length,
+    message: `已撤回，保留 ${result.history.length} 条历史，可调用 /restore 恢复`
+  });
+}));
+
+// v5.4.2: 恢复（restore）—— 从 undo_history 恢复
+taskRouter.post('/:id/restore', asyncHandler((req, res) => {
+  const historyIndex = req.body?.history_index !== undefined ? parseInt(String(req.body.history_index), 10) : undefined;
+  const task = taskQueue.restoreTask(req.params.id, historyIndex);
+  if (!task) {
+    return res.status(400).json({ success: false, error: '任务不存在或没有可恢复的历史' });
+  }
+  res.json({ success: true, data: task, message: '任务已恢复' });
+}));
+
+// v5.4.3: 补充对话（followup）—— 基于已完成任务创建新任务，附带 parent 上下文
+// 典型用法：用户对概览的结论想继续追问，提交一段补充说明 → 派生出新任务
+taskRouter.post('/:id/followup', asyncHandler((req, res) => {
+  const { content, type, priority } = req.body || {};
+  if (!content || typeof content !== 'string' || !content.trim()) {
+    return res.status(400).json({ success: false, error: '缺少 content 或内容为空' });
+  }
+  const result = taskQueue.createFollowupTask({
+    parent_task_id: req.params.id,
+    content,
+    type: type as TaskType | undefined,
+    priority: priority as TaskPriority | undefined
+  });
+  if (!result) {
+    return res.status(404).json({ success: false, error: '父任务不存在' });
+  }
+  sessionManager.touchSession(result.task.session_id || 'sess-default');
+  res.json({
+    success: true,
+    data: result.task,
+    parent_id: result.parent.id,
+    message: `已创建补充任务: ${result.task.id}（父: ${result.parent.id}）`
+  });
+}));
+
 // evidence（独立端点，便于按需加载）
 taskRouter.get('/:id/evidence', asyncHandler((req, res) => {
   const task = taskQueue.getTask(req.params.id);

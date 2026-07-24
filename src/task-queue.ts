@@ -271,6 +271,140 @@ export class TaskQueue extends EventEmitter {
     return updated;
   }
 
+  /**
+   * v5.4.2: 撤回任务（undo）—— 把 completed/failed 的任务回退到 pending
+   * 与 retryTask 的区别：会保存原 result 到 context.undo_history，可恢复
+   */
+  undoTask(taskId: string): { task: Task; undone: boolean; history: any[] } | null {
+    const task = storage.getTask(taskId);
+    if (!task) return null;
+    if (task.status !== 'failed' && task.status !== 'completed') {
+      return null;
+    }
+    // 收集历史
+    const prevHistory: any[] = (task.context?.undo_history as any[]) || [];
+    prevHistory.push({
+      undone_at: Date.now(),
+      prev_status: task.status,
+      prev_result: task.result,
+      prev_started_at: task.started_at,
+      prev_completed_at: task.completed_at
+    });
+    // 保留最近 5 次历史
+    const history = prevHistory.slice(-5);
+
+    storage.updateTask(taskId, {
+      status: 'pending',
+      result: undefined,
+      completed_at: undefined,
+      started_at: undefined,
+      context: { ...(task.context || {}), undo_history: history }
+    });
+    const updated = storage.getTask(taskId)!;
+    this.notifyWaiters(updated);
+    this.addLog('info', 'task', `任务撤回: ${taskId} (历史 ${history.length} 条)`, { task_id: taskId, history_size: history.length });
+    this.emit('task_added', updated);
+    return { task: updated, undone: true, history };
+  }
+
+  /**
+   * v5.4.2: 恢复任务（restore）—— 从 undo_history 中恢复某次的结果
+   */
+  restoreTask(taskId: string, historyIndex?: number): Task | null {
+    const task = storage.getTask(taskId);
+    if (!task) return null;
+    const history: any[] = (task.context?.undo_history as any[]) || [];
+    if (history.length === 0) return null;
+    const idx = historyIndex !== undefined ? historyIndex : history.length - 1;
+    const item = history[idx];
+    if (!item) return null;
+    // 弹出该条
+    const newHistory = history.filter((_, i) => i !== idx);
+    storage.updateTask(taskId, {
+      status: item.prev_status || 'completed',
+      result: item.prev_result,
+      completed_at: item.prev_completed_at,
+      started_at: item.prev_started_at,
+      context: { ...(task.context || {}), undo_history: newHistory }
+    });
+    const updated = storage.getTask(taskId)!;
+    this.addLog('info', 'task', `任务恢复: ${taskId} → ${item.prev_status}`, { task_id: taskId });
+    return updated;
+  }
+
+  /**
+   * v5.4.3: 创建补充对话任务（followup）—— 基于已有任务，附带 parent_task 上下文，
+   * 让 agent 在执行时能参考原任务的完整 result/evidence，从而做出更精准的回复。
+   *
+   * 设计要点：
+   *  - 继承 parent 的 session_id、project_dir（保证 cwd 一致）
+   *  - 继承 parent 的 type（也可显式覆盖）
+   *  - 默认 priority = parent.priority
+   *  - context.parent_task_id 指向原任务
+   *  - context.parent_context 汇总原任务的 result 关键字段
+   *  - data.from_user = 'followup'，data.extra.parent_task_id 便于前端溯源
+   */
+  createFollowupTask(opts: {
+    parent_task_id: string;
+    content: string;
+    type?: TaskType;
+    priority?: TaskPriority;
+    source?: TaskSource;
+  }): { task: Task; parent: Task } | null {
+    const parent = storage.getTask(opts.parent_task_id);
+    if (!parent) return null;
+    if (!opts.content || !opts.content.trim()) return null;
+
+    const sessionId = parent.session_id || 'sess-default';
+    // project_dir 已在 addTask 内从 session 继承，这里显式传以确保万无一失
+    const projectDir = parent.project_dir;
+
+    const parentSummary = parent.result?.result?.summary || '';
+    const parentDetails = parent.result?.result?.details || '';
+    const parentType = opts.type || parent.type;
+    const parentPriority = opts.priority || parent.priority;
+    const parentSource: TaskSource = opts.source || (parent.source === 'wechat' ? 'wechat' : 'manual');
+
+    const context: Record<string, any> = {
+      parent_task_id: parent.id,
+      parent_context: {
+        type: parent.type,
+        status: parent.status,
+        priority: parent.priority,
+        content: parent.data?.content || '',
+        summary: parentSummary,
+        details: parentDetails,
+        project_dir: projectDir || null,
+        session_id: sessionId
+      },
+      followup_at: Date.now()
+    };
+
+    const followup = this.addTask({
+      type: parentType,
+      priority: parentPriority,
+      source: parentSource,
+      session_id: sessionId,
+      project_dir: projectDir,
+      data: {
+        content: opts.content.trim(),
+        from_user: 'followup',
+        extra: { parent_task_id: parent.id }
+      },
+      context
+    } as any);
+
+    this.addLog('info', 'task', `补充任务创建: ${followup.id} ← ${parent.id}`, {
+      task_id: followup.id,
+      parent_task_id: parent.id,
+      type: followup.type,
+      priority: followup.priority,
+      session_id: followup.session_id
+    });
+
+    return { task: followup, parent };
+  }
+
   /** 删除任务 */
   deleteTask(taskId: string): boolean {
     const ok = storage.deleteTask(taskId);

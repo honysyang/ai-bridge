@@ -52,10 +52,14 @@
       const isSelected = t.id === state.currentTaskId;
       const source = t.source || 'manual';
       const sourceLabel = i18n('source', source);
+      const isFollowup = !!(t.context && t.context.parent_task_id);
+      const followupBadge = isFollowup
+        ? `<span class="source-badge source-followup" title="补充任务 · 父任务 ${escapeHtml(t.context.parent_task_id)}">💬 补充</span>`
+        : '';
       return `
         <div class="task-card status-${t.status} ${isSelected ? 'selected' : ''}" data-task-id="${t.id}" data-source="${escapeHtml(source)}">
           <div class="task-card-header">
-            <div class="task-card-id">${escapeHtml(t.id)}<span class="source-badge source-${escapeHtml(source)}">${escapeHtml(sourceLabel)}</span></div>
+            <div class="task-card-id">${escapeHtml(t.id)}<span class="source-badge source-${escapeHtml(source)}">${escapeHtml(sourceLabel)}</span>${followupBadge}</div>
             <span class="badge badge-${t.status}">${i18n('status', t.status)}</span>
           </div>
           <div class="task-card-content">${escapeHtml(t.data?.content || '(无内容)')}</div>
@@ -174,6 +178,7 @@
   }
 
   function renderDetailOverview(task, result) {
+    const undoHistory = (task.context && task.context.undo_history) || [];
     return `
       <div class="detail-meta">
         <div class="detail-meta-item">
@@ -209,6 +214,16 @@
 
       ${task.source === 'wechat' ? renderWechatSourceSection(task) : ''}
 
+      ${task.context && task.context.parent_task_id ? `
+      <div class="followup-section" style="background: linear-gradient(135deg, #f1f5f9, #e2e8f0); border-left-color: #94a3b8; padding: 8px 12px;">
+        <div class="followup-title" style="color: #475569;">↩️ 父任务</div>
+        <div style="font-size: 12px; color: #334155;">
+          <span style="font-family: monospace;">${escapeHtml(task.context.parent_task_id)}</span>
+          ${task.context.parent_context?.summary ? ' · ' + escapeHtml(task.context.parent_context.summary.slice(0, 60)) : ''}
+        </div>
+      </div>
+      ` : ''}
+
       <div class="detail-section">
         <h3>📌 任务内容</h3>
         <div class="detail-content">${escapeHtml(task.data?.content || '')}</div>
@@ -229,7 +244,79 @@
 
       <div class="detail-actions">
         ${task.status === 'failed' || task.status === 'completed' ? `<button class="detail-action-btn" data-action="retry">🔄 重试</button>` : ''}
+        ${task.status === 'failed' || task.status === 'completed' ? `<button class="detail-action-btn undo" data-action="undo" title="撤回任务并保留历史，可恢复">↩️ 撤回</button>` : ''}
         <button class="detail-action-btn danger" data-action="delete">🗑 删除</button>
+      </div>
+
+      ${undoHistory.length > 0 ? renderUndoHistory(task, undoHistory) : ''}
+
+      ${result ? renderFollowupSection(task) : ''}
+    `;
+  }
+
+  /**
+   * v5.4.3: 渲染撤回历史，每条都允许独立恢复
+   */
+  function renderUndoHistory(task, history) {
+    return `
+      <div class="undo-history">
+        <div class="undo-history-title">↩️ 撤回历史（${history.length}/5）</div>
+        ${history.map((h, idx) => `
+          <div class="undo-history-item">
+            <span class="undo-status">${escapeHtml(h.prev_status || '?')}</span>
+            <div class="undo-meta">
+              <span>原状态 ${escapeHtml(h.prev_status || '?')} · ${h.prev_result?.result?.summary ? escapeHtml(h.prev_result.result.summary.slice(0, 40)) : '(无摘要)'}</span>
+              <span class="undo-time">⏰ ${formatTime(h.undone_at)}</span>
+            </div>
+            <button class="undo-restore-btn" data-action="restore" data-history-index="${idx}">恢复</button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  /**
+   * v5.4.3: 渲染补充对话输入区
+   *   - 默认隐藏：仅在任务已 completed/failed 时显示
+   *   - 提交后会在同一会话内派生一条新任务，agent 会拿到 parent 的 result 上下文
+   */
+  function renderFollowupSection(task) {
+    const projectHint = task.project_dir
+      ? `<div class="followup-context-info">📂 ${escapeHtml(task.project_dir)}</div>`
+      : '';
+    return `
+      <div class="followup-section">
+        <div class="followup-title">💬 对结论补充对话</div>
+        <div class="followup-hint">提交后会基于当前结论衍生一条新任务（同会话、同项目目录），agent 会参考原任务的执行依据。</div>
+        <textarea
+          class="followup-input"
+          id="followup-input-${escapeHtml(task.id)}"
+          placeholder="例：请把这份报告的第三章展开，或换个角度分析..."
+        ></textarea>
+        <div class="followup-options">
+          <select id="followup-type-${escapeHtml(task.id)}">
+            <option value="">继承父任务类型（${escapeHtml(task.type)}）</option>
+            <option value="chat">💬 chat（聊天）</option>
+            <option value="reply_message">↩️ reply_message</option>
+            <option value="query_info">🔍 query_info</option>
+            <option value="analyze_data">📊 analyze_data</option>
+            <option value="execute_command">⚙️ execute_command</option>
+            <option value="generate_content">✨ generate_content</option>
+            <option value="multi_step">🧩 multi_step</option>
+          </select>
+          <select id="followup-priority-${escapeHtml(task.id)}">
+            <option value="">继承父任务优先级（${escapeHtml(task.priority)}）</option>
+            <option value="urgent">🔥 urgent</option>
+            <option value="high">⏫ high</option>
+            <option value="normal">🔵 normal</option>
+            <option value="low">🔽 low</option>
+          </select>
+          ${projectHint}
+        </div>
+        <div class="followup-submit-row">
+          <span style="font-size: 11px; color: #6366f1;">Ctrl+Enter 发送</span>
+          <button class="followup-send-btn" data-action="followup">📤 提交补充任务</button>
+        </div>
       </div>
     `;
   }
@@ -326,6 +413,18 @@
           } catch (e) {
             showNotification(`❌ ${e.message}`, 'error');
           }
+        } else if (action === 'undo') {
+          if (!confirm(`撤回此任务？将保留当前结果到历史，可稍后恢复（仅 completed/failed 可撤回）。`)) return;
+          try {
+            const { data, history_size } = await api(`/api/tasks/${task.id}/undo`, { method: 'POST' });
+            showNotification(`↩️ 已撤回（保留 ${history_size} 条历史）`, 'success');
+            await loadTasks();
+            // 重新加载当前任务详情
+            if (state.currentTaskId === task.id) await loadTaskDetail(task.id);
+            if (global.Sessions) await global.Sessions.loadSessions();
+          } catch (e) {
+            showNotification(`❌ ${e.message}`, 'error');
+          }
         } else if (action === 'delete') {
           if (!confirm('删除此任务？')) return;
           try {
@@ -344,6 +443,95 @@
         }
       });
     });
+
+    // 撤回历史：每条独立的"恢复"按钮
+    document.querySelectorAll('#detail-tab-content .undo-restore-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const idx = parseInt(btn.dataset.historyIndex, 10);
+        try {
+          await api(`/api/tasks/${task.id}/restore`, {
+            method: 'POST',
+            body: { history_index: idx }
+          });
+          showNotification('↩️ 已恢复', 'success');
+          await loadTasks();
+          if (state.currentTaskId === task.id) await loadTaskDetail(task.id);
+          if (global.Sessions) await global.Sessions.loadSessions();
+        } catch (e) {
+          showNotification(`❌ ${e.message}`, 'error');
+        }
+      });
+    });
+
+    // 补充对话：提交
+    const followupBtn = document.querySelector('#detail-tab-content [data-action="followup"]');
+    if (followupBtn) {
+      followupBtn.addEventListener('click', () => submitFollowup(task));
+    }
+    // Ctrl+Enter 快捷提交
+    const followupInput = document.getElementById(`followup-input-${task.id}`);
+    if (followupInput) {
+      followupInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          submitFollowup(task);
+        }
+      });
+    }
+  }
+
+  /**
+   * v5.4.3: 提交补充对话任务
+   *   - 读 followup textarea
+   *   - 调用 POST /api/tasks/:id/followup
+   *   - 创建成功后切到新任务（自动滚动到新位置）
+   */
+  async function submitFollowup(task) {
+    const input = document.getElementById(`followup-input-${task.id}`);
+    const typeSel = document.getElementById(`followup-type-${task.id}`);
+    const prioritySel = document.getElementById(`followup-priority-${task.id}`);
+    if (!input) return;
+    const content = input.value.trim();
+    if (!content) {
+      showNotification('⚠️ 请输入补充内容', 'warning');
+      input.focus();
+      return;
+    }
+
+    const body = { content };
+    if (typeSel && typeSel.value) body.type = typeSel.value;
+    if (prioritySel && prioritySel.value) body.priority = prioritySel.value;
+
+    const sendBtn = document.querySelector('#detail-tab-content [data-action="followup"]');
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = '提交中…';
+    }
+    try {
+      const { data: newTask, message } = await api(`/api/tasks/${task.id}/followup`, {
+        method: 'POST',
+        body
+      });
+      showNotification(message || '📤 补充任务已创建', 'success', 2000);
+      // 清空输入框
+      input.value = '';
+      // 重新加载任务列表，并切换到新任务
+      await loadTasks();
+      if (global.Sessions) await global.Sessions.loadSessions();
+      // 选中派生任务
+      if (newTask && newTask.id) {
+        state.currentTaskId = newTask.id;
+        if (global.Core && global.Core.setHash) global.Core.setHash(`#session/${newTask.session_id || state.currentSessionId}/task/${newTask.id}`);
+        await loadTaskDetail(newTask.id);
+      }
+    } catch (e) {
+      showNotification(`❌ ${e.message}`, 'error');
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = '📤 提交补充任务';
+      }
+    }
   }
 
   function enableCompose(enabled) {
@@ -409,8 +597,11 @@
     renderDetailEvidence,
     renderDetailTimeline,
     renderWechatSourceSection,
+    renderUndoHistory,
+    renderFollowupSection,
     copyToClipboard,
     bindDetailActions,
+    submitFollowup,
     enableCompose,
     submitCompose,
     autoResizeInput

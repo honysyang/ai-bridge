@@ -915,6 +915,199 @@ html, body {
   color: var(--danger);
 }
 
+/* ======== v5.4.3: 任务详情 - 撤回 / 恢复历史 / 补充对话 ======== */
+.detail-action-btn.undo:hover {
+  border-color: #f59e0b;
+  color: #f59e0b;
+  background: #fffbeb;
+}
+
+.undo-history {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border-left: 3px solid #f59e0b;
+  border-radius: var(--radius);
+}
+
+.undo-history-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #92400e;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.undo-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: #78350f;
+  border-top: 1px dashed #fde68a;
+}
+.undo-history-item:first-of-type { border-top: none; }
+
+.undo-history-item .undo-meta {
+  flex: 1;
+  font-size: 11px;
+  color: #92400e;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.undo-history-item .undo-time {
+  font-size: 10px;
+  color: #a16207;
+  font-family: monospace;
+}
+
+.undo-history-item .undo-status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #ffffff;
+  color: #92400e;
+}
+
+.undo-history-item .undo-restore-btn {
+  padding: 3px 8px;
+  border: 1px solid #f59e0b;
+  background: #ffffff;
+  color: #b45309;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.undo-history-item .undo-restore-btn:hover {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
+.followup-section {
+  margin-top: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, #eef2ff, #e0e7ff);
+  border-left: 3px solid #6366f1;
+  border-radius: var(--radius);
+}
+
+.followup-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #3730a3;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.followup-hint {
+  font-size: 11px;
+  color: #4f46e5;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.followup-input {
+  width: 100%;
+  min-height: 56px;
+  max-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  background: #ffffff;
+  color: var(--text);
+  outline: none;
+  transition: var(--transition);
+  box-sizing: border-box;
+}
+.followup-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.followup-options {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.followup-options select {
+  padding: 4px 8px;
+  border: 1px solid #c7d2fe;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  outline: none;
+  color: var(--text);
+}
+.followup-options select:focus {
+  border-color: #6366f1;
+}
+
+.followup-submit-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.followup-send-btn {
+  padding: 6px 16px;
+  border: 1px solid #6366f1;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.followup-send-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+.followup-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.followup-context-info {
+  font-size: 11px;
+  color: #6366f1;
+  background: #ffffff;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-family: monospace;
+}
+
+/* v5.4.3: 任务卡片 followup 徽章 */
+.source-badge.source-followup {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  font-weight: 600;
+  cursor: help;
+}
+
 /* Evidence */
 .evidence {
   display: flex;
