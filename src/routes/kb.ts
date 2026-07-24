@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { taskQueue } from '../task-queue.js';
 import { kbStore } from '../kb-store.js';
 import { kbLinkStore } from '../kb-link-store.js';
+import { searchKB, retrieveAndFormat, formatKBContextForPrompt } from '../lib/kb-retriever.js';
 import { asyncHandler } from '../middleware/error.js';
 
 /**
@@ -19,6 +20,9 @@ import { asyncHandler } from '../middleware/error.js';
  * - POST   /api/kb/links/seed-demo
  * - POST   /api/kb/links
  * - DELETE /api/kb/links/:id
+ *
+ * v5.5.2: RAG 检索
+ * - POST   /api/kb/search       关键词检索（返回 Top-N + 格式化 context）
  */
 export const kbRouter = Router();
 
@@ -152,4 +156,59 @@ kbRouter.delete('/links/:id', asyncHandler((req, res) => {
   }
   taskQueue.addLog('warn', 'kb', `KB 关联删除: ${req.params.id}`);
   res.json({ success: true, data: { id: req.params.id } });
+}));
+
+// ======== v5.5.2: RAG 检索 ========
+//
+// POST /api/kb/search
+//   body: { query, topK?, minScore?, maxBodyChars?, includeArchived?, format? }
+//   format='items' (default) → 返回 items 数组
+//   format='context'         → 返回格式化 prompt 文本
+//   format='both'            → items + context 都返回
+//
+// 注意：必须在 :id 静态路径之后注册（但本路由只有 /search 一个子路径）
+kbRouter.post('/search', asyncHandler((req, res) => {
+  const {
+    query,
+    topK = 3,
+    minScore = 1,
+    maxBodyChars = 200,
+    includeArchived = false,
+    format = 'both'
+  } = req.body || {};
+
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return res.status(400).json({ success: false, error: 'query 必填且非空' });
+  }
+  const opts = {
+    topK: Math.min(Math.max(parseInt(String(topK)) || 3, 1), 20),
+    minScore: Math.max(parseInt(String(minScore)) || 1, 0),
+    maxBodyChars: Math.min(Math.max(parseInt(String(maxBodyChars)) || 200, 50), 2000),
+    includeArchived: !!includeArchived
+  };
+
+  const items = searchKB(query.trim(), opts);
+  const context = formatKBContextForPrompt(items);
+
+  const data: any = {
+    query: query.trim(),
+    hit_count: items.length,
+    options: opts
+  };
+  if (format === 'items' || format === 'both') {
+    data.items = items.map(it => ({
+      id: it.id,
+      category_id: it.category_id,
+      category_name: it.category_name,
+      title: it.title,
+      body_preview: it.body_preview,
+      tags: it.tags,
+      score: it.score,
+      matched_keywords: it.matched_keywords
+    }));
+  }
+  if (format === 'context' || format === 'both') {
+    data.context = context;
+  }
+  res.json({ success: true, data });
 }));

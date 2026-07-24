@@ -51,6 +51,21 @@ check "claw-status"      "GET"  "/api/claw/status"                        200
 check "ilink-creds"      "GET"  "/api/claw/ilink/credentials"             200
 check "storage-stats"    "GET"  "/api/storage/stats"                      200
 
+# v5.5.2: KB RAG 检索
+kb_search=$(curl -s -o /tmp/kb-search-body -w "%{http_code}" -X POST -H "Content-Type: application/json" \
+  -d '{"query":"茅台价格","topK":3,"format":"both"}' "${BASE}/api/kb/search" || echo "000")
+if [ "$kb_search" = "200" ]; then
+  hits=$(cat /tmp/kb-search-body | grep -o '"hit_count":[0-9]*' | head -1)
+  echo "  ✅ kb-search     [200]  POST /api/kb/search  ($hits)"
+  PASS=$((PASS+1))
+else
+  echo "  ❌ kb-search     [$kb_search]  POST /api/kb/search  (expected 200)"
+  head -c 200 /tmp/kb-search-body
+  echo
+  FAIL=$((FAIL+1))
+fi
+check "kb-search-empty"  "POST" "/api/kb/search"                          400  # 缺 query 必 400
+
 # 错误
 check "404-fallback"     "GET"  "/api/xxx-not-exist"                      404
 check "task-not-found"   "GET"  "/api/tasks/task-xxx-does-not-exist"      404

@@ -210,6 +210,13 @@
           <span class="detail-meta-label">📂 项目目录</span>
           <span class="detail-meta-value" style="font-family: monospace; font-size: 11px;" title="执行目录（agent 应以此为 cwd）">${escapeHtml(task.project_dir)}</span>
         </div>` : ''}
+        ${task.context && task.context.model_routing ? `
+        <div class="detail-meta-item">
+          <span class="detail-meta-label">🤖 模型路由</span>
+          <span class="detail-meta-value" style="font-family: monospace; font-size: 11px;" title="source: ${escapeHtml(task.context.model_routing.source || '?')}">
+            ${escapeHtml(task.context.model_routing.provider)} / ${escapeHtml(task.context.model_routing.model)}
+          </span>
+        </div>` : ''}
       </div>
 
       ${task.source === 'wechat' ? renderWechatSourceSection(task) : ''}
@@ -228,6 +235,8 @@
         <h3>📌 任务内容</h3>
         <div class="detail-content">${escapeHtml(task.data?.content || '')}</div>
       </div>
+
+      ${renderKBRetrievalSection(task)}
 
       ${result ? `
       <div class="detail-section">
@@ -251,6 +260,61 @@
       ${undoHistory.length > 0 ? renderUndoHistory(task, undoHistory) : ''}
 
       ${result ? renderFollowupSection(task) : ''}
+    `;
+  }
+
+  /**
+   * v5.5.2: 渲染 KB RAG 检索结果（在「任务内容」之后、「结论」之前）
+   *  - 显示命中的 KB 条目（标题 + 分类 + 分数 + 摘要）
+   *  - 0 命中时给一个简短的提示（让用户知道走过 RAG）
+   *  - wechat 来源同时显示 wechat_kb_hits
+   */
+  function renderKBRetrievalSection(task) {
+    const ctx = task.context || {};
+    const ret = ctx.kb_retrieval;
+    if (!ret && !ctx.wechat_kb_hits) {
+      return ''; // 没有 RAG 痕迹（旧任务或异常情况）
+    }
+    const items = (ret && ret.items) || (ctx.wechat_kb_hits && ctx.wechat_kb_hits.titles
+      ? ctx.wechat_kb_hits.titles.map((t, i) => ({ title: t, score: 0, category_name: '?', body_preview: '', matched_keywords: [] }))
+      : []);
+    const count = (ret && ret.hit_count) || (ctx.wechat_kb_hits && ctx.wechat_kb_hits.count) || 0;
+    const source = ret ? 'addTask 自动注入' : 'wechat 预检索';
+
+    if (count === 0) {
+      return `
+        <div class="kb-retrieval-section empty">
+          <div class="kb-retrieval-header">
+            <h3>🔎 KB 检索</h3>
+            <span class="kb-retrieval-meta">0 命中 · ${escapeHtml(source)}</span>
+          </div>
+          <div class="kb-retrieval-empty">未在知识库中匹配到相关条目（任务将基于模型自身知识完成）</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="kb-retrieval-section">
+        <div class="kb-retrieval-header">
+          <h3>🔎 KB 检索</h3>
+          <span class="kb-retrieval-meta">${count} 命中 · ${escapeHtml(source)}</span>
+        </div>
+        <div class="kb-retrieval-items">
+          ${items.slice(0, 3).map((it, i) => `
+            <div class="kb-retrieval-item">
+              <div class="kb-retrieval-rank">#${i + 1}</div>
+              <div class="kb-retrieval-body">
+                <div class="kb-retrieval-title">
+                  📄 <strong>${escapeHtml(it.title || '?')}</strong>
+                  <span class="kb-retrieval-cat">${escapeHtml(it.category_name || '未分类')}</span>
+                </div>
+                ${it.score ? `<div class="kb-retrieval-score">匹配度 ${it.score} ${it.matched_keywords && it.matched_keywords.length ? ' · 命中关键词: ' + it.matched_keywords.slice(0, 5).map(k => escapeHtml(k)).join(', ') : ''}</div>` : ''}
+                ${it.body_preview ? `<div class="kb-retrieval-preview">${escapeHtml(it.body_preview)}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
     `;
   }
 
@@ -594,6 +658,7 @@
     loadTaskDetail,
     renderDetail,
     renderDetailOverview,
+    renderKBRetrievalSection,
     renderDetailEvidence,
     renderDetailTimeline,
     renderWechatSourceSection,

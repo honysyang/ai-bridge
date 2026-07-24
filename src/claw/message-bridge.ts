@@ -18,6 +18,7 @@ import { taskQueue } from '../task-queue.js';
 import { sessionManager } from '../session.js';
 import { storage } from '../storage.js';
 import { TaskResult, Task } from '../types.js';
+import { retrieveAndFormat } from '../lib/kb-retriever.js';
 
 interface PendingReply {
   task: Task;
@@ -70,6 +71,8 @@ export class MessageBridge {
 
   /**
    * 处理入站微信消息
+   * v5.5.2: 同步执行 KB 预检索（写入 context.wechat_kb_hits）
+   *         任务自身的 context.kb_retrieval 会在 addTask 中再次自动注入
    */
   private handleIncoming(msg: WeChatMessage): void {
     // 1. 去重
@@ -82,7 +85,20 @@ export class MessageBridge {
     // 2. 查/建 session（按 wxid）
     const session = this.getOrCreateWechatSession(msg);
 
-    // 3. 创建任务
+    // 3. v5.5.2: 预检索 KB（失败安全，try-catch 吞掉异常）
+    let kbHits: { count: number; titles: string[]; context: string } = { count: 0, titles: [], context: '' };
+    try {
+      const result = retrieveAndFormat(msg.content || '', { topK: 3, minScore: 1 });
+      kbHits = {
+        count: result.hit_count,
+        titles: result.items.map(i => i.title),
+        context: result.context
+      };
+    } catch (e) {
+      taskQueue.addLog('debug', 'bridge', `微信消息 KB 预检索失败: ${(e as Error).message}`);
+    }
+
+    // 4. 创建任务（addTask 内部还会再做一次自动 RAG，结果写入 context.kb_retrieval）
     const task = taskQueue.addTask({
       type: 'reply_message',
       priority: 'normal',
@@ -97,19 +113,29 @@ export class MessageBridge {
         wechat_wxid: msg.wxid,
         wechat_type: msg.type,
         wechat_room: msg.room_wxid,
-        wechat_timestamp: msg.timestamp
+        wechat_timestamp: msg.timestamp,
+        // v5.5.2: 微信专属 KB 命中（与 addTask 中的 kb_retrieval 互补）
+        wechat_kb_hits: {
+          count: kbHits.count,
+          titles: kbHits.titles,
+          context: kbHits.context,
+          retrieved_at: Date.now()
+        }
       }
     } as any);
 
-    // 4. 刷新会话时间
+    // 5. 刷新会话时间
     sessionManager.touchSession(session.id);
 
-    // 5. 更新总结 tracker：标记用户最新消息时间，并取消挂起的总结
+    // 6. 更新总结 tracker：标记用户最新消息时间，并取消挂起的总结
     this.recordIncomingMessage(msg.wxid);
 
+    const kbSummary = kbHits.count > 0
+      ? ` · KB命中 ${kbHits.count} 条 [${kbHits.titles.slice(0, 2).join(', ')}${kbHits.titles.length > 2 ? '…' : ''}]`
+      : ' · KB无命中';
     taskQueue.addLog('info', 'task',
-      `微信消息入队: ${msg.from_user} → ${task.id} (session=${session.id})`,
-      { task_id: task.id, session_id: session.id, wechat_msg_id: msg.msg_id }
+      `微信消息入队: ${msg.from_user} → ${task.id} (session=${session.id})${kbSummary}`,
+      { task_id: task.id, session_id: session.id, wechat_msg_id: msg.msg_id, kb_hit_count: kbHits.count, kb_titles: kbHits.titles }
     );
   }
 

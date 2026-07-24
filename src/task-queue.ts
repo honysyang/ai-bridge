@@ -33,6 +33,7 @@ import {
 import { storage } from './storage.js';
 import { sessionManager } from './session.js';
 import { modelsConfig } from './lib/models-config.js';
+import { retrieveAndFormat } from './lib/kb-retriever.js';
 import { EventEmitter } from 'events';
 
 /** 允许的状态转换表（key=from, value=合法 to 集合） */
@@ -95,6 +96,8 @@ export class TaskQueue extends EventEmitter {
    * 新增任务（status 强制 pending）
    * 缺省 session_id 时回落到 'sess-default'
    * v5.4.0: 自动从 session 继承 project_dir（如果任务本身没指定）
+   * v5.4.2: 根据 task_type 解析使用的 provider/model，写入 context.model_routing
+   * v5.5.2: 自动 RAG —— 用 task.data.content 检索 KB Top-3 写入 context.kb_retrieval
    */
   addTask(taskData: Omit<Task, 'id' | 'status' | 'created_at'>): Task {
     this.taskIdCounter++;
@@ -109,6 +112,28 @@ export class TaskQueue extends EventEmitter {
     }
     // v5.4.2: 根据 task_type 解析使用的 provider/model，写入 context.model_routing
     const routing = modelsConfig.resolve(taskData.type);
+    // v5.5.2: 自动 RAG 检索（KB Top-3，失败安全）
+    let kbRetrieval: { context: string; items: any[]; hit_count: number; query: string; retrieved_at: number };
+    try {
+      const result = retrieveAndFormat(taskData.data?.content || '', { topK: 3, minScore: 1 });
+      kbRetrieval = {
+        query: taskData.data?.content || '',
+        context: result.context,
+        items: result.items.map(it => ({
+          id: it.id,
+          title: it.title,
+          category_id: it.category_id,
+          category_name: it.category_name,
+          score: it.score,
+          matched_keywords: it.matched_keywords,
+          body_preview: it.body_preview
+        })),
+        hit_count: result.hit_count,
+        retrieved_at: Date.now()
+      };
+    } catch (e) {
+      kbRetrieval = { query: '', context: '', items: [], hit_count: 0, retrieved_at: Date.now() };
+    }
     const context = {
       ...(taskData.context || {}),
       model_routing: {
@@ -116,7 +141,8 @@ export class TaskQueue extends EventEmitter {
         model: routing.model,
         source: routing.source,
         resolved_at: Date.now()
-      }
+      },
+      kb_retrieval: kbRetrieval
     };
     const fullTask: Task = {
       ...taskData,
@@ -131,13 +157,15 @@ export class TaskQueue extends EventEmitter {
     storage.appendTask(fullTask);
     this.notifyWaiters(fullTask);
     this.emit('task_added', fullTask);
-    this.addLog('info', 'task', `任务创建: ${fullTask.id} (${fullTask.type}/${fullTask.priority}) → ${routing.provider}/${routing.model}`, {
+    this.addLog('info', 'task', `任务创建: ${fullTask.id} (${fullTask.type}/${fullTask.priority}) → ${routing.provider}/${routing.model} · KB命中 ${kbRetrieval.hit_count}`, {
       task_id: fullTask.id,
       type: fullTask.type,
       priority: fullTask.priority,
       session_id: fullTask.session_id,
       project_dir: fullTask.project_dir,
-      routing
+      routing,
+      kb_hit_count: kbRetrieval.hit_count,
+      kb_titles: kbRetrieval.items.map(i => i.title)
     });
     return fullTask;
   }
