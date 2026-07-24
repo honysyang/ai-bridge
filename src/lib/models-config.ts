@@ -1,9 +1,14 @@
-// ======== AI 模型配置（v5.3.0）========
+// ======== AI 模型配置（v5.4.2 扩展多模型 + 任务类型路由）========
 //
 // 设计原则：
 //   1. 模型定义（provider / base_url / supported_models）在代码里静态声明（schema）
 //   2. 凭证（API key 等敏感字段）从 ~/.config/agent-canvas/secrets.env 读取（只读遮罩）
-//   3. 用户选择（默认模型、各 provider 启用状态）持久化到 data/models-config.json
+//   3. 用户选择（默认模型、各 provider 启用状态、任务类型路由）持久化到 data/models-config.json
+//
+// v5.4.2 新增：
+//   - 多 provider 支持（OpenAI、Anthropic、Qwen、Zhipu、Moonshot、Ollama、Mock）
+//   - 任务类型路由：每种 task_type 可指定使用的 provider/model（如 reasoning → deepseek-reasoner）
+//   - 全局默认：未指定 task_type 时使用 default_provider/default_model
 //
 // 为什么不把 API key 存在 models-config.json？
 //   避免该文件被误推到 git、误备份、误分享。所有密钥统一在 secrets.env（chmod 600）。
@@ -11,6 +16,8 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+
+export type TaskType = 'chat' | 'reply_message' | 'query_info' | 'analyze_data' | 'execute_command' | 'generate_content' | 'multi_step';
 
 export interface ModelProvider {
   id: string;                       // 'deepseek' / 'openai' / 'mock' 等
@@ -22,6 +29,8 @@ export interface ModelProvider {
   models: ModelInfo[];              // 支持的模型列表
   default_model: string;            // 该 provider 的默认模型
   description?: string;
+  /** 该 provider 推荐用于哪些任务类型（不强制） */
+  recommended_for?: TaskType[];
 }
 
 export interface ModelInfo {
@@ -30,7 +39,9 @@ export interface ModelInfo {
   context_window?: number;          // 上下文窗口（tokens）
   max_output?: number;              // 最大输出（tokens）
   description?: string;
-  tier?: 'flagship' | 'fast' | 'reasoning' | 'embedding';
+  tier?: 'flagship' | 'fast' | 'reasoning' | 'embedding' | 'local';
+  /** 该模型擅长的任务类型（用于前端智能推荐） */
+  best_for?: TaskType[];
 }
 
 export interface ModelsConfig {
@@ -38,16 +49,29 @@ export interface ModelsConfig {
   default_model: string;
   enabled_providers: string[];      // 用户启用的 provider 列表
   provider_overrides: Record<string, { default_model?: string }>;
+  /** v5.4.2: 任务类型 → 路由（provider + model），缺省走 default_provider/default_model */
+  task_routing: Partial<Record<TaskType, { provider: string; model: string }>>;
+  /** v5.4.2: 路由策略 */
+  routing_strategy: 'fixed' | 'smart';  // fixed=按 task_routing 固定；smart=根据提示词长度/复杂度自动选
 }
+
+export const DEFAULT_TASK_ROUTING: ModelsConfig['task_routing'] = {
+  // 默认路由：reasoning 类任务用 R1，generate_content 用 chat，其他走默认
+  multi_step: { provider: 'deepseek', model: 'deepseek-reasoner' },
+  analyze_data: { provider: 'deepseek', model: 'deepseek-reasoner' },
+  generate_content: { provider: 'deepseek', model: 'deepseek-chat' }
+};
 
 export const DEFAULT_MODELS_CONFIG: ModelsConfig = {
   default_provider: 'deepseek',
   default_model: 'deepseek-chat',
-  enabled_providers: ['deepseek'],
-  provider_overrides: {}
+  enabled_providers: ['deepseek', 'mock'],
+  provider_overrides: {},
+  task_routing: { ...DEFAULT_TASK_ROUTING },
+  routing_strategy: 'fixed'
 };
 
-/** 静态模型目录（v5.3.0 起步：DeepSeek） */
+/** 静态模型目录（v5.4.2 扩展为多 provider） */
 export const MODEL_PROVIDERS: ModelProvider[] = [
   {
     id: 'deepseek',
@@ -58,6 +82,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     env_model: 'DEEPSEEK_MODEL',
     description: '深度求索 · 国产高性价比 OpenAI 兼容 API',
     default_model: 'deepseek-chat',
+    recommended_for: ['chat', 'multi_step', 'analyze_data', 'generate_content'],
     models: [
       {
         id: 'deepseek-chat',
@@ -65,7 +90,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         context_window: 64000,
         max_output: 8192,
         tier: 'flagship',
-        description: '通用对话主力模型，640K 上下文'
+        description: '通用对话主力模型，64K 上下文',
+        best_for: ['chat', 'reply_message', 'generate_content']
       },
       {
         id: 'deepseek-reasoner',
@@ -73,7 +99,270 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         context_window: 64000,
         max_output: 8192,
         tier: 'reasoning',
-        description: '深度推理模型，适合复杂任务'
+        description: '深度推理模型，适合复杂任务',
+        best_for: ['multi_step', 'analyze_data']
+      }
+    ]
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    base_url: 'https://api.openai.com/v1',
+    env_key: 'OPENAI_API_KEY',
+    env_base: 'OPENAI_BASE_URL',
+    env_model: 'OPENAI_MODEL',
+    description: 'OpenAI · GPT 系列（兼容 Azure OpenAI、LocalAI 等）',
+    default_model: 'gpt-4o-mini',
+    recommended_for: ['chat', 'generate_content', 'analyze_data'],
+    models: [
+      {
+        id: 'gpt-4o',
+        name: 'GPT-4o',
+        context_window: 128000,
+        max_output: 16384,
+        tier: 'flagship',
+        description: '多模态旗舰模型',
+        best_for: ['chat', 'generate_content', 'analyze_data']
+      },
+      {
+        id: 'gpt-4o-mini',
+        name: 'GPT-4o mini',
+        context_window: 128000,
+        max_output: 16384,
+        tier: 'fast',
+        description: '高性价比小模型',
+        best_for: ['chat', 'reply_message']
+      },
+      {
+        id: 'o1',
+        name: 'o1',
+        context_window: 200000,
+        max_output: 100000,
+        tier: 'reasoning',
+        description: '复杂推理专用',
+        best_for: ['multi_step', 'analyze_data']
+      },
+      {
+        id: 'o1-mini',
+        name: 'o1-mini',
+        context_window: 128000,
+        max_output: 65536,
+        tier: 'reasoning',
+        description: '轻量推理',
+        best_for: ['analyze_data']
+      }
+    ]
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    base_url: 'https://api.anthropic.com/v1',
+    env_key: 'ANTHROPIC_API_KEY',
+    env_base: 'ANTHROPIC_BASE_URL',
+    env_model: 'ANTHROPIC_MODEL',
+    description: 'Anthropic · Claude 系列（需走兼容代理）',
+    default_model: 'claude-3-5-sonnet-20241022',
+    recommended_for: ['chat', 'generate_content', 'analyze_data'],
+    models: [
+      {
+        id: 'claude-3-5-sonnet-20241022',
+        name: 'Claude 3.5 Sonnet',
+        context_window: 200000,
+        max_output: 8192,
+        tier: 'flagship',
+        description: '平衡性能与速度的旗舰',
+        best_for: ['chat', 'generate_content', 'analyze_data']
+      },
+      {
+        id: 'claude-3-5-haiku-20241022',
+        name: 'Claude 3.5 Haiku',
+        context_window: 200000,
+        max_output: 8192,
+        tier: 'fast',
+        description: '快速响应小模型',
+        best_for: ['chat', 'reply_message']
+      }
+    ]
+  },
+  {
+    id: 'qwen',
+    name: '通义千问',
+    base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    env_key: 'QWEN_API_KEY',
+    env_base: 'QWEN_BASE_URL',
+    env_model: 'QWEN_MODEL',
+    description: '阿里云 · 通义千问（OpenAI 兼容模式）',
+    default_model: 'qwen-plus',
+    recommended_for: ['chat', 'generate_content'],
+    models: [
+      {
+        id: 'qwen-plus',
+        name: 'Qwen Plus',
+        context_window: 128000,
+        max_output: 8192,
+        tier: 'flagship',
+        description: '通用主力',
+        best_for: ['chat', 'generate_content']
+      },
+      {
+        id: 'qwen-turbo',
+        name: 'Qwen Turbo',
+        context_window: 1000000,
+        max_output: 8192,
+        tier: 'fast',
+        description: '超长上下文 · 快速',
+        best_for: ['chat', 'reply_message', 'query_info']
+      },
+      {
+        id: 'qwen-max',
+        name: 'Qwen Max',
+        context_window: 32000,
+        max_output: 8192,
+        tier: 'flagship',
+        description: '最强大模型',
+        best_for: ['multi_step', 'analyze_data', 'generate_content']
+      }
+    ]
+  },
+  {
+    id: 'zhipu',
+    name: '智谱 AI',
+    base_url: 'https://open.bigmodel.cn/api/paas/v4',
+    env_key: 'ZHIPU_API_KEY',
+    env_base: 'ZHIPU_BASE_URL',
+    env_model: 'ZHIPU_MODEL',
+    description: '智谱 GLM 系列（OpenAI 兼容）',
+    default_model: 'glm-4-plus',
+    recommended_for: ['chat', 'generate_content'],
+    models: [
+      {
+        id: 'glm-4-plus',
+        name: 'GLM-4 Plus',
+        context_window: 128000,
+        max_output: 8192,
+        tier: 'flagship',
+        description: '主力大模型',
+        best_for: ['chat', 'generate_content', 'analyze_data']
+      },
+      {
+        id: 'glm-4-flash',
+        name: 'GLM-4 Flash',
+        context_window: 128000,
+        max_output: 8192,
+        tier: 'fast',
+        description: '免费快速',
+        best_for: ['chat', 'reply_message']
+      }
+    ]
+  },
+  {
+    id: 'moonshot',
+    name: '月之暗面',
+    base_url: 'https://api.moonshot.cn/v1',
+    env_key: 'MOONSHOT_API_KEY',
+    env_base: 'MOONSHOT_BASE_URL',
+    env_model: 'MOONSHOT_MODEL',
+    description: 'Moonshot Kimi（长上下文优势）',
+    default_model: 'moonshot-v1-128k',
+    recommended_for: ['chat', 'analyze_data', 'query_info'],
+    models: [
+      {
+        id: 'moonshot-v1-8k',
+        name: 'Kimi v1 8K',
+        context_window: 8000,
+        max_output: 4096,
+        tier: 'fast',
+        description: '短上下文快速',
+        best_for: ['chat', 'reply_message']
+      },
+      {
+        id: 'moonshot-v1-32k',
+        name: 'Kimi v1 32K',
+        context_window: 32000,
+        max_output: 4096,
+        tier: 'flagship',
+        description: '中等长度',
+        best_for: ['chat', 'generate_content']
+      },
+      {
+        id: 'moonshot-v1-128k',
+        name: 'Kimi v1 128K',
+        context_window: 128000,
+        max_output: 4096,
+        tier: 'flagship',
+        description: '长文档分析专用',
+        best_for: ['analyze_data', 'query_info']
+      }
+    ]
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama（本地）',
+    base_url: 'http://localhost:11434/v1',
+    env_key: '',                      // 本地无 API key
+    env_base: 'OLLAMA_BASE_URL',
+    env_model: 'OLLAMA_MODEL',
+    description: '本地部署的 Ollama 模型（无需 API key）',
+    default_model: 'qwen2.5:7b',
+    recommended_for: ['chat', 'reply_message', 'generate_content'],
+    models: [
+      {
+        id: 'qwen2.5:7b',
+        name: 'Qwen 2.5 7B (本地)',
+        context_window: 32000,
+        max_output: 4096,
+        tier: 'local',
+        description: '本地 7B 量化模型',
+        best_for: ['chat', 'reply_message']
+      },
+      {
+        id: 'llama3.1:8b',
+        name: 'Llama 3.1 8B (本地)',
+        context_window: 32000,
+        max_output: 4096,
+        tier: 'local',
+        description: '本地 8B 通用模型',
+        best_for: ['chat', 'generate_content']
+      },
+      {
+        id: 'deepseek-r1:8b',
+        name: 'DeepSeek R1 8B (本地)',
+        context_window: 32000,
+        max_output: 4096,
+        tier: 'local',
+        description: '本地推理模型',
+        best_for: ['analyze_data']
+      }
+    ]
+  },
+  {
+    id: 'mock',
+    name: 'Mock（测试用）',
+    base_url: 'mock://local',
+    env_key: '',
+    env_base: '',
+    env_model: '',
+    description: '内置 Mock 模型，返回固定示例（无需配置 key）',
+    default_model: 'mock-fast',
+    recommended_for: ['chat', 'reply_message', 'query_info', 'generate_content', 'multi_step', 'analyze_data', 'execute_command'],
+    models: [
+      {
+        id: 'mock-fast',
+        name: 'Mock 快速响应',
+        context_window: 8000,
+        max_output: 1024,
+        tier: 'fast',
+        description: '演示/Smoke test 用，~50ms 响应',
+        best_for: ['chat', 'reply_message']
+      },
+      {
+        id: 'mock-echo',
+        name: 'Mock Echo（回显）',
+        context_window: 8000,
+        max_output: 1024,
+        tier: 'fast',
+        description: '原样回显输入，便于调试',
+        best_for: ['chat', 'reply_message']
       }
     ]
   }
@@ -98,7 +387,12 @@ class ModelsConfigManager {
       if (fs.existsSync(CONFIG_FILE)) {
         const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
-        return { ...DEFAULT_MODELS_CONFIG, ...parsed };
+        // v5.4.2: 合并时保留 task_routing 字段
+        return {
+          ...DEFAULT_MODELS_CONFIG,
+          ...parsed,
+          task_routing: { ...DEFAULT_MODELS_CONFIG.task_routing, ...(parsed.task_routing || {}) }
+        };
       } else {
         const initial = { ...DEFAULT_MODELS_CONFIG };
         this.saveFile(initial);
@@ -133,6 +427,7 @@ class ModelsConfigManager {
    *   providers —— 完整 provider 列表（含模型）
    *   config    —— 当前用户配置
    *   secrets   —— 每个 provider 的 env 变量名是否已配置（只遮罩、不返回值）
+   *   task_types —— 所有可用 task_type 列表（供前端路由编辑器使用）
    */
   catalog(): {
     providers: ModelProvider[];
@@ -143,11 +438,12 @@ class ModelsConfigManager {
       base_url?: string;
       model?: string;
     }>;
+    task_types: TaskType[];
   } {
     const env = this.loadSecrets();
     const secrets: Record<string, any> = {};
     for (const p of MODEL_PROVIDERS) {
-      const k = env[p.env_key];
+      const k = p.env_key ? env[p.env_key] : '';
       const baseOverride = p.env_base ? env[p.env_base] : '';
       const modelOverride = p.env_model ? env[p.env_model] : '';
       secrets[p.id] = {
@@ -157,7 +453,38 @@ class ModelsConfigManager {
         model: modelOverride || ''
       };
     }
-    return { providers: MODEL_PROVIDERS, config: this.get(), secrets };
+    return {
+      providers: MODEL_PROVIDERS,
+      config: this.get(),
+      secrets,
+      task_types: ['chat', 'reply_message', 'query_info', 'analyze_data', 'execute_command', 'generate_content', 'multi_step']
+    };
+  }
+
+  /**
+   * v5.4.2: 根据 task_type 解析实际使用的 provider + model
+   * 优先级：task_routing[task_type] > provider_overrides[provider].default_model > default_provider/default_model
+   */
+  resolve(taskType: TaskType): { provider: string; model: string; source: 'routing' | 'override' | 'default' } {
+    const cfg = this.config;
+    // 1) 任务路由
+    const routed = cfg.task_routing[taskType];
+    if (routed && cfg.enabled_providers.includes(routed.provider)) {
+      const p = MODEL_PROVIDERS.find(p => p.id === routed.provider);
+      if (p && p.models.some(m => m.id === routed.model)) {
+        return { provider: routed.provider, model: routed.model, source: 'routing' };
+      }
+    }
+    // 2) provider override
+    const overrideModel = cfg.provider_overrides[cfg.default_provider]?.default_model;
+    if (overrideModel && cfg.enabled_providers.includes(cfg.default_provider)) {
+      const p = MODEL_PROVIDERS.find(p => p.id === cfg.default_provider);
+      if (p && p.models.some(m => m.id === overrideModel)) {
+        return { provider: cfg.default_provider, model: overrideModel, source: 'override' };
+      }
+    }
+    // 3) 全局默认
+    return { provider: cfg.default_provider, model: cfg.default_model, source: 'default' };
   }
 
   /** 读取 ~/.config/agent-canvas/secrets.env，仅返回关心的变量 */

@@ -29,6 +29,7 @@ import { notFoundHandler } from './middleware/notFound.js';
 import { requireAuth } from './middleware/auth.js';
 import { childLogger, logRequest } from './lib/logger.js';
 import { users } from './lib/users.js';
+import { runMigration, shouldMigrate } from './lib/sqlite-migrate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -253,6 +254,20 @@ export function startServer(port: number = 4567) {
     `工作流${wfLoad.seeded ? '已初始化（首次启动写入示例）' : '已加载'}: ${wfLoad.workflows} 个`,
     wfLoad as any
   );
+
+  // v5.4.2: SQLite 自动迁移（仅当 SQLite 为空且 JSONL 有数据时执行）
+  if (shouldMigrate()) {
+    log.info('检测到 SQLite 为空且 JSONL 有数据，开始自动迁移...');
+    try {
+      const migResult = runMigration();
+      log.info(`SQLite 迁移完成: 任务 ${migResult.tasks}, 会话 ${migResult.sessions}, 日志 ${migResult.logs}, KB ${migResult.kb_items}, 工作流 ${migResult.workflows}, 用户 ${migResult.users} (${migResult.duration_ms}ms)`);
+      if (migResult.errors.length > 0) {
+        log.warn(`迁移部分失败: ${migResult.errors.join('; ')}`);
+      }
+    } catch (e: any) {
+      log.error(`SQLite 迁移失败: ${e.message}`);
+    }
+  }
 
   // 启动微信 Claw（v4.0.0）
   clawManager.start().then(() => {

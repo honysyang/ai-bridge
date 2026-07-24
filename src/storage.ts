@@ -10,12 +10,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Task, LogEntry, Session } from './types.js';
+import { sqliteStore } from './lib/sqlite-store.js';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.jsonl');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.jsonl');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.jsonl');
 const CORRUPTED_DIR = path.join(DATA_DIR, '.corrupted');
+
+// v5.4.2: 是否启用 SQLite 同步（默认开；可通过 AIBRIDGE_SQLITE_SYNC=0 关闭）
+const SQLITE_SYNC = process.env.AIBRIDGE_SQLITE_SYNC !== '0';
 
 // ======== Op Types ========
 
@@ -94,6 +98,7 @@ export class Storage {
     this.taskOrder.push(task.id);
     this.enforceTaskMemoryLimit();
     this.appendLine(TASKS_FILE, { op: 'create', task });
+    if (SQLITE_SYNC) sqliteStore.upsertTask(task);
   }
 
   updateTask(id: string, patch: Partial<Task>): boolean {
@@ -102,6 +107,7 @@ export class Storage {
     const updated: Task = { ...existing, ...patch };
     this.tasks.set(id, updated);
     this.appendLine(TASKS_FILE, { op: 'update', id, patch });
+    if (SQLITE_SYNC) sqliteStore.upsertTask(updated);
     return true;
   }
 
@@ -111,6 +117,7 @@ export class Storage {
     const idx = this.taskOrder.indexOf(id);
     if (idx >= 0) this.taskOrder.splice(idx, 1);
     this.appendLine(TASKS_FILE, { op: 'delete', id });
+    if (SQLITE_SYNC) sqliteStore.deleteTask(id);
     return true;
   }
 
@@ -197,6 +204,7 @@ export class Storage {
       this.logs.shift();
     }
     this.appendLine(LOGS_FILE, entry);
+    if (SQLITE_SYNC) sqliteStore.upsertLog(entry);
   }
 
   getRecentLogs(limit: number = 100, filter?: {
@@ -221,6 +229,7 @@ export class Storage {
       this.sessionOrder.push(session.id);
     }
     this.appendLine(SESSIONS_FILE, { op: 'create', session });
+    if (SQLITE_SYNC) sqliteStore.upsertSession(session);
   }
 
   updateSession(id: string, patch: Partial<Session>): boolean {
@@ -229,6 +238,7 @@ export class Storage {
     const updated: Session = { ...existing, ...patch, updated_at: Date.now() };
     this.sessions.set(id, updated);
     this.appendLine(SESSIONS_FILE, { op: 'update', id, patch });
+    if (SQLITE_SYNC) sqliteStore.upsertSession(updated);
     return true;
   }
 
@@ -238,6 +248,7 @@ export class Storage {
     const idx = this.sessionOrder.indexOf(id);
     if (idx >= 0) this.sessionOrder.splice(idx, 1);
     this.appendLine(SESSIONS_FILE, { op: 'delete', id });
+    if (SQLITE_SYNC) sqliteStore.deleteSession(id);
     return true;
   }
 

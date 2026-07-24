@@ -32,6 +32,7 @@ import {
 } from './types.js';
 import { storage } from './storage.js';
 import { sessionManager } from './session.js';
+import { modelsConfig } from './lib/models-config.js';
 import { EventEmitter } from 'events';
 
 /** 允许的状态转换表（key=from, value=合法 to 集合） */
@@ -106,24 +107,37 @@ export class TaskQueue extends EventEmitter {
         projectDir = session.project_dir;
       }
     }
+    // v5.4.2: 根据 task_type 解析使用的 provider/model，写入 context.model_routing
+    const routing = modelsConfig.resolve(taskData.type);
+    const context = {
+      ...(taskData.context || {}),
+      model_routing: {
+        provider: routing.provider,
+        model: routing.model,
+        source: routing.source,
+        resolved_at: Date.now()
+      }
+    };
     const fullTask: Task = {
       ...taskData,
       id: this.generateTaskId(),
       status: 'pending',
       created_at: Date.now(),
       session_id: sessionId,
-      project_dir: projectDir
+      project_dir: projectDir,
+      context
     };
 
     storage.appendTask(fullTask);
     this.notifyWaiters(fullTask);
     this.emit('task_added', fullTask);
-    this.addLog('info', 'task', `任务创建: ${fullTask.id} (${fullTask.type}/${fullTask.priority})`, {
+    this.addLog('info', 'task', `任务创建: ${fullTask.id} (${fullTask.type}/${fullTask.priority}) → ${routing.provider}/${routing.model}`, {
       task_id: fullTask.id,
       type: fullTask.type,
       priority: fullTask.priority,
       session_id: fullTask.session_id,
-      project_dir: fullTask.project_dir
+      project_dir: fullTask.project_dir,
+      routing
     });
     return fullTask;
   }

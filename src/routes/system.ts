@@ -12,6 +12,7 @@ import * as path from 'path';
 import { systemSettings, DEFAULT_SYSTEM_SETTINGS } from '../lib/settings.js';
 import { taskQueue } from '../task-queue.js';
 import { asyncHandler } from '../middleware/error.js';
+import { sqliteStore } from '../lib/sqlite-store.js';
 
 export const systemRouter = Router();
 
@@ -114,4 +115,23 @@ systemRouter.post('/cleanup', asyncHandler((req, res) => {
   }
   taskQueue.addLog('success', 'system', `[cleanup] 删除 ${removed} 个日志文件，保留 ${kept} 个（retention=${retention}d）`);
   res.json({ success: true, data: { removed, kept, retention_days: retention, errors } });
+}));
+
+// v5.4.2: SQLite 状态（表行数 + 文件大小 + 写错误数 + 迁移版本）
+systemRouter.get('/sqlite/status', asyncHandler((_req, res) => {
+  const counts = sqliteStore.getTableCounts();
+  const totalRows = Object.values(counts).reduce((a, b) => a + b, 0);
+  res.json({
+    success: true,
+    data: {
+      healthy: sqliteStore.isHealthy(),
+      file_size: sqliteStore.getDbFileSize(),
+      write_errors: sqliteStore.getWriteErrors(),
+      tables: counts,
+      total_rows: totalRows,
+      schema_version: sqliteStore.getMeta('schema_version'),
+      migrated_at: sqliteStore.getMeta('migrated_at'),
+      sync_enabled: process.env.AIBRIDGE_SQLITE_SYNC !== '0'
+    }
+  });
 }));
