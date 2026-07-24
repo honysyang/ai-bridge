@@ -614,10 +614,30 @@
     if (global.Plan) global.Plan.startPlanReminderScheduler();
     if (global.Overview) global.Overview.init();   // v5.2.1
     loadUserBadge();      // v5.4.0
+    loadAppVersion();     // v5.5.1 动态版本号
     bindEvents();
     applyColumnWidths();
     const hashTab = (location.hash.match(/^#tab\/(\w+)/) || [])[1];
     switchTab(hashTab || 'chat', { skipHash: true });
+  }
+
+  // ======== v5.5.1 动态版本号注入 ========
+  async function loadAppVersion() {
+    const el = document.getElementById('app-version');
+    if (!el) return;
+    try {
+      const { data } = await api('/api/system/version');
+      if (data && data.version) {
+        el.textContent = 'v' + data.version;
+        // 同步更新 <title>
+        if (data.name) {
+          document.title = `${data.name} 智能体桥接器 · 控制台`;
+        }
+      }
+    } catch (e) {
+      el.textContent = 'v?';
+      console.warn('[loadAppVersion] failed:', e.message);
+    }
   }
 
   // ======== v5.4.0 用户徽章 =====

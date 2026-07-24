@@ -161,7 +161,7 @@
     <div class="login-header">
       <div class="login-logo">AB</div>
       <div class="login-title">ai-bridge</div>
-      <div class="login-subtitle">AI 智能体桥接器 · v5.5.0</div>
+      <div class="login-subtitle" id="login-subtitle">AI 智能体桥接器 · <span id="login-version">v--</span></div>
     </div>
 
     <div class="alert" id="alert"></div>
@@ -188,6 +188,20 @@
   <script>
     (function () {
       'use strict';
+
+      // v5.5.1: 动态获取版本号（不依赖硬编码）
+      (async () => {
+        try {
+          const r = await fetch('/api/system/version');
+          if (r.ok) {
+            const d = await r.json();
+            if (d && d.data && d.data.version) {
+              const el = document.getElementById('login-version');
+              if (el) el.textContent = 'v' + d.data.version;
+            }
+          }
+        } catch {}
+      })();
 
       // 已经有 token 则直接进首页
       const existing = localStorage.getItem('aibridge_token');

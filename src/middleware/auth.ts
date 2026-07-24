@@ -33,7 +33,8 @@ const PUBLIC_API_PATHS = [
   '/api/task/poll',
   '/api/task/complete',
   '/api/task/stats',
-  '/api/health'
+  '/api/health',
+  '/api/system/version'  // v5.5.1: 公开版本号（login 页需要）
 ];
 // - 正则匹配的路径（如 /api/task/<id>/retry）
 const PUBLIC_API_PATTERNS = [

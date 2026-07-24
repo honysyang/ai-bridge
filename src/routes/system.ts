@@ -13,6 +13,7 @@ import { systemSettings, DEFAULT_SYSTEM_SETTINGS } from '../lib/settings.js';
 import { taskQueue } from '../task-queue.js';
 import { asyncHandler } from '../middleware/error.js';
 import { sqliteStore } from '../lib/sqlite-store.js';
+import { getAppVersion, getAppName, getAppDescription } from '../lib/version.js';
 
 export const systemRouter = Router();
 
@@ -115,6 +116,18 @@ systemRouter.post('/cleanup', asyncHandler((req, res) => {
   }
   taskQueue.addLog('success', 'system', `[cleanup] 删除 ${removed} 个日志文件，保留 ${kept} 个（retention=${retention}d）`);
   res.json({ success: true, data: { removed, kept, retention_days: retention, errors } });
+}));
+
+// v5.5.1: 应用版本（前端用，动态注入 header / login 等位置）
+systemRouter.get('/version', asyncHandler((_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      version: getAppVersion(),
+      name: getAppName(),
+      description: getAppDescription()
+    }
+  });
 }));
 
 // v5.4.2: SQLite 状态（表行数 + 文件大小 + 写错误数 + 迁移版本）
