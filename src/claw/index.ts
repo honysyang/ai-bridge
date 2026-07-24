@@ -2,10 +2,12 @@
 //
 // v4.1.0: 只支持 iLink Bot API。
 // 凭证统一存 ~/.config/agent-canvas/secrets.env。
+// v5.5.0: 集成 IdleNotifier（空闲提醒）。
 
 import { ClawAdapter } from './adapter.js';
 import { IlinkAdapter } from './ilink-adapter.js';
 import { MessageBridge } from './message-bridge.js';
+import { IdleNotifier } from './idle-notifier.js';
 import { clawConfig } from './config.js';
 import { ClawStatus, WeChatMessage } from './types.js';
 import { taskQueue } from '../task-queue.js';
@@ -13,6 +15,7 @@ import { taskQueue } from '../task-queue.js';
 class ClawManager {
   private adapter: ClawAdapter | null = null;
   private bridge: MessageBridge | null = null;
+  private idleNotifier: IdleNotifier | null = null;   // v5.5.0
 
   /**
    * 启动 claw（由 server.ts.startServer 调用）
@@ -33,7 +36,12 @@ class ClawManager {
     await this.stop();
     this.adapter = new IlinkAdapter();
     this.bridge = new MessageBridge(this.adapter);
-    taskQueue.addLog('info', 'bridge', '[claw] 启动 iLink adapter');
+
+    // v5.5.0: 启动 idle notifier（依赖 adapter，但与 bridge 解耦）
+    this.idleNotifier = new IdleNotifier(this.adapter);
+    this.idleNotifier.start();
+
+    taskQueue.addLog('info', 'bridge', '[claw] 启动 iLink adapter + idle notifier');
     try {
       await this.adapter.start();
     } catch (e: any) {
@@ -45,6 +53,9 @@ class ClawManager {
    * 停止
    */
   async stop(): Promise<void> {
+    // v5.5.0: 先停止 idle notifier
+    this.idleNotifier?.destroy();
+    this.idleNotifier = null;
     if (!this.adapter) return;
     try {
       await this.adapter.stop();
@@ -79,6 +90,13 @@ class ClawManager {
   }
 
   /**
+   * v5.5.0: 获取 idle notifier
+   */
+  getIdleNotifier(): IdleNotifier | null {
+    return this.idleNotifier;
+  }
+
+  /**
    * 向后兼容（始终返回 false）
    */
   isMock(): boolean {
@@ -90,3 +108,4 @@ export const clawManager = new ClawManager();
 
 // 避免未使用的导入警告
 export type { WeChatMessage };
+export { IdleNotifier };

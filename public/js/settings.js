@@ -291,6 +291,130 @@
     }
   }
 
+  // ======== 微信桥接区段（v5.5.0 空闲提醒） ========
+
+  let idleStatusCache = null;
+
+  function fillWechatForm(cfg) {
+    const $ = (id) => document.getElementById(id);
+    if ($('setting-claw-enabled')) $('setting-claw-enabled').checked = !!cfg.enabled;
+    if ($('setting-claw-auto-reply')) $('setting-claw-auto-reply').checked = !!cfg.auto_reply;
+    if ($('setting-claw-dedup')) $('setting-claw-dedup').value = cfg.message_dedup_ttl_ms || 300000;
+
+    // idle
+    if ($('setting-idle-enabled')) $('setting-idle-enabled').checked = !!cfg.idle_enabled;
+    if ($('setting-idle-interval')) $('setting-idle-interval').value = cfg.idle_check_interval_min || 5;
+    if ($('setting-idle-min-quiet')) $('setting-idle-min-quiet').value = cfg.idle_min_quiet_min || 5;
+    if ($('setting-idle-cooldown')) $('setting-idle-cooldown').value = cfg.idle_cooldown_min || 30;
+    if ($('setting-idle-work-start')) $('setting-idle-work-start').value = (cfg.idle_work_hours || {}).start ?? 9;
+    if ($('setting-idle-work-end')) $('setting-idle-work-end').value = (cfg.idle_work_hours || {}).end ?? 18;
+    if ($('setting-idle-rest-start')) $('setting-idle-rest-start').value = (cfg.idle_rest_hours || {}).start ?? 22;
+    if ($('setting-idle-rest-end')) $('setting-idle-rest-end').value = (cfg.idle_rest_hours || {}).end ?? 7;
+
+    const types = cfg.idle_message_types || [];
+    if ($('setting-idle-msg-daily')) $('setting-idle-msg-daily').checked = types.includes('daily_summary');
+    if ($('setting-idle-msg-task')) $('setting-idle-msg-task').checked = types.includes('task_summary');
+  }
+
+  function readWechatForm() {
+    const $ = (id) => document.getElementById(id);
+    const types = [];
+    if ($('setting-idle-msg-daily')?.checked) types.push('daily_summary');
+    if ($('setting-idle-msg-task')?.checked) types.push('task_summary');
+    return {
+      enabled: $('setting-claw-enabled')?.checked ?? true,
+      auto_reply: $('setting-claw-auto-reply')?.checked ?? true,
+      message_dedup_ttl_ms: parseInt($('setting-claw-dedup')?.value, 10) || 300000,
+      idle_enabled: $('setting-idle-enabled')?.checked ?? false,
+      idle_check_interval_min: parseInt($('setting-idle-interval')?.value, 10) || 5,
+      idle_min_quiet_min: parseInt($('setting-idle-min-quiet')?.value, 10) || 5,
+      idle_cooldown_min: parseInt($('setting-idle-cooldown')?.value, 10) || 30,
+      idle_work_hours: {
+        start: parseInt($('setting-idle-work-start')?.value, 10) || 9,
+        end: parseInt($('setting-idle-work-end')?.value, 10) || 18
+      },
+      idle_rest_hours: {
+        start: parseInt($('setting-idle-rest-start')?.value, 10) || 22,
+        end: parseInt($('setting-idle-rest-end')?.value, 10) || 7
+      },
+      idle_message_types: types
+    };
+  }
+
+  async function loadWechat() {
+    try {
+      const { data } = await api('/api/claw/config');
+      fillWechatForm(data);
+    } catch (e) {
+      showNotification(`❌ 微信配置加载失败: ${e.message}`, 'error');
+    }
+    loadIdleStatus();
+  }
+
+  async function saveWechat() {
+    try {
+      const patch = readWechatForm();
+      const { data } = await api('/api/claw/config', {
+        method: 'PATCH',
+        body: JSON.stringify(patch)
+      });
+      fillWechatForm(data);
+      showNotification('✅ 微信配置已保存（idle notifier 已自动重排）', 'success');
+      loadIdleStatus();
+    } catch (e) {
+      showNotification(`❌ 保存失败: ${e.message}`, 'error');
+    }
+  }
+
+  async function triggerIdleTick() {
+    try {
+      const { data } = await api('/api/claw/idle/tick', { method: 'POST', body: '{}' });
+      const { checked, sent, skipped, errors, in_work_window } = data;
+      const winStr = in_work_window ? '✅ 在窗口' : '⏸ 不在窗口';
+      showNotification(
+        `${winStr} · 检查 ${checked} 个 wxid · 发送 ${sent} · 跳过 ${skipped}${errors.length ? ' · 错误 ' + errors.length : ''}`,
+        errors.length ? 'warning' : (sent > 0 ? 'success' : 'info')
+      );
+      loadIdleStatus();
+    } catch (e) {
+      showNotification(`❌ 触发失败: ${e.message}`, 'error');
+    }
+  }
+
+  async function loadIdleStatus() {
+    const el = document.getElementById('settings-idle-status');
+    const winEl = document.getElementById('setting-idle-window-status');
+    if (!el) return;
+    try {
+      const { data } = await api('/api/claw/idle/status');
+      idleStatusCache = data;
+      if (winEl) {
+        winEl.textContent = data.in_work_window ? '✅ 当前在工作时间内' : '⏸ 当前在休息/非工作时段';
+        winEl.style.color = data.in_work_window ? '#059669' : '#94a3b8';
+      }
+      const lastTick = data.last_tick_at ? new Date(data.last_tick_at).toLocaleString('zh-CN') : '—';
+      const lastSent = data.last_sent_at ? new Date(data.last_sent_at).toLocaleString('zh-CN') : '—';
+      const rows = [
+        ['已初始化', data.initialized ? '✅' : '❌'],
+        ['启用状态', data.enabled ? '✅ 启用' : '❌ 禁用'],
+        ['工作窗口', data.in_work_window ? '✅ 在窗口内' : '⏸ 不在窗口'],
+        ['活跃微信用户', `${data.active_wxid_count} 个`],
+        ['上次检查', lastTick],
+        ['上次发送', lastSent],
+        ['上次目标', data.last_sent_wxid || '—'],
+        ['上次结果', data.last_sent_status || '—'],
+        ['冷却中 wxid', data.cooldowns && data.cooldowns.length > 0
+          ? data.cooldowns.map(c => `${c.wxid.slice(0, 12)}…(剩 ${Math.max(0, Math.round((c.next_avail_at - Date.now()) / 60000))} 分)`).join(', ')
+          : '无']
+      ];
+      el.innerHTML = rows.map(([k, v]) =>
+        `<div class="about-row"><div class="about-key">${escapeHtml(k)}</div><div class="about-val">${escapeHtml(String(v))}</div></div>`
+      ).join('');
+    } catch (e) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-text">加载失败: ${escapeHtml(e.message)}</div></div>`;
+    }
+  }
+
   // ======== 子导航 ========
   function switchSection(name) {
     document.querySelectorAll('.subnav-btn').forEach(b => {
@@ -303,6 +427,7 @@
     if (name === 'models') loadModels();
     if (name === 'system') loadSystem();
     if (name === 'logs') { loadSystem(); loadStorageInfo(); }
+    if (name === 'wechat') loadWechat();
     if (name === 'about') loadAbout();
   }
 
@@ -337,6 +462,11 @@
     // 日志保存和系统保存是同一份数据，复用 saveSystem
     document.getElementById('btn-setting-log-save')?.addEventListener('click', saveSystem);
     document.getElementById('btn-setting-log-cleanup')?.addEventListener('click', cleanupLogs);
+
+    // v5.5.0 微信桥接
+    document.getElementById('btn-setting-claw-save')?.addEventListener('click', saveWechat);
+    document.getElementById('btn-setting-idle-save')?.addEventListener('click', saveWechat);
+    document.getElementById('btn-setting-idle-tick')?.addEventListener('click', triggerIdleTick);
   }
 
   function initSettings() {

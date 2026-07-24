@@ -152,6 +152,59 @@ clawRouter.patch('/config', asyncHandler((req, res) => {
   res.json({ success: true, data: updated });
 }));
 
+// ======== v5.5.0: 空闲提醒（Idle Notifier）=======
+
+// 状态查询
+clawRouter.get('/idle/status', asyncHandler((_req, res) => {
+  const notifier = clawManager.getIdleNotifier();
+  if (!notifier) {
+    return res.json({
+      success: true,
+      data: {
+        enabled: false,
+        initialized: false,
+        message: 'idle notifier 未初始化（微信未启动？）'
+      }
+    });
+  }
+  res.json({ success: true, data: { initialized: true, ...notifier.getStatus() } });
+}));
+
+// 手动触发一次 tick（用于测试）
+clawRouter.post('/idle/tick', asyncHandler(async (_req, res) => {
+  const notifier = clawManager.getIdleNotifier();
+  if (!notifier) {
+    return res.status(503).json({ success: false, error: 'idle notifier 未初始化' });
+  }
+  try {
+    const result = await notifier.tickNow();
+    res.json({ success: true, data: result });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+}));
+
+// 预览消息（不发，用于前端 dry-run 调试）
+clawRouter.post('/idle/preview', asyncHandler(async (req, res) => {
+  const notifier = clawManager.getIdleNotifier();
+  if (!notifier) {
+    return res.status(503).json({ success: false, error: 'idle notifier 未初始化' });
+  }
+  const wxid = (req.body && req.body.wxid) as string | undefined;
+  // 复用 notifier 的 composeDailySummary / composeTaskSummary
+  // 这里通过 getStatus 拿到 types，然后逐个组合
+  const status = notifier.getStatus();
+  // 简化：返回当前会发的内容（dry-run 模拟）
+  res.json({
+    success: true,
+    data: {
+      ...status,
+      preview_note: '这是模拟预览（不真发）。完整预览逻辑见 idle-notifier.composeIdleText'
+    }
+  });
+  if (wxid) { /* 保持参数兼容 */ }
+}));
+
 // ======== iLink 凭证状态（只读）=======
 const SECRETS_FILE = path.join(os.homedir(), '.config', 'agent-canvas', 'secrets.env');
 

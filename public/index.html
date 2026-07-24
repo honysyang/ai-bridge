@@ -489,6 +489,7 @@
           <button class="subnav-btn active" data-section="models">🤖 AI 模型</button>
           <button class="subnav-btn" data-section="system">🛠 系统行为</button>
           <button class="subnav-btn" data-section="logs">📜 日志与存储</button>
+          <button class="subnav-btn" data-section="wechat">💬 微信桥接</button>
           <button class="subnav-btn" data-section="about">ℹ️ 关于</button>
         </div>
 
@@ -660,6 +661,126 @@
               <p class="settings-card-hint">data 目录概览</p>
             </div>
             <div class="storage-info" id="settings-storage-info">
+              <div class="empty-state"><div class="empty-text">加载中...</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 区段：微信桥接（v5.5.0 空闲提醒） ===== -->
+        <section class="settings-section" id="settings-section-wechat" hidden>
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>💬 微信基础配置</h3>
+              <p class="settings-card-hint">自动回复、消息去重、连接参数</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-claw-enabled"> 启用微信 Claw 桥接</label>
+              </div>
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-claw-auto-reply"> 任务完成后自动回复微信</label>
+              </div>
+              <div class="form-group">
+                <label>消息去重窗口（毫秒）</label>
+                <input type="number" id="setting-claw-dedup" class="form-input" min="0" step="1000">
+                <div class="form-hint">同一 msg_id 在此时间内的重复消息会被丢弃（默认 5 分钟）</div>
+              </div>
+            </div>
+            <div class="settings-card-actions">
+              <button class="btn-primary" id="btn-setting-claw-save">💾 保存微信配置</button>
+            </div>
+          </div>
+
+          <div class="settings-card settings-callout">
+            <div class="callout-icon">💡</div>
+            <div class="callout-body">
+              <strong>空闲提醒（v5.5.0 新增）</strong>
+              <p>当某个微信用户 <strong>N 分钟</strong> 没有发新任务时，自动发送一条提醒。可选发送今日数据摘要、最近任务总结或两者结合。默认 <strong>关闭</strong>，需用户显式开启。</p>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>⏰ 空闲提醒 · 触发条件</h3>
+              <p class="settings-card-hint">满足下列<strong>全部</strong>条件时，发送一条提醒</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-idle-enabled"> 启用空闲提醒</label>
+              </div>
+              <div class="form-group">
+                <label>检查间隔（分钟）</label>
+                <input type="number" id="setting-idle-interval" class="form-input" min="1" max="1440">
+                <div class="form-hint">后台多久检查一次活跃用户（默认 5 分钟）</div>
+              </div>
+              <div class="form-group">
+                <label>最少静默时间（分钟）</label>
+                <input type="number" id="setting-idle-min-quiet" class="form-input" min="1" max="1440">
+                <div class="form-hint">用户最后一条任务/消息后，至少 N 分钟才发（默认 5 分钟）</div>
+              </div>
+              <div class="form-group">
+                <label>同 wxid 冷却时间（分钟）</label>
+                <input type="number" id="setting-idle-cooldown" class="form-input" min="1" max="1440">
+                <div class="form-hint">同一用户两次提醒之间的最小间隔（默认 30 分钟，避免打扰）</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>🕐 空闲提醒 · 时间窗口</h3>
+              <p class="settings-card-hint">只在工作时间内提醒，休息时间静默（跨天支持）</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group">
+                <label>工作时间起始（小时 0-23）</label>
+                <input type="number" id="setting-idle-work-start" class="form-input" min="0" max="23">
+              </div>
+              <div class="form-group">
+                <label>工作时间结束（小时 0-24）</label>
+                <input type="number" id="setting-idle-work-end" class="form-input" min="0" max="24">
+              </div>
+              <div class="form-group">
+                <label>休息时间起始（小时 0-23）</label>
+                <input type="number" id="setting-idle-rest-start" class="form-input" min="0" max="23">
+              </div>
+              <div class="form-group">
+                <label>休息时间结束（小时 0-24，跨天则小于 start）</label>
+                <input type="number" id="setting-idle-rest-end" class="form-input" min="0" max="24">
+                <div class="form-hint">例：22-7 表示 22:00 至次日 07:00 休息（不提醒）</div>
+              </div>
+              <div class="form-group">
+                <label>当前窗口状态</label>
+                <div class="form-hint" id="setting-idle-window-status">--</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>📤 空闲提醒 · 消息内容</h3>
+              <p class="settings-card-hint">选择要发送的内容类型（可多选）</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-idle-msg-daily"> 📊 今日数据摘要（任务数 / 成功率 / 累计）</label>
+              </div>
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-idle-msg-task"> 📋 最近任务总结（最近 10 条 Q&A）</label>
+              </div>
+            </div>
+            <div class="settings-card-actions">
+              <button class="btn-primary" id="btn-setting-idle-save">💾 保存空闲提醒配置</button>
+              <button class="btn-secondary" id="btn-setting-idle-tick">🚀 立即触发一次</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>📊 空闲提醒 · 运行时状态</h3>
+              <p class="settings-card-hint">最近一次检查、发送、冷却情况</p>
+            </div>
+            <div class="about-grid" id="settings-idle-status">
               <div class="empty-state"><div class="empty-text">加载中...</div></div>
             </div>
           </div>

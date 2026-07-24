@@ -67,6 +67,13 @@ export interface WeChatContact {
 //   ILINK_BOT_ID=xxx
 //   ILINK_USER_ID=xxx
 
+// 空闲时间窗口（v5.5.0）
+// 用于 idle notifier 在指定时间段内推送
+export interface TimeWindow {
+  start: number;  // 0-23
+  end: number;    // 0-24, start <= end
+}
+
 export interface ClawConfig {
   enabled: boolean;                 // 总开关
   auto_reply: boolean;              // 任务完成后自动回微信
@@ -76,12 +83,29 @@ export interface ClawConfig {
   poll_interval_ms?: number;        // 兼容字段（iLink 用长轮询）
   reconnect_max_retries?: number;   // 兼容字段
   api_token?: string;               // 兼容字段
+
+  // v5.5.0 空闲提醒
+  idle_enabled?: boolean;                                // 空闲提醒总开关
+  idle_check_interval_min?: number;                      // 检查间隔（分钟）
+  idle_min_quiet_min?: number;                           // 最少静默时间（分钟）才触发
+  idle_work_hours?: TimeWindow;                          // 工作时间窗口
+  idle_rest_hours?: TimeWindow;                          // 休息时间窗口（跨天支持，start > end 也合法）
+  idle_message_types?: ('daily_summary' | 'task_summary')[];  // 消息类型
+  idle_cooldown_min?: number;                            // 同 wxid 冷却时间（分钟）
 }
 
 export const DEFAULT_CLAW_CONFIG: ClawConfig = {
   enabled: true,
   auto_reply: true,
   message_dedup_ttl_ms: 300000,
+  // v5.5.0 空闲提醒默认
+  idle_enabled: false,                                    // 默认关闭（用户显式开启）
+  idle_check_interval_min: 5,                            // 5 分钟检查一次
+  idle_min_quiet_min: 5,                                 // 5 分钟无任务才触发
+  idle_work_hours: { start: 9, end: 18 },                // 工作时间 9:00-18:00
+  idle_rest_hours: { start: 22, end: 7 },                // 休息时间 22:00-07:00（跨天）
+  idle_message_types: ['daily_summary', 'task_summary'],
+  idle_cooldown_min: 30                                  // 同一 wxid 30 分钟内最多 1 条
 };
 
 // ======== 事件类型 ========
