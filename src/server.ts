@@ -21,6 +21,8 @@ import { chatRouter } from './routes/chat.js';
 import { clawRouter, legacyWeixinRouter } from './routes/claw.js';
 import { heartbeatRouter } from './routes/heartbeat.js';
 import { overviewRouter } from './routes/overview.js';
+import { modelRouter } from './routes/models.js';
+import { systemRouter } from './routes/system.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { childLogger, logRequest } from './lib/logger.js';
@@ -172,6 +174,8 @@ app.use('/api/wf', workflowRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/claw', clawRouter);
 app.use('/api/overview', overviewRouter);
+app.use('/api/models', modelRouter);
+app.use('/api/system', systemRouter);
 // 旧 weixin 路径兼容（前端不再使用）
 app.use('/api', legacyWeixinRouter);
 

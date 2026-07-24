@@ -13,8 +13,8 @@
   <!-- ========== Header ========== -->
   <header class="app-header">
     <div class="header-left">
-      <h1>ai-bridge <span class="version">v5.2.1</span></h1>
-      <p class="subtitle" id="header-subtitle">智能体桥接控制台 · 知识库 · 工作流 · 计划</p>
+      <h1>ai-bridge <span class="version">v5.3.0</span></h1>
+      <p class="subtitle" id="header-subtitle">智能体桥接控制台 · 知识库 · 工作流 · 计划 · 设置</p>
     </div>
     <div class="header-right">
       <!-- 微信 Claw 状态徽章（v4.0.0） -->
@@ -55,6 +55,10 @@
     <button class="tab-btn" data-tab="overview" role="tab" aria-selected="false">
       <span class="tab-icon">📈</span>
       <span class="tab-label">概览</span>
+    </button>
+    <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">
+      <span class="tab-icon">⚙️</span>
+      <span class="tab-label">设置</span>
     </button>
   </nav>
 
@@ -464,6 +468,224 @@
       </div>
     </div>
 
+    <!-- ===== 面板：设置（v5.3.0）模型 + 系统 ===== -->
+    <div class="panel panel-settings" id="panel-settings" hidden>
+      <div class="settings-container">
+        <div class="settings-hero">
+          <div>
+            <h1 class="settings-title">⚙️ 设置</h1>
+            <p class="settings-subtitle">配置 AI 模型、系统行为、桥接器参数</p>
+          </div>
+          <div class="settings-hero-actions">
+            <button class="btn-secondary" id="btn-settings-refresh">↻ 刷新</button>
+            <button class="btn-secondary" id="btn-settings-reset-all" title="恢复所有设置为默认值">⟲ 全部恢复默认</button>
+          </div>
+        </div>
+
+        <div class="settings-subnav" id="settings-subnav">
+          <button class="subnav-btn active" data-section="models">🤖 AI 模型</button>
+          <button class="subnav-btn" data-section="system">🛠 系统行为</button>
+          <button class="subnav-btn" data-section="logs">📜 日志与存储</button>
+          <button class="subnav-btn" data-section="about">ℹ️ 关于</button>
+        </div>
+
+        <!-- ===== 区段：AI 模型 ===== -->
+        <section class="settings-section" id="settings-section-models">
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>🤖 当前默认模型</h3>
+              <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group">
+                <label>默认 Provider</label>
+                <select id="setting-model-provider" class="form-input"></select>
+              </div>
+              <div class="form-group">
+                <label>默认模型</label>
+                <select id="setting-model-name" class="form-input"></select>
+                <div class="form-hint" id="setting-model-name-hint">--</div>
+              </div>
+            </div>
+            <div class="settings-card-actions">
+              <button class="btn-primary" id="btn-setting-model-save">💾 保存默认模型</button>
+              <button class="btn-secondary" id="btn-setting-model-reset">恢复默认</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>📚 Provider 目录</h3>
+              <p class="settings-card-hint">系统内置可用模型与凭证状态（密钥从 <code>~/.config/agent-canvas/secrets.env</code> 读取，<strong>不</strong>在前端编辑）</p>
+            </div>
+            <div class="provider-list" id="provider-list">
+              <div class="empty-state"><div class="empty-text">加载中...</div></div>
+            </div>
+          </div>
+
+          <div class="settings-card settings-callout">
+            <div class="callout-icon">🔐</div>
+            <div class="callout-body">
+              <strong>关于 API 密钥</strong>
+              <p>所有 Provider 的 API key、Base URL、Model 名均通过 <code>secrets.env</code>（chmod 600）读取，不在前端编辑。新增 Provider 后，在该文件中追加 <code>XXX_API_KEY=...</code> 即可，无需重启即可热加载（部分字段需重启 adapter）。</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 区段：系统行为 ===== -->
+        <section class="settings-section" id="settings-section-system" hidden>
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>🎨 界面偏好</h3>
+              <p class="settings-card-hint">主题、密度、动画、语言</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group">
+                <label>主题</label>
+                <select id="setting-ui-theme" class="form-input">
+                  <option value="auto">🌓 跟随系统</option>
+                  <option value="light">☀️ 浅色</option>
+                  <option value="dark">🌙 深色</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>密度</label>
+                <select id="setting-ui-density" class="form-input">
+                  <option value="comfortable">宽松</option>
+                  <option value="compact">紧凑</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>语言</label>
+                <select id="setting-ui-language" class="form-input">
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en-US">English</option>
+                </select>
+              </div>
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-ui-animations"> 启用界面动画</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>📌 任务行为</h3>
+              <p class="settings-card-hint">新建任务的默认行为</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group">
+                <label>默认优先级</label>
+                <select id="setting-task-priority" class="form-input">
+                  <option value="low">低</option>
+                  <option value="normal">普通</option>
+                  <option value="high">高</option>
+                  <option value="urgent">紧急</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>失败重试次数</label>
+                <input type="number" id="setting-task-retries" min="0" max="10" class="form-input">
+              </div>
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-task-auto-retry"> 失败自动重试</label>
+              </div>
+              <div class="form-group">
+                <label>完成后归档（天）</label>
+                <input type="number" id="setting-task-archive-days" min="1" max="365" class="form-input">
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>🌉 桥接器</h3>
+              <p class="settings-card-hint">心跳 / 长轮询参数（修改后下次启动生效）</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group">
+                <label>心跳间隔（秒）</label>
+                <input type="number" id="setting-bridge-heartbeat" min="1" max="60" class="form-input">
+              </div>
+              <div class="form-group">
+                <label>长轮询超时（秒）</label>
+                <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input">
+              </div>
+            </div>
+            <div class="settings-card-actions">
+              <button class="btn-primary" id="btn-setting-system-save">💾 保存系统设置</button>
+              <button class="btn-secondary" id="btn-setting-system-reset">恢复默认</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 区段：日志与存储 ===== -->
+        <section class="settings-section" id="settings-section-logs" hidden>
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>📜 日志</h3>
+              <p class="settings-card-hint">日志级别、保留策略、清理</p>
+            </div>
+            <div class="settings-form-grid">
+              <div class="form-group">
+                <label>日志级别（启动）</label>
+                <select id="setting-log-level" class="form-input">
+                  <option value="debug">debug</option>
+                  <option value="info">info</option>
+                  <option value="warn">warn</option>
+                  <option value="error">error</option>
+                </select>
+                <div class="form-hint">运行时可通过 <code>LOG_LEVEL</code> 环境变量覆盖（需重启）</div>
+              </div>
+              <div class="form-group">
+                <label>保留天数（0=永久）</label>
+                <input type="number" id="setting-log-retention" min="0" max="365" class="form-input">
+              </div>
+              <div class="form-group form-check">
+                <label><input type="checkbox" id="setting-log-console"> 同时输出到控制台</label>
+              </div>
+            </div>
+            <div class="settings-card-actions">
+              <button class="btn-primary" id="btn-setting-log-save">💾 保存</button>
+              <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">🗑 立即清理</button>
+            </div>
+          </div>
+
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>💾 数据存储</h3>
+              <p class="settings-card-hint">data 目录概览</p>
+            </div>
+            <div class="storage-info" id="settings-storage-info">
+              <div class="empty-state"><div class="empty-text">加载中...</div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== 区段：关于 ===== -->
+        <section class="settings-section" id="settings-section-about" hidden>
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>ℹ️ 关于 ai-bridge</h3>
+              <p class="settings-card-hint">运行时信息</p>
+            </div>
+            <div class="about-grid" id="settings-about-info">
+              <div class="empty-state"><div class="empty-text">加载中...</div></div>
+            </div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-head">
+              <h3>🔌 微信 Claw 状态</h3>
+              <p class="settings-card-hint">iLink Bot 连接信息</p>
+            </div>
+            <div class="about-grid" id="settings-claw-info">
+              <div class="empty-state"><div class="empty-text">加载中...</div></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
     <!-- ===== 抽屉：KB 条目详情/编辑 ===== -->
     <div class="drawer" id="kb-drawer" aria-hidden="true">
       <div class="drawer-header">
@@ -714,14 +936,15 @@
   <div id="notification-container"></div>
 
   <!-- 客户端拆分模块（v5.2.0）：按依赖顺序加载 -->
-  <script src="js/core.js?v=5.2.1"></script>
-  <script src="js/sessions.js?v=5.2.1"></script>
-  <script src="js/tasks.js?v=5.2.1"></script>
-  <script src="js/kb.js?v=5.2.1"></script>
-  <script src="js/wf.js?v=5.2.1"></script>
-  <script src="js/plan.js?v=5.2.1"></script>
-  <script src="js/claw.js?v=5.2.1"></script>
-  <script src="js/overview.js?v=5.2.1"></script>
-  <script src="js/main.js?v=5.2.1"></script>
+  <script src="js/core.js?v=5.3.0"></script>
+  <script src="js/sessions.js?v=5.3.0"></script>
+  <script src="js/tasks.js?v=5.3.0"></script>
+  <script src="js/kb.js?v=5.3.0"></script>
+  <script src="js/wf.js?v=5.3.0"></script>
+  <script src="js/plan.js?v=5.3.0"></script>
+  <script src="js/claw.js?v=5.3.0"></script>
+  <script src="js/overview.js?v=5.3.0"></script>
+  <script src="js/settings.js?v=5.3.0"></script>
+  <script src="js/main.js?v=5.3.0"></script>
 </body>
 </html>

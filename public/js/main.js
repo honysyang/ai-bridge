@@ -14,15 +14,18 @@
     kb: 'panel-kb',
     workflow: 'panel-workflow',
     plan: 'panel-plan',
-    overview: 'panel-overview'    // v5.2.1
+    overview: 'panel-overview',
+    settings: 'panel-settings'    // v5.3.0
   };
 
+  // TAB_INIT: 返回 init 函数的引用，兼容挂在 global.X.init 上的模块
   const TAB_INIT = {
-    chat: null,            // 始终初始化（init 流程已加载）
-    kb: 'initKB',
-    workflow: 'initWF',
-    plan: 'initPlan',
-    overview: 'initOverview'   // v5.2.1
+    chat: () => null,                                  // 始终初始化（init 流程已加载）
+    kb: () => window.initKB,
+    workflow: () => window.initWF,
+    plan: () => window.initPlan,
+    overview: () => window.initOverview,
+    settings: () => (global.Settings && global.Settings.init) || window.initSettings  // v5.3.0
   };
 
   function switchTab(tabName, opts = {}) {
@@ -56,7 +59,7 @@
     });
 
     if (previous !== tabName && TAB_INIT[tabName]) {
-      const initFn = window[TAB_INIT[tabName]];
+      const initFn = TAB_INIT[tabName]();
       if (typeof initFn === 'function') initFn();
     }
 
