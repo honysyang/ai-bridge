@@ -471,17 +471,13 @@
       </div>
     </div>
 
-    <!-- ===== 面板：设置（v5.5.3）分栏设置 ===== -->
+    <!-- ===== 面板：设置（v5.5.5）分栏设置 ===== -->
     <div class="panel panel-settings" id="panel-settings" hidden>
       <div class="settings-layout">
         <!-- 左侧导航 -->
         <aside class="settings-sidebar" id="settings-sidebar">
-          <div class="settings-sidebar-header">
-            <h2 class="settings-title">⚙️ 设置</h2>
-            <p class="settings-subtitle">AI 模型 · 系统 · 日志 · 安全 · 关于</p>
-          </div>
           <div class="settings-search-wrap">
-            <input type="search" id="settings-search" class="settings-search" placeholder="🔍 搜索设置项..." autocomplete="off">
+            <input type="search" id="settings-search" class="settings-search" placeholder="搜索设置项..." autocomplete="off">
           </div>
           <nav class="settings-nav" id="settings-nav" role="tablist">
             <button class="settings-nav-item active" data-section="models" role="tab" aria-selected="true">
@@ -513,23 +509,20 @@
               <span class="settings-nav-label">关于</span>
             </button>
           </nav>
-          <div class="settings-sidebar-footer" id="settings-sidebar-footer">
-            <span class="settings-dirty-badge" id="settings-dirty-badge" hidden>● 未保存</span>
-          </div>
         </aside>
 
         <!-- 右侧内容区 -->
         <main class="settings-main">
-          <div class="settings-main-header">
-            <div class="settings-main-title">
-              <span id="settings-active-icon">🤖</span>
-              <span id="settings-active-label">AI 模型</span>
+          <div class="settings-toolbar">
+            <div class="settings-toolbar-title">
+              <span id="settings-toolbar-title-text">AI 模型</span>
+              <span class="settings-dirty-badge" id="settings-dirty-badge" hidden>● 未保存</span>
             </div>
-            <div class="settings-main-actions">
-              <button class="btn-secondary" id="btn-settings-refresh" title="重新加载当前页设置">↻ 刷新</button>
-              <button class="btn-secondary" id="btn-settings-cancel" title="撤销当前页未保存改动">✕ 取消</button>
-              <button class="btn-primary" id="btn-settings-save" title="保存当前页设置">💾 保存</button>
-              <button class="btn-secondary" id="btn-settings-reset-all" title="恢复当前区段为默认值">⟲ 恢复默认</button>
+            <div class="settings-toolbar-actions">
+              <button class="btn-secondary" id="btn-settings-refresh" title="重新加载当前页设置">刷新</button>
+              <button class="btn-secondary" id="btn-settings-cancel" title="撤销当前页未保存改动">取消</button>
+              <button class="btn-primary" id="btn-settings-save" title="保存当前页设置">保存</button>
+              <button class="btn-secondary" id="btn-settings-reset-all" title="恢复当前区段为默认值">恢复默认</button>
             </div>
           </div>
 

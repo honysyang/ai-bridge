@@ -78,8 +78,7 @@
       s.hidden = s.id !== `settings-section-${name}`;
     });
 
-    $('settings-active-icon').textContent = SECTIONS[name].icon;
-    $('settings-active-label').textContent = SECTIONS[name].label;
+    $('settings-toolbar-title-text').textContent = SECTIONS[name].label;
 
     const hasSave = !!SECTIONS[name].save;
     $('btn-settings-save').hidden = !hasSave;

@@ -1,7 +1,7 @@
 {
   "name": "ai-bridge",
-  "version": "5.5.4",
-  "description": "AI 智能体桥接器 v5.5.4 - 通用 Claw 适配层 + SQLite 查询层 + JSONL 持久化 + 多面板工作台 + 知识图谱 + 周报生成 + 商务风设计 + 多模型路由 + 用户认证（PBKDF2+HMAC JWT）+ 任务撤回/恢复 + 补充对话 + 项目目录自动补全 + 概览页样式统一 + 微信空闲提醒（IdleNotifier）+ 动态版本号注入 + KB RAG 自动检索 + 分栏设置面板重构 + 自定义模型管理 + 多用户管理",
+  "version": "5.5.5",
+  "description": "AI 智能体桥接器 v5.5.5 - 通用 Claw 适配层 + SQLite 查询层 + JSONL 持久化 + 多面板工作台 + 知识图谱 + 周报生成 + 商务风设计 + 多模型路由 + 用户认证（PBKDF2+HMAC JWT）+ 任务撤回/恢复 + 补充对话 + 项目目录自动补全 + 概览页样式统一 + 微信空闲提醒（IdleNotifier）+ 动态版本号注入 + KB RAG 自动检索 + 分栏设置面板重构 + 自定义模型管理 + 多用户管理 + 设置面板风格统一",
   "type": "module",
   "scripts": {
     "build": "tsc",
