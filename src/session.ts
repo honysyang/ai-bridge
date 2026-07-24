@@ -1,8 +1,13 @@
 // ======== Session Manager (v3.0.0) ========
 // 封装 storage 提供会话 CRUD、默认会话懒创建、任务计数等业务逻辑
 
+import * as fs from 'fs';
+import * as path from 'path';
 import { Session, SessionStatus, Task } from './types.js';
 import { storage } from './storage.js';
+import { childLogger } from './lib/logger.js';
+
+const log = childLogger({ module: 'session' });
 
 const DEFAULT_SESSION_ID = 'sess-default';
 const DEFAULT_SESSION_NAME = '默认会话';
@@ -10,14 +15,49 @@ const DEFAULT_SESSION_NAME = '默认会话';
 export interface CreateSessionInput {
   name: string;
   description?: string;
+  project_dir?: string;
   meta?: Record<string, any>;
 }
 
 export interface UpdateSessionInput {
   name?: string;
   description?: string;
+  project_dir?: string | null;
   status?: SessionStatus;
   meta?: Record<string, any>;
+}
+
+/**
+ * 校验 project_dir：
+ *   - 可选字段，缺省或空字符串视为未设置
+ *   - 必须为绝对路径（以 / 开头）
+ *   - 拒绝包含 `..` 的相对片段（防目录穿越）
+ *   - 路径必须存在（且为目录），不存在则报错，避免 agent 写错目录
+ *   - 规范化路径（去除尾随 /）
+ */
+export function validateProjectDir(input: string | null | undefined): string | undefined {
+  if (input == null) return undefined;
+  const trimmed = String(input).trim();
+  if (!trimmed) return undefined;
+  if (!path.isAbsolute(trimmed)) {
+    throw new Error(`项目目录必须是绝对路径: ${trimmed}`);
+  }
+  // 路径规范化后检查是否包含 ..
+  const normalized = path.normalize(trimmed);
+  const segments = normalized.split(path.sep);
+  if (segments.includes('..')) {
+    throw new Error(`项目目录不允许包含 '..': ${trimmed}`);
+  }
+  // 必须存在且为目录
+  if (!fs.existsSync(normalized)) {
+    throw new Error(`项目目录不存在: ${normalized}`);
+  }
+  const stat = fs.statSync(normalized);
+  if (!stat.isDirectory()) {
+    throw new Error(`项目路径不是目录: ${normalized}`);
+  }
+  // 去除尾随 /
+  return normalized.replace(/[\\/]+$/, '');
 }
 
 export class SessionManager {
@@ -68,12 +108,14 @@ export class SessionManager {
     if (!input.name || typeof input.name !== 'string' || !input.name.trim()) {
       throw new Error('会话名称不能为空');
     }
+    const projectDir = validateProjectDir(input.project_dir);
     this.idCounter++;
     const now = Date.now();
     const session: Session = {
       id: `sess-${now}-${this.idCounter}`,
       name: input.name.trim(),
       description: input.description?.trim(),
+      project_dir: projectDir,
       created_at: now,
       updated_at: now,
       task_count: 0,
@@ -81,6 +123,9 @@ export class SessionManager {
       meta: input.meta
     };
     storage.appendSession(session);
+    if (projectDir) {
+      log.info(`会话 ${session.id} 绑定项目目录: ${projectDir}`);
+    }
     return session;
   }
 
@@ -138,7 +183,21 @@ export class SessionManager {
       }
       patch.name = patch.name.trim();
     }
-    const ok = storage.updateSession(id, patch);
+    // 构造干净的 patch 给 storage.updateSession（不包含 null，存 Partial<Session> 兼容）
+    const cleanPatch: Partial<Session> = {};
+    if (patch.name !== undefined) cleanPatch.name = patch.name;
+    if (patch.description !== undefined) cleanPatch.description = patch.description;
+    if (patch.status !== undefined) cleanPatch.status = patch.status;
+    if (patch.meta !== undefined) cleanPatch.meta = patch.meta;
+    if ('project_dir' in patch) {
+      // 显式 null/空字符串视为清空；非空则校验
+      if (patch.project_dir == null || (typeof patch.project_dir === 'string' && !patch.project_dir.trim())) {
+        cleanPatch.project_dir = undefined;
+      } else {
+        cleanPatch.project_dir = validateProjectDir(patch.project_dir as string);
+      }
+    }
+    const ok = storage.updateSession(id, cleanPatch);
     if (!ok) return null;
     return storage.getSession(id) || null;
   }

@@ -46,12 +46,16 @@ sessionRouter.get('/:id', asyncHandler((req, res) => {
 
 // 更新
 sessionRouter.patch('/:id', asyncHandler((req, res) => {
-  const updated = sessionManager.updateSession(req.params.id, req.body || {});
-  if (!updated) {
-    return res.status(404).json({ success: false, error: '会话不存在' });
+  try {
+    const updated = sessionManager.updateSession(req.params.id, req.body || {});
+    if (!updated) {
+      return res.status(404).json({ success: false, error: '会话不存在' });
+    }
+    taskQueue.addLog('info', 'task', `会话更新: ${updated.id} (${updated.name})${updated.project_dir ? ' cwd=' + updated.project_dir : ''}`, { session_id: updated.id });
+    res.json({ success: true, data: updated });
+  } catch (e: any) {
+    res.status(400).json({ success: false, error: e.message || '更新失败' });
   }
-  taskQueue.addLog('info', 'task', `会话更新: ${updated.id} (${updated.name})`, { session_id: updated.id });
-  res.json({ success: true, data: updated });
 }));
 
 // 删除（任务重新归属默认会话）

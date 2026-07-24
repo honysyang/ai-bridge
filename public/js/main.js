@@ -625,9 +625,15 @@
     const badge = document.getElementById('user-badge');
     if (!badge) return;
     try {
-      const { data: u } = await api('/api/auth/me');
-      badge.textContent = `👤 ${u.username} (${u.role})`;
-      badge.title = `用户: ${u.display_name || u.username}\n角色: ${u.role}\n创建: ${new Date(u.created_at).toLocaleString('zh-CN')}\n上次登录: ${u.last_login_at ? new Date(u.last_login_at).toLocaleString('zh-CN') : '-'}`;
+      const resp = await api('/api/auth/me');
+      const u = resp && resp.data;
+      if (u) {
+        badge.textContent = `👤 ${u.username} (${u.role})`;
+        badge.title = `用户: ${u.display_name || u.username}\n角色: ${u.role}\n创建: ${new Date(u.created_at).toLocaleString('zh-CN')}\n上次登录: ${u.last_login_at ? new Date(u.last_login_at).toLocaleString('zh-CN') : '-'}`;
+      } else {
+        badge.textContent = '👤 本地访问';
+        badge.title = '本地访问自动放行（如需在公网使用请配置登录）';
+      }
     } catch (e) {
       // api 失败时（401/网络等），auth.js 会自动跳登录页
       badge.textContent = '👤 未登录';

@@ -200,6 +200,11 @@
           <span class="detail-meta-label">会话</span>
           <span class="detail-meta-value" style="font-family: monospace; font-size: 10px;">${escapeHtml(task.session_id || 'sess-default')}</span>
         </div>
+        ${task.project_dir ? `
+        <div class="detail-meta-item">
+          <span class="detail-meta-label">📂 项目目录</span>
+          <span class="detail-meta-value" style="font-family: monospace; font-size: 11px;" title="执行目录（agent 应以此为 cwd）">${escapeHtml(task.project_dir)}</span>
+        </div>` : ''}
       </div>
 
       ${task.source === 'wechat' ? renderWechatSourceSection(task) : ''}

@@ -39,6 +39,9 @@
     container.innerHTML = state.sessions.map(s => {
       const isActive = s.id === state.currentSessionId;
       const isDefault = s.id === 'sess-default' || s.meta?.is_default;
+      const projectDirBadge = s.project_dir
+        ? `<div class="session-project-dir" title="项目目录（任务执行 cwd）"><span class="dir-icon">📂</span><code>${escapeHtml(s.project_dir)}</code></div>`
+        : '';
       return `
         <div class="session-item ${isActive ? 'active' : ''} ${s.status === 'archived' ? 'archived' : ''} ${isDefault ? 'default' : ''}"
              data-session-id="${s.id}">
@@ -47,6 +50,7 @@
             <div class="session-item-count">${s.task_count || 0}</div>
           </div>
           ${s.last_task_summary ? `<div class="session-item-summary">${escapeHtml(s.last_task_summary)}</div>` : ''}
+          ${projectDirBadge}
           <div class="session-item-time">${formatRelative(s.updated_at)}</div>
           ${!isDefault ? `
           <div class="session-item-actions">
@@ -103,15 +107,16 @@
     if (!s) return;
     if (global.Main && global.Main.showModal) {
       global.Main.showModal({
-        title: '重命名会话',
+        title: '编辑会话',
         fields: [
           { name: 'name', label: '会话名称', value: s.name, required: true },
-          { name: 'description', label: '描述（可选）', type: 'textarea', value: s.description || '' }
+          { name: 'description', label: '描述（可选）', type: 'textarea', value: s.description || '' },
+          { name: 'project_dir', label: '项目目录（可选，绝对路径，留空=清除）', value: s.project_dir || '' }
         ],
         onSubmit: async (data) => {
           try {
             await api(`/api/sessions/${sessionId}`, { method: 'PATCH', body: data });
-            showNotification('✅ 已重命名', 'success');
+            showNotification('✅ 已保存', 'success');
             await loadSessions();
           } catch (e) {
             showNotification(`❌ 失败: ${e.message}`, 'error');

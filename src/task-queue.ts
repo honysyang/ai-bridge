@@ -31,6 +31,7 @@ import {
   LogSource
 } from './types.js';
 import { storage } from './storage.js';
+import { sessionManager } from './session.js';
 import { EventEmitter } from 'events';
 
 /** 允许的状态转换表（key=from, value=合法 to 集合） */
@@ -92,15 +93,26 @@ export class TaskQueue extends EventEmitter {
   /**
    * 新增任务（status 强制 pending）
    * 缺省 session_id 时回落到 'sess-default'
+   * v5.4.0: 自动从 session 继承 project_dir（如果任务本身没指定）
    */
   addTask(taskData: Omit<Task, 'id' | 'status' | 'created_at'>): Task {
     this.taskIdCounter++;
+    const sessionId = taskData.session_id || 'sess-default';
+    // v5.4.0: 自动从 session 继承 project_dir
+    let projectDir = taskData.project_dir;
+    if (!projectDir) {
+      const session = sessionManager.getSession(sessionId);
+      if (session?.project_dir) {
+        projectDir = session.project_dir;
+      }
+    }
     const fullTask: Task = {
       ...taskData,
       id: this.generateTaskId(),
       status: 'pending',
       created_at: Date.now(),
-      session_id: taskData.session_id || 'sess-default'
+      session_id: sessionId,
+      project_dir: projectDir
     };
 
     storage.appendTask(fullTask);
@@ -110,7 +122,8 @@ export class TaskQueue extends EventEmitter {
       task_id: fullTask.id,
       type: fullTask.type,
       priority: fullTask.priority,
-      session_id: fullTask.session_id
+      session_id: fullTask.session_id,
+      project_dir: fullTask.project_dir
     });
     return fullTask;
   }

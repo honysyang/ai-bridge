@@ -29,6 +29,7 @@ export interface Task {
   source: TaskSource;
   data: TaskData;
   context?: any;
+  project_dir?: string;       // v5.4.0: 从 session 继承的执行目录（agent 用作 cwd）
   created_at: number;
   status: TaskStatus;
   assigned_to?: string;
@@ -162,6 +163,7 @@ export interface Session {
   id: string;                     // sess-{ts}-{counter}
   name: string;                   // 用户命名
   description?: string;           // 可选备注
+  project_dir?: string;           // v5.4.0: 项目目录，任务执行 cwd
   created_at: number;
   updated_at: number;             // 任意变更时更新
   task_count: number;             // 缓存，避免每次 count

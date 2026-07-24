@@ -17,7 +17,7 @@
 import { Router } from 'express';
 import { users, isPasswordStrong, verifyPassword } from '../lib/users.js';
 import { signToken, verifyToken, refreshToken } from '../lib/auth.js';
-import { requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireRole, optionalAuth } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/error.js';
 import { taskQueue } from '../task-queue.js';
 
@@ -57,8 +57,13 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   });
 }));
 
-authRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
-  const u = req.user!;
+// /api/auth/me: 用于前端查询当前登录用户；未登录返回 {user: null}
+// 使用 optionalAuth 而不是 requireAuth，本地访问未传 token 时也能正常返回 null
+authRouter.get('/me', optionalAuth, asyncHandler(async (req, res) => {
+  const u = req.user;
+  if (!u) {
+    return res.json({ success: true, data: null });
+  }
   res.json({
     success: true,
     data: {
