@@ -3577,72 +3577,174 @@ html, body {
   background: var(--bg);
   overflow: auto;
 }
-.settings-container {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 28px 32px 60px;
+
+/* v5.5.3: 分栏布局 */
+.settings-layout {
+  display: flex;
+  min-height: 100%;
+}
+.settings-sidebar {
+  flex: 0 0 220px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-2);
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  padding: 18px 0 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
 }
-.settings-hero {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+.settings-sidebar-header {
+  padding: 0 18px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
 }
-.settings-title {
+.settings-sidebar .settings-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
 }
-.settings-subtitle {
+.settings-sidebar .settings-subtitle {
   margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.5;
 }
-.settings-hero-actions {
+.settings-search-wrap {
+  padding: 0 14px 12px;
+}
+.settings-search {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.settings-search:focus {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.1);
+}
+.settings-search::placeholder {
+  color: var(--text-muted);
+}
+.settings-nav {
+  flex: 1;
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px;
+  overflow-y: auto;
 }
-.settings-subnav {
+.settings-nav-item {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0;
-  overflow-x: auto;
-}
-.subnav-btn {
-  background: transparent;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
   border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 10px 14px;
+  border-radius: 5px;
+  background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
-  white-space: nowrap;
-  transition: color 0.12s, border-color 0.12s;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
 }
-.subnav-btn:hover {
+.settings-nav-item:hover {
+  background: var(--bg-soft);
   color: var(--text);
 }
-.subnav-btn.active {
-  color: var(--text);
-  border-bottom-color: #1d4ed8;
+.settings-nav-item.active {
+  background: #eff6ff;
+  color: #1d4ed8;
 }
+.settings-nav-icon {
+  font-size: 14px;
+  line-height: 1;
+  width: 20px;
+  text-align: center;
+}
+.settings-nav-label {
+  flex: 1;
+}
+.settings-sidebar-footer {
+  padding: 12px 18px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+}
+.settings-dirty-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #d97706;
+  font-weight: 500;
+}
+
+.settings-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.settings-main-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.settings-main-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-main-actions {
+  display: flex;
+  gap: 8px;
+}
+.settings-content {
+  padding: 20px 24px 40px;
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-subnav {
+  display: none;
+}
+
 .settings-section {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+.settings-section[hidden] {
+  display: none !important;
+}
 .settings-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 6px;         /* v5.4.6: 4 → 6（与概览页统一）*/
+  border-radius: 6px;
   padding: 18px 20px;
 }
 .settings-card-head h3 {
@@ -3820,6 +3922,17 @@ html, body {
   background: var(--bg-soft);
   color: var(--text-muted);
   border-radius: 6px;
+}
+
+.settings-danger {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+.settings-danger .settings-card-head h3 {
+  color: #9a3412;
+}
+.settings-danger .settings-card-hint {
+  color: #c2410c;
 }
 
 /* Callout */

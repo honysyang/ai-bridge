@@ -471,342 +471,446 @@
       </div>
     </div>
 
-    <!-- ===== 面板：设置（v5.3.0）模型 + 系统 ===== -->
+    <!-- ===== 面板：设置（v5.5.3）分栏设置 ===== -->
     <div class="panel panel-settings" id="panel-settings" hidden>
-      <div class="settings-container">
-        <div class="settings-hero">
-          <div>
-            <h1 class="settings-title">⚙️ 设置</h1>
-            <p class="settings-subtitle">配置 AI 模型、系统行为、桥接器参数</p>
+      <div class="settings-layout">
+        <!-- 左侧导航 -->
+        <aside class="settings-sidebar" id="settings-sidebar">
+          <div class="settings-sidebar-header">
+            <h2 class="settings-title">⚙️ 设置</h2>
+            <p class="settings-subtitle">AI 模型 · 系统 · 日志 · 安全 · 关于</p>
           </div>
-          <div class="settings-hero-actions">
-            <button class="btn-secondary" id="btn-settings-refresh">↻ 刷新</button>
-            <button class="btn-secondary" id="btn-settings-reset-all" title="恢复所有设置为默认值">⟲ 全部恢复默认</button>
+          <div class="settings-search-wrap">
+            <input type="search" id="settings-search" class="settings-search" placeholder="🔍 搜索设置项..." autocomplete="off">
           </div>
-        </div>
-
-        <div class="settings-subnav" id="settings-subnav">
-          <button class="subnav-btn active" data-section="models">🤖 AI 模型</button>
-          <button class="subnav-btn" data-section="system">🛠 系统行为</button>
-          <button class="subnav-btn" data-section="logs">📜 日志与存储</button>
-          <button class="subnav-btn" data-section="wechat">💬 微信桥接</button>
-          <button class="subnav-btn" data-section="about">ℹ️ 关于</button>
-        </div>
-
-        <!-- ===== 区段：AI 模型 ===== -->
-        <section class="settings-section" id="settings-section-models">
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>🤖 当前默认模型</h3>
-              <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group">
-                <label>默认 Provider</label>
-                <select id="setting-model-provider" class="form-input"></select>
-              </div>
-              <div class="form-group">
-                <label>默认模型</label>
-                <select id="setting-model-name" class="form-input"></select>
-                <div class="form-hint" id="setting-model-name-hint">--</div>
-              </div>
-            </div>
-            <div class="settings-card-actions">
-              <button class="btn-primary" id="btn-setting-model-save">💾 保存默认模型</button>
-              <button class="btn-secondary" id="btn-setting-model-reset">恢复默认</button>
-            </div>
+          <nav class="settings-nav" id="settings-nav" role="tablist">
+            <button class="settings-nav-item active" data-section="models" role="tab" aria-selected="true">
+              <span class="settings-nav-icon">🤖</span>
+              <span class="settings-nav-label">AI 模型</span>
+            </button>
+            <button class="settings-nav-item" data-section="system" role="tab" aria-selected="false">
+              <span class="settings-nav-icon">🛠</span>
+              <span class="settings-nav-label">系统行为</span>
+            </button>
+            <button class="settings-nav-item" data-section="logs" role="tab" aria-selected="false">
+              <span class="settings-nav-icon">📜</span>
+              <span class="settings-nav-label">日志与存储</span>
+            </button>
+            <button class="settings-nav-item" data-section="wechat" role="tab" aria-selected="false">
+              <span class="settings-nav-icon">💬</span>
+              <span class="settings-nav-label">微信桥接</span>
+            </button>
+            <button class="settings-nav-item" data-section="security" role="tab" aria-selected="false">
+              <span class="settings-nav-icon">🔐</span>
+              <span class="settings-nav-label">安全</span>
+            </button>
+            <button class="settings-nav-item" data-section="about" role="tab" aria-selected="false">
+              <span class="settings-nav-icon">ℹ️</span>
+              <span class="settings-nav-label">关于</span>
+            </button>
+          </nav>
+          <div class="settings-sidebar-footer" id="settings-sidebar-footer">
+            <span class="settings-dirty-badge" id="settings-dirty-badge" hidden>● 未保存</span>
           </div>
+        </aside>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>📚 Provider 目录</h3>
-              <p class="settings-card-hint">系统内置可用模型与凭证状态（密钥从 <code>~/.config/agent-canvas/secrets.env</code> 读取，<strong>不</strong>在前端编辑）</p>
+        <!-- 右侧内容区 -->
+        <main class="settings-main">
+          <div class="settings-main-header">
+            <div class="settings-main-title">
+              <span id="settings-active-icon">🤖</span>
+              <span id="settings-active-label">AI 模型</span>
             </div>
-            <div class="provider-list" id="provider-list">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
-          </div>
-
-          <div class="settings-card settings-callout">
-            <div class="callout-icon">🔐</div>
-            <div class="callout-body">
-              <strong>关于 API 密钥</strong>
-              <p>所有 Provider 的 API key、Base URL、Model 名均通过 <code>secrets.env</code>（chmod 600）读取，不在前端编辑。新增 Provider 后，在该文件中追加 <code>XXX_API_KEY=...</code> 即可，无需重启即可热加载（部分字段需重启 adapter）。</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- ===== 区段：系统行为 ===== -->
-        <section class="settings-section" id="settings-section-system" hidden>
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>🎨 界面偏好</h3>
-              <p class="settings-card-hint">主题、密度、动画、语言</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group">
-                <label>主题</label>
-                <select id="setting-ui-theme" class="form-input">
-                  <option value="auto">🌓 跟随系统</option>
-                  <option value="light">☀️ 浅色</option>
-                  <option value="dark">🌙 深色</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>密度</label>
-                <select id="setting-ui-density" class="form-input">
-                  <option value="comfortable">宽松</option>
-                  <option value="compact">紧凑</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label>语言</label>
-                <select id="setting-ui-language" class="form-input">
-                  <option value="zh-CN">简体中文</option>
-                  <option value="en-US">English</option>
-                </select>
-              </div>
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-ui-animations"> 启用界面动画</label>
-              </div>
+            <div class="settings-main-actions">
+              <button class="btn-secondary" id="btn-settings-refresh" title="重新加载当前页设置">↻ 刷新</button>
+              <button class="btn-secondary" id="btn-settings-cancel" title="撤销当前页未保存改动">✕ 取消</button>
+              <button class="btn-primary" id="btn-settings-save" title="保存当前页设置">💾 保存</button>
+              <button class="btn-secondary" id="btn-settings-reset-all" title="恢复当前区段为默认值">⟲ 恢复默认</button>
             </div>
           </div>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>📌 任务行为</h3>
-              <p class="settings-card-hint">新建任务的默认行为</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group">
-                <label>默认优先级</label>
-                <select id="setting-task-priority" class="form-input">
-                  <option value="low">低</option>
-                  <option value="normal">普通</option>
-                  <option value="high">高</option>
-                  <option value="urgent">紧急</option>
-                </select>
+          <div class="settings-content">
+            <!-- ===== 区段：AI 模型 ===== -->
+            <section class="settings-section" id="settings-section-models" data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🤖 当前默认模型</h3>
+                  <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>默认 Provider</label>
+                    <select id="setting-model-provider" class="form-input"></select>
+                  </div>
+                  <div class="form-group">
+                    <label>默认模型</label>
+                    <select id="setting-model-name" class="form-input"></select>
+                    <div class="form-hint" id="setting-model-name-hint">--</div>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>失败重试次数</label>
-                <input type="number" id="setting-task-retries" min="0" max="10" class="form-input">
-              </div>
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-task-auto-retry"> 失败自动重试</label>
-              </div>
-              <div class="form-group">
-                <label>完成后归档（天）</label>
-                <input type="number" id="setting-task-archive-days" min="1" max="365" class="form-input">
-              </div>
-            </div>
-          </div>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>🌉 桥接器</h3>
-              <p class="settings-card-hint">心跳 / 长轮询参数（修改后下次启动生效）</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group">
-                <label>心跳间隔（秒）</label>
-                <input type="number" id="setting-bridge-heartbeat" min="1" max="60" class="form-input">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>⚙️ 模型参数</h3>
+                  <p class="settings-card-hint">控制默认生成行为（后续版本会下发到模型调用）</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>Temperature</label>
+                    <input type="number" id="setting-model-temperature" class="form-input" min="0" max="2" step="0.1">
+                    <div class="form-hint">0=确定，1=平衡，>1=创意</div>
+                  </div>
+                  <div class="form-group">
+                    <label>Max Tokens</label>
+                    <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000">
+                  </div>
+                  <div class="form-group">
+                    <label>Top P</label>
+                    <input type="number" id="setting-model-top-p" class="form-input" min="0" max="1" step="0.05">
+                  </div>
+                  <div class="form-group">
+                    <label>Frequency Penalty</label>
+                    <input type="number" id="setting-model-freq-penalty" class="form-input" min="-2" max="2" step="0.1">
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>长轮询超时（秒）</label>
-                <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input">
-              </div>
-            </div>
-            <div class="settings-card-actions">
-              <button class="btn-primary" id="btn-setting-system-save">💾 保存系统设置</button>
-              <button class="btn-secondary" id="btn-setting-system-reset">恢复默认</button>
-            </div>
-          </div>
-        </section>
 
-        <!-- ===== 区段：日志与存储 ===== -->
-        <section class="settings-section" id="settings-section-logs" hidden>
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>📜 日志</h3>
-              <p class="settings-card-hint">日志级别、保留策略、清理</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group">
-                <label>日志级别（启动）</label>
-                <select id="setting-log-level" class="form-input">
-                  <option value="debug">debug</option>
-                  <option value="info">info</option>
-                  <option value="warn">warn</option>
-                  <option value="error">error</option>
-                </select>
-                <div class="form-hint">运行时可通过 <code>LOG_LEVEL</code> 环境变量覆盖（需重启）</div>
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>📚 Provider 目录</h3>
+                  <p class="settings-card-hint">系统内置可用模型与凭证状态（密钥从 <code>~/.config/agent-canvas/secrets.env</code> 读取，<strong>不</strong>在前端编辑）</p>
+                </div>
+                <div class="provider-list" id="provider-list">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>保留天数（0=永久）</label>
-                <input type="number" id="setting-log-retention" min="0" max="365" class="form-input">
-              </div>
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-log-console"> 同时输出到控制台</label>
-              </div>
-            </div>
-            <div class="settings-card-actions">
-              <button class="btn-primary" id="btn-setting-log-save">💾 保存</button>
-              <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">🗑 立即清理</button>
-            </div>
-          </div>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>💾 数据存储</h3>
-              <p class="settings-card-hint">data 目录概览</p>
-            </div>
-            <div class="storage-info" id="settings-storage-info">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
-          </div>
-        </section>
+              <div class="settings-card settings-callout">
+                <div class="callout-icon">🔐</div>
+                <div class="callout-body">
+                  <strong>关于 API 密钥</strong>
+                  <p>所有 Provider 的 API key、Base URL、Model 名均通过 <code>secrets.env</code>（chmod 600）读取，不在前端编辑。新增 Provider 后，在该文件中追加 <code>XXX_API_KEY=...</code> 即可，无需重启即可热加载（部分字段需重启 adapter）。</p>
+                </div>
+              </div>
+            </section>
 
-        <!-- ===== 区段：微信桥接（v5.5.0 空闲提醒） ===== -->
-        <section class="settings-section" id="settings-section-wechat" hidden>
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>💬 微信基础配置</h3>
-              <p class="settings-card-hint">自动回复、消息去重、连接参数</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-claw-enabled"> 启用微信 Claw 桥接</label>
+            <!-- ===== 区段：系统行为 ===== -->
+            <section class="settings-section" id="settings-section-system" hidden data-search-keywords="系统 主题 密度 语言 动画 任务 优先级 重试 归档 心跳 长轮询">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🎨 界面偏好</h3>
+                  <p class="settings-card-hint">主题、密度、动画、语言</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>主题</label>
+                    <select id="setting-ui-theme" class="form-input">
+                      <option value="auto">🌓 跟随系统</option>
+                      <option value="light">☀️ 浅色</option>
+                      <option value="dark">🌙 深色</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>密度</label>
+                    <select id="setting-ui-density" class="form-input">
+                      <option value="comfortable">宽松</option>
+                      <option value="compact">紧凑</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>语言</label>
+                    <select id="setting-ui-language" class="form-input">
+                      <option value="zh-CN">简体中文</option>
+                      <option value="en-US">English</option>
+                    </select>
+                  </div>
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-ui-animations"> 启用界面动画</label>
+                  </div>
+                </div>
               </div>
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-claw-auto-reply"> 任务完成后自动回复微信</label>
-              </div>
-              <div class="form-group">
-                <label>消息去重窗口（毫秒）</label>
-                <input type="number" id="setting-claw-dedup" class="form-input" min="0" step="1000">
-                <div class="form-hint">同一 msg_id 在此时间内的重复消息会被丢弃（默认 5 分钟）</div>
-              </div>
-            </div>
-            <div class="settings-card-actions">
-              <button class="btn-primary" id="btn-setting-claw-save">💾 保存微信配置</button>
-            </div>
-          </div>
 
-          <div class="settings-card settings-callout">
-            <div class="callout-icon">💡</div>
-            <div class="callout-body">
-              <strong>空闲提醒（v5.5.0 新增）</strong>
-              <p>当某个微信用户 <strong>N 分钟</strong> 没有发新任务时，自动发送一条提醒。可选发送今日数据摘要、最近任务总结或两者结合。默认 <strong>关闭</strong>，需用户显式开启。</p>
-            </div>
-          </div>
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>📌 任务行为</h3>
+                  <p class="settings-card-hint">新建任务的默认行为</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>默认优先级</label>
+                    <select id="setting-task-priority" class="form-input">
+                      <option value="low">低</option>
+                      <option value="normal">普通</option>
+                      <option value="high">高</option>
+                      <option value="urgent">紧急</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>失败重试次数</label>
+                    <input type="number" id="setting-task-retries" min="0" max="10" class="form-input">
+                  </div>
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-task-auto-retry"> 失败自动重试</label>
+                  </div>
+                  <div class="form-group">
+                    <label>完成后归档（天）</label>
+                    <input type="number" id="setting-task-archive-days" min="1" max="365" class="form-input">
+                  </div>
+                </div>
+              </div>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>⏰ 空闲提醒 · 触发条件</h3>
-              <p class="settings-card-hint">满足下列<strong>全部</strong>条件时，发送一条提醒</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-idle-enabled"> 启用空闲提醒</label>
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🌉 桥接器</h3>
+                  <p class="settings-card-hint">心跳 / 长轮询参数（修改后下次启动生效）</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>心跳间隔（秒）</label>
+                    <input type="number" id="setting-bridge-heartbeat" min="1" max="60" class="form-input">
+                  </div>
+                  <div class="form-group">
+                    <label>长轮询超时（秒）</label>
+                    <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input">
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>检查间隔（分钟）</label>
-                <input type="number" id="setting-idle-interval" class="form-input" min="1" max="1440">
-                <div class="form-hint">后台多久检查一次活跃用户（默认 5 分钟）</div>
-              </div>
-              <div class="form-group">
-                <label>最少静默时间（分钟）</label>
-                <input type="number" id="setting-idle-min-quiet" class="form-input" min="1" max="1440">
-                <div class="form-hint">用户最后一条任务/消息后，至少 N 分钟才发（默认 5 分钟）</div>
-              </div>
-              <div class="form-group">
-                <label>同 wxid 冷却时间（分钟）</label>
-                <input type="number" id="setting-idle-cooldown" class="form-input" min="1" max="1440">
-                <div class="form-hint">同一用户两次提醒之间的最小间隔（默认 30 分钟，避免打扰）</div>
-              </div>
-            </div>
-          </div>
+            </section>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>🕐 空闲提醒 · 时间窗口</h3>
-              <p class="settings-card-hint">只在工作时间内提醒，休息时间静默（跨天支持）</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group">
-                <label>工作时间起始（小时 0-23）</label>
-                <input type="number" id="setting-idle-work-start" class="form-input" min="0" max="23">
+            <!-- ===== 区段：日志与存储 ===== -->
+            <section class="settings-section" id="settings-section-logs" hidden data-search-keywords="日志 存储 数据目录 清理 日志级别 保留天数 备份 导出">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>📜 日志</h3>
+                  <p class="settings-card-hint">日志级别、保留策略、清理</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>日志级别（启动）</label>
+                    <select id="setting-log-level" class="form-input">
+                      <option value="debug">debug</option>
+                      <option value="info">info</option>
+                      <option value="warn">warn</option>
+                      <option value="error">error</option>
+                    </select>
+                    <div class="form-hint">运行时可通过 <code>LOG_LEVEL</code> 环境变量覆盖（需重启）</div>
+                  </div>
+                  <div class="form-group">
+                    <label>保留天数（0=永久）</label>
+                    <input type="number" id="setting-log-retention" min="0" max="365" class="form-input">
+                  </div>
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-log-console"> 同时输出到控制台</label>
+                  </div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>工作时间结束（小时 0-24）</label>
-                <input type="number" id="setting-idle-work-end" class="form-input" min="0" max="24">
-              </div>
-              <div class="form-group">
-                <label>休息时间起始（小时 0-23）</label>
-                <input type="number" id="setting-idle-rest-start" class="form-input" min="0" max="23">
-              </div>
-              <div class="form-group">
-                <label>休息时间结束（小时 0-24，跨天则小于 start）</label>
-                <input type="number" id="setting-idle-rest-end" class="form-input" min="0" max="24">
-                <div class="form-hint">例：22-7 表示 22:00 至次日 07:00 休息（不提醒）</div>
-              </div>
-              <div class="form-group">
-                <label>当前窗口状态</label>
-                <div class="form-hint" id="setting-idle-window-status">--</div>
-              </div>
-            </div>
-          </div>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>📤 空闲提醒 · 消息内容</h3>
-              <p class="settings-card-hint">选择要发送的内容类型（可多选）</p>
-            </div>
-            <div class="settings-form-grid">
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-idle-msg-daily"> 📊 今日数据摘要（任务数 / 成功率 / 累计）</label>
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>💾 数据存储</h3>
+                  <p class="settings-card-hint">data 目录概览</p>
+                </div>
+                <div class="storage-info" id="settings-storage-info">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
               </div>
-              <div class="form-group form-check">
-                <label><input type="checkbox" id="setting-idle-msg-task"> 📋 最近任务总结（最近 10 条 Q&A）</label>
+
+              <div class="settings-card settings-danger">
+                <div class="settings-card-head">
+                  <h3>⚠️ 危险操作</h3>
+                  <p class="settings-card-hint">下列操作不可撤销，请谨慎</p>
+                </div>
+                <div class="settings-card-actions">
+                  <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">🗑 立即清理日志</button>
+                </div>
               </div>
-            </div>
-            <div class="settings-card-actions">
-              <button class="btn-primary" id="btn-setting-idle-save">💾 保存空闲提醒配置</button>
-              <button class="btn-secondary" id="btn-setting-idle-tick">🚀 立即触发一次</button>
-            </div>
-          </div>
+            </section>
 
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>📊 空闲提醒 · 运行时状态</h3>
-              <p class="settings-card-hint">最近一次检查、发送、冷却情况</p>
-            </div>
-            <div class="about-grid" id="settings-idle-status">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
-          </div>
-        </section>
+            <!-- ===== 区段：微信桥接（v5.5.0 空闲提醒） ===== -->
+            <section class="settings-section" id="settings-section-wechat" hidden data-search-keywords="微信 claw 桥接 自动回复 去重 空闲提醒 工作窗口 冷却">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>💬 微信基础配置</h3>
+                  <p class="settings-card-hint">自动回复、消息去重、连接参数</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-claw-enabled"> 启用微信 Claw 桥接</label>
+                  </div>
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-claw-auto-reply"> 任务完成后自动回复微信</label>
+                  </div>
+                  <div class="form-group">
+                    <label>消息去重窗口（毫秒）</label>
+                    <input type="number" id="setting-claw-dedup" class="form-input" min="0" step="1000">
+                    <div class="form-hint">同一 msg_id 在此时间内的重复消息会被丢弃（默认 5 分钟）</div>
+                  </div>
+                </div>
+              </div>
 
-        <!-- ===== 区段：关于 ===== -->
-        <section class="settings-section" id="settings-section-about" hidden>
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>ℹ️ 关于 ai-bridge</h3>
-              <p class="settings-card-hint">运行时信息</p>
-            </div>
-            <div class="about-grid" id="settings-about-info">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
+              <div class="settings-card settings-callout">
+                <div class="callout-icon">💡</div>
+                <div class="callout-body">
+                  <strong>空闲提醒（v5.5.0 新增）</strong>
+                  <p>当某个微信用户 <strong>N 分钟</strong> 没有发新任务时，自动发送一条提醒。可选发送今日数据摘要、最近任务总结或两者结合。默认 <strong>关闭</strong>，需用户显式开启。</p>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>⏰ 空闲提醒 · 触发条件</h3>
+                  <p class="settings-card-hint">满足下列<strong>全部</strong>条件时，发送一条提醒</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-idle-enabled"> 启用空闲提醒</label>
+                  </div>
+                  <div class="form-group">
+                    <label>检查间隔（分钟）</label>
+                    <input type="number" id="setting-idle-interval" class="form-input" min="1" max="1440">
+                    <div class="form-hint">后台多久检查一次活跃用户（默认 5 分钟）</div>
+                  </div>
+                  <div class="form-group">
+                    <label>最少静默时间（分钟）</label>
+                    <input type="number" id="setting-idle-min-quiet" class="form-input" min="1" max="1440">
+                    <div class="form-hint">用户最后一条任务/消息后，至少 N 分钟才发（默认 5 分钟）</div>
+                  </div>
+                  <div class="form-group">
+                    <label>同 wxid 冷却时间（分钟）</label>
+                    <input type="number" id="setting-idle-cooldown" class="form-input" min="1" max="1440">
+                    <div class="form-hint">同一用户两次提醒之间的最小间隔（默认 30 分钟，避免打扰）</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🕐 空闲提醒 · 时间窗口</h3>
+                  <p class="settings-card-hint">只在工作时间内提醒，休息时间静默（跨天支持）</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>工作时间起始（小时 0-23）</label>
+                    <input type="number" id="setting-idle-work-start" class="form-input" min="0" max="23">
+                  </div>
+                  <div class="form-group">
+                    <label>工作时间结束（小时 0-24）</label>
+                    <input type="number" id="setting-idle-work-end" class="form-input" min="0" max="24">
+                  </div>
+                  <div class="form-group">
+                    <label>休息时间起始（小时 0-23）</label>
+                    <input type="number" id="setting-idle-rest-start" class="form-input" min="0" max="23">
+                  </div>
+                  <div class="form-group">
+                    <label>休息时间结束（小时 0-24，跨天则小于 start）</label>
+                    <input type="number" id="setting-idle-rest-end" class="form-input" min="0" max="24">
+                    <div class="form-hint">例：22-7 表示 22:00 至次日 07:00 休息（不提醒）</div>
+                  </div>
+                  <div class="form-group">
+                    <label>当前窗口状态</label>
+                    <div class="form-hint" id="setting-idle-window-status">--</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>📤 空闲提醒 · 消息内容</h3>
+                  <p class="settings-card-hint">选择要发送的内容类型（可多选）</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-idle-msg-daily"> 📊 今日数据摘要（任务数 / 成功率 / 累计）</label>
+                  </div>
+                  <div class="form-group form-check">
+                    <label><input type="checkbox" id="setting-idle-msg-task"> 📋 最近任务总结（最近 10 条 Q&A）</label>
+                  </div>
+                </div>
+                <div class="settings-card-actions">
+                  <button class="btn-secondary" id="btn-setting-idle-tick">🚀 立即触发一次</button>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>📊 空闲提醒 · 运行时状态</h3>
+                  <p class="settings-card-hint">最近一次检查、发送、冷却情况</p>
+                </div>
+                <div class="about-grid" id="settings-idle-status">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== 区段：安全 ===== -->
+            <section class="settings-section" id="settings-section-security" hidden data-search-keywords="安全 用户 密码 登录 JWT 本地访问 白名单 权限">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🔐 当前用户</h3>
+                  <p class="settings-card-hint">登录会话与角色信息</p>
+                </div>
+                <div class="about-grid" id="settings-user-info">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🔑 修改密码</h3>
+                  <p class="settings-card-hint">仅当前登录用户可修改</p>
+                </div>
+                <div class="settings-form-grid">
+                  <div class="form-group">
+                    <label>当前密码</label>
+                    <input type="password" id="setting-current-password" class="form-input" placeholder="当前密码">
+                  </div>
+                  <div class="form-group">
+                    <label>新密码</label>
+                    <input type="password" id="setting-new-password" class="form-input" placeholder="至少 8 位，含字母和数字">
+                  </div>
+                  <div class="form-group">
+                    <label>确认新密码</label>
+                    <input type="password" id="setting-confirm-password" class="form-input" placeholder="再次输入新密码">
+                  </div>
+                </div>
+                <div class="settings-card-actions">
+                  <button class="btn-primary" id="btn-setting-change-password">🔒 修改密码</button>
+                </div>
+              </div>
+
+              <div class="settings-card settings-callout">
+                <div class="callout-icon">🛡️</div>
+                <div class="callout-body">
+                  <strong>关于本地访问白名单</strong>
+                  <p>本地访问（127.0.0.1 / localhost / 192.168.x.x / 10.x.x.x）默认自动放行。远程访问需登录。如需修改白名单或 JWT 过期时间，请编辑 <code>~/.config/agent-canvas/secrets.env</code> 并重启服务。</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- ===== 区段：关于 ===== -->
+            <section class="settings-section" id="settings-section-about" hidden data-search-keywords="关于 ai-bridge 版本 运行时间 内存 数据目录 Claw 状态">
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>ℹ️ 关于 ai-bridge</h3>
+                  <p class="settings-card-hint">运行时信息</p>
+                </div>
+                <div class="about-grid" id="settings-about-info">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+              <div class="settings-card">
+                <div class="settings-card-head">
+                  <h3>🔌 微信 Claw 状态</h3>
+                  <p class="settings-card-hint">iLink Bot 连接信息</p>
+                </div>
+                <div class="about-grid" id="settings-claw-info">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+            </section>
           </div>
-          <div class="settings-card">
-            <div class="settings-card-head">
-              <h3>🔌 微信 Claw 状态</h3>
-              <p class="settings-card-hint">iLink Bot 连接信息</p>
-            </div>
-            <div class="about-grid" id="settings-claw-info">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
-          </div>
-        </section>
+        </main>
       </div>
     </div>
 
