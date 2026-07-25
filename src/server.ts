@@ -10,6 +10,7 @@ import { kbStore } from './kb-store.js';
 import { kbChunkStore } from './kb-chunk-store.js';
 import { kbLinkStore } from './kb-link-store.js';
 import { workflowStore } from './workflow-store.js';
+import { promptStore } from './prompt-store.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -22,6 +23,7 @@ import { fsRouter } from './routes/fs.js';
 import { taskRouter, contextRouter, logRouter } from './routes/tasks.js';
 import { kbRouter } from './routes/kb.js';
 import { workflowRouter } from './routes/workflows.js';
+import { promptRouter } from './routes/prompts.js';
 import { chatRouter } from './routes/chat.js';
 import { clawRouter, legacyWeixinRouter } from './routes/claw.js';
 import { heartbeatRouter } from './routes/heartbeat.js';
@@ -256,6 +258,7 @@ app.use('/api/context', contextRouter);
 app.use('/api/logs', logRouter);
 app.use('/api/kb', kbRouter);
 app.use('/api/wf', workflowRouter);
+app.use('/api/prompts', promptRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/claw', clawRouter);
 app.use('/api/overview', overviewRouter);
@@ -284,6 +287,7 @@ app.use('/api/v1/context', contextRouter);
 app.use('/api/v1/logs', logRouter);
 app.use('/api/v1/kb', kbRouter);
 app.use('/api/v1/wf', workflowRouter);
+app.use('/api/v1/prompts', promptRouter);
 app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/claw', clawRouter);
 app.use('/api/v1/overview', overviewRouter);
@@ -343,6 +347,8 @@ export async function startServer(port: number = 4567) {
   kbStore.schedulePendingReindex();
   // 加载工作流（如无 wf.jsonl 则写入示例数据）
   const wfLoad = workflowStore.loadAll();
+  // 加载提示词库（如无 prompts.jsonl 则写入示例数据）
+  promptStore.loadAll();
 
   taskQueue.addLog(
     'success',

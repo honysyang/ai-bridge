@@ -1,6 +1,6 @@
 {
   "name": "ai-bridge",
-  "version": "5.5.5",
+  "version": "6.0.0",
   "description": "AI 智能体桥接器：Trae IDE / 微信 ClawBot 与 AI 智能体之间的通用中间层",
   "type": "module",
   "engines": {
@@ -24,8 +24,14 @@
   },
   "dependencies": {
     "better-sqlite3": "^13.0.1",
+    "cheerio": "^1.2.0",
     "express": "^4.21.0",
+    "mammoth": "^1.12.0",
+    "mime-types": "^3.0.2",
+    "multer": "^2.2.0",
+    "pdf-parse": "^2.4.5",
     "qrcode": "^1.5.4",
+    "simple-git": "^3.36.0",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.18.0"
@@ -34,6 +40,8 @@
     "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
+    "@types/mime-types": "^3.0.1",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.0.0",
     "@types/qrcode": "^1.5.6",
     "@types/winston": "^2.4.4",

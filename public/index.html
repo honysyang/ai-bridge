@@ -59,6 +59,11 @@
         <span class="tab-label">工作流</span>
         <span class="tab-count" id="tab-count-wf" hidden>0</span>
       </button>
+      <button class="tab-btn" data-tab="prompts" role="tab" aria-selected="false">
+        <span class="tab-icon">📝</span>
+        <span class="tab-label">提示词</span>
+        <span class="tab-count" id="tab-count-prompts" hidden>0</span>
+      </button>
       <button class="tab-btn" data-tab="plan" role="tab" aria-selected="false">
         <span class="tab-icon">🗓</span>
         <span class="tab-label">计划</span>
@@ -196,6 +201,15 @@
             </select>
             <button class="btn-primary" id="btn-kb-new-category">+ 新建分类</button>
             <button class="btn-secondary" id="btn-kb-new-item">+ 新建条目</button>
+            <div class="dropdown" id="kb-import-dropdown">
+              <button class="btn-secondary" id="btn-kb-import-toggle">📥 导入 ▼</button>
+              <div class="dropdown-menu" hidden>
+                <label class="dropdown-item" for="kb-file-input">📄 上传文件</label>
+                <input type="file" id="kb-file-input" accept=".txt,.md,.html,.htm,.pdf,.doc,.docx" hidden />
+                <button class="dropdown-item" id="btn-kb-import-url" type="button">🌐 输入 URL</button>
+                <button class="dropdown-item" id="btn-kb-import-repo" type="button">📦 克隆仓库</button>
+              </div>
+            </div>
             <button class="btn-demo" id="btn-kb-seed-demo" title="一键加载演示分类/条目/关联">🎁 演示数据</button>
           </div>
           <!-- 列表视图 -->
@@ -274,6 +288,29 @@
                 <button class="btn-demo btn-demo-large" id="btn-wf-seed-demo-2">🎁 一键加载演示数据</button>
               </div>
             </main>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 面板：提示词库 ===== -->
+      <div class="panel panel-prompts" id="panel-prompts" hidden>
+        <div class="prompt-panel">
+          <div class="prompt-toolbar">
+            <input type="search" id="prompt-search" placeholder="🔍 搜索提示词..." class="search-input" />
+            <select id="prompt-cat-filter" class="filter-select">
+              <option value="all">全部分类</option>
+            </select>
+            <button class="btn-primary" id="btn-prompt-new-category">+ 分类</button>
+            <button class="btn-secondary" id="btn-prompt-new">+ 提示词</button>
+            <button class="btn-demo" id="btn-prompt-seed-demo" title="一键加载示例提示词">🎁 演示数据</button>
+          </div>
+          <div class="prompt-list" id="prompt-list">
+            <div class="empty-state">
+              <div class="empty-icon">📝</div>
+              <div class="empty-text">提示词库还是空的</div>
+              <div class="empty-hint">点击「🎁 演示数据」加载示例提示词，或点击「+ 提示词」创建</div>
+              <button class="btn-demo btn-demo-large" id="btn-prompt-seed-demo-2">🎁 一键加载演示数据</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1141,6 +1178,49 @@
         </div>
       </div>
 
+      <!-- ===== 抽屉：提示词编辑 ===== -->
+      <div class="drawer" id="prompt-drawer" aria-hidden="true">
+        <div class="drawer-header">
+          <h2 id="prompt-drawer-title">📝 编辑提示词</h2>
+          <button class="drawer-close" data-close="prompt-drawer" aria-label="关闭">×</button>
+        </div>
+        <div class="drawer-body">
+          <div class="form-group">
+            <label>标题 *</label>
+            <input type="text" id="prompt-drawer-title-input" maxlength="64" placeholder="如：查天气" />
+          </div>
+          <div class="form-group">
+            <label>分类 *</label>
+            <select id="prompt-drawer-cat-select"></select>
+          </div>
+          <div class="form-group">
+            <label>描述</label>
+            <input type="text" id="prompt-drawer-desc-input" maxlength="200" placeholder="一句话说明用途" />
+          </div>
+          <div class="form-group">
+            <label>内容 *<small>（支持 {{变量名}} 占位符）</small></label>
+            <textarea
+              id="prompt-drawer-content-input"
+              rows="12"
+              maxlength="4000"
+              placeholder="请输入提示词模板..."
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label>标签<small>（用英文逗号分隔，最多 8 个）</small></label>
+            <input type="text" id="prompt-drawer-tags-input" placeholder="如：天气, 查询" />
+          </div>
+          <div class="form-group form-meta">
+            <span id="prompt-drawer-meta"></span>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn-secondary" id="prompt-drawer-cancel">取消</button>
+          <button class="btn-primary" id="prompt-drawer-save">保存</button>
+          <button class="btn-danger" id="prompt-drawer-delete" style="display: none">删除</button>
+        </div>
+      </div>
+
       <!-- ===== 抽屉：工作流步骤编辑 ===== -->
       <div class="drawer" id="wf-drawer" aria-hidden="true">
         <div class="drawer-header">
@@ -1372,6 +1452,7 @@
     <script src="js/tasks.js?v={VERSION}"></script>
     <script src="js/kb.js?v={VERSION}"></script>
     <script src="js/wf.js?v={VERSION}"></script>
+    <script src="js/prompts.js?v={VERSION}"></script>
     <script src="js/plan.js?v={VERSION}"></script>
     <script src="js/claw.js?v={VERSION}"></script>
     <script src="js/overview.js?v={VERSION}"></script>

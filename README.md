@@ -15,31 +15,31 @@
 
 ### 💬 聊天
 
-![聊天界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/chat.png)
+![聊天界面](docs/screenshots/chat.png)
 
 ### 📖 知识库
 
-![知识库界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/kb.png)
+![知识库界面](docs/screenshots/kb.png)
 
 ### 🕸 知识图谱
 
-![知识图谱界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/kb-graph.png)
+![知识图谱界面](docs/screenshots/kb-graph.png)
 
 ### ⚙️ 工作流
 
-![工作流界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/workflow.png)
+![工作流界面](docs/screenshots/workflow.png)
 
 ### 📅 计划
 
-![计划界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/plan.png)
+![计划界面](docs/screenshots/plan.png)
 
 ### 📝 周报
 
-![周报界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/report.png)
+![周报界面](docs/screenshots/report.png)
 
 ### 💬 微信 Claw
 
-![微信 Claw 界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/claw.png)
+![微信 Claw 界面](docs/screenshots/claw.png)
 
 ---
 
@@ -49,6 +49,11 @@
 - **🤖 AI Bridge Skill 统一**：将 `docs/weixin-agent.skill.md` 替换为 `docs/ai-bridge.skill.md`，与项目同名
 - **📐 明确中间程序定位**：skill 中弱化执行细节，强调 `/home/kali/ai-bridge` 作为 Trae Agent 与外部系统（微信、Web 工作台）的通信媒介
 - **🧾 Evidence 协议对齐**：保留心跳保活、长轮询、任务执行、执行依据提交的完整规范
+- **🛠️ Skill 一键安装**：系统设置页支持选择 Trae / Trae CN / 自定义环境，将 skill 文件安装到指定路径，并读取内容给出最佳实践指南
+- **🧩 新用户上手引导**：概览页弹窗支持图文结合的步骤引导，截图通过本地 `/docs/screenshots/` 静态资源服务提供
+- **📝 Prompt 提示词库 v5.6.0**：分类管理 + 模板 CRUD + 变量渲染 + 一键创建任务
+- **🧠 知识库增强**：支持文件/URL 导入、Markdown/HTML/PDF 解析、文本分块、embedding 检索
+- **🔧 启动问题修复**：`pdf-parse` 命名导入、`cheerio` 配置类型修正
 
 ### v5.5.5
 - 产品化基础：Docker 部署、统一版本号、受信代理、权限校验、依赖清理、`.env.example`
@@ -118,9 +123,12 @@ npm run smoke
 ┌─────────────────────────────────────────────────────────┐
 │  Web 工作台（端口 4567）                                 │
 │  ├─ 💬 聊天      三栏：会话 / 任务 / 详情                │
-│  ├─ 📖 知识库    分类树 / 列表 / 图谱                    │
+│  ├─ 📖 知识库    分类树 / 列表 / 图谱 / 导入 / embedding │
 │  ├─ ⚙️ 工作流    模板 / 步骤 / 执行                     │
-│  └─ 📅 计划      周 / 日 / 状态 / 周报                  │
+│  ├─ 📝 提示词    模板 / 变量 / 一键创建任务              │
+│  ├─ 📅 计划      周 / 日 / 状态 / 周报                  │
+│  ├─ 📈 概览      KPI / 趋势 / 系统健康 / 新用户引导       │
+│  └─ ⚙️ 设置      AI 模型 / Skill 安装 / 微信桥接 / 安全  │
 └────────────────┬────────────────────────────────────────┘
                  │ REST + WebSocket
                  ▼
@@ -128,8 +136,10 @@ npm run smoke
 │  Bridge 后端（Node.js + Express）                        │
 │  ├─ 任务队列（JSONL 持久化 + SQLite 查询层）              │
 │  ├─ 会话管理（CRUD + 默认会话保护）                      │
-│  ├─ 知识库 store（分类 / 条目 / 关联）                   │
+│  ├─ 知识库 store（分类 / 条目 / 关联 / 分块 / embedding） │
 │  ├─ 工作流 store（模板 / 执行）                          │
+│  ├─ 提示词库 store（分类 / 模板 / 变量渲染）             │
+│  ├─ Skill 安装 API（读取 / 检测 / 安装到指定环境）        │
 │  ├─ 用户认证（PBKDF2 + HMAC JWT）                        │
 │  └─ Claw 适配层（微信 iLink）                           │
 └────────────────┬────────────────────────────────────────┘
@@ -138,6 +148,9 @@ npm run smoke
 ┌─────────────────────────────────────────────────────────┐
 │  外部智能体                                              │
 │  ├─ Trae Agent（通过 ai-bridge skill）                     │
+│  │   - 心跳保活：GET /api/heartbeat 每 5 秒              │
+│  │   - 长轮询取任务：GET /api/task/poll?timeout=30        │
+│  │   - 提交结果：POST /api/task/complete                  │
 │  └─ 微信 ClawBot（扫码登录 / 消息收发）                    │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -154,25 +167,33 @@ ai-bridge/
 │   ├── task-queue.ts           # 任务状态机 + CRUD
 │   ├── session.ts              # 会话管理
 │   ├── storage.ts              # JSONL 持久化（任务/会话/日志）
-│   ├── lib/                    # 通用库
-│   │   ├── auth.ts             # JWT 签名/验证
-│   │   ├── users.ts            # 用户管理
-│   │   ├── settings.ts         # 系统设置
-│   │   ├── logger.ts           # winston 诊断日志
-│   │   ├── sqlite-store.ts     # SQLite 查询层
-│   │   └── version.ts          # 版本号读取
-│   ├── kb-store.ts             # 知识库 store
-│   ├── kb-link-store.ts        # 知识图谱关联
-│   ├── workflow-store.ts       # 工作流 store
-│   ├── types.ts                # 全局类型定义
-│   ├── middleware/             # 认证 / 错误处理
-│   └── routes/                 # 路由模块
+│   ├── lib/                   # 通用库
+│   │   ├── auth.ts            # JWT 签名/验证
+│   │   ├── users.ts           # 用户管理
+│   │   ├── settings.ts        # 系统设置
+│   │   ├── logger.ts          # winston 诊断日志
+│   │   ├── sqlite-store.ts    # SQLite 查询层
+│   │   ├── embedding.ts       # embedding 模型调用
+│   │   ├── chunking.ts        # 文本分块
+│   │   ├── ingestion.ts       # 文件/URL 内容摄取
+│   │   ├── parsers/           # Markdown / HTML / PDF 解析
+│   │   └── version.ts         # 版本号读取
+│   ├── kb-store.ts            # 知识库 store
+│   ├── kb-link-store.ts       # 知识图谱关联
+│   ├── kb-chunk-store.ts      # 知识库分块索引
+│   ├── workflow-store.ts      # 工作流 store
+│   ├── prompt-store.ts        # 提示词库 store
+│   ├── prompt-types.ts        # 提示词类型
+│   ├── types.ts               # 全局类型定义
+│   ├── middleware/            # 认证 / 错误处理
+│   └── routes/                # 路由模块
 │       ├── health.ts
 │       ├── heartbeat.ts
 │       ├── sessions.ts
 │       ├── tasks.ts
 │       ├── kb.ts
 │       ├── workflows.ts
+│       ├── prompts.ts
 │       ├── chat.ts
 │       ├── claw.ts
 │       ├── auth.ts
@@ -187,6 +208,7 @@ ai-bridge/
 │   │   ├── tasks.js
 │   │   ├── kb.js
 │   │   ├── workflow.js
+│   │   ├── prompts.js
 │   │   ├── plan.js
 │   │   ├── settings.js
 │   │   └── ...
@@ -266,6 +288,19 @@ ai-bridge/
 | `/api/workflows/:id` | DELETE | 删除工作流 |
 | `/api/workflows/:id/execute` | POST | 执行工作流（批量创建任务） |
 
+### 提示词库
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/prompts` | GET | 列出分类 + 提示词 |
+| `/api/prompts/seed-demo` | POST | 加载演示数据 |
+| `/api/prompts/categories` | POST | 创建分类 |
+| `/api/prompts/categories/:id` | PATCH / DELETE | 更新 / 删除分类 |
+| `/api/prompts` | POST | 创建提示词模板 |
+| `/api/prompts/:id` | PATCH / DELETE | 更新 / 删除提示词 |
+| `/api/prompts/:id/apply` | POST | 渲染变量返回文本 |
+| `/api/prompts/:id/use` | POST | 渲染并创建任务 |
+
 ### 微信 Claw
 
 | 端点 | 方法 | 说明 |
@@ -288,6 +323,11 @@ ai-bridge/
 | `/health` | GET | 健康检查 |
 | `/api/logs` | GET | 系统日志（level/source/limit） |
 | `/api/context/:sessionId` | GET | 上下文 |
+| `/api/system/skill` | GET | 读取 ai-bridge.skill.md 内容 |
+| `/api/system/skill/installed` | GET | 检测 skill 是否已安装到指定环境 |
+| `/api/system/skill/install` | POST | 安装 skill 到指定环境（需要 admin 角色） |
+| `/api/system/settings` | GET / PATCH | 读取 / 更新系统设置 |
+| `/api/system/info` | GET | 服务端运行时信息 |
 
 ---
 

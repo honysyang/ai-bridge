@@ -32,5 +32,5 @@ Thumbs.db
 # Winston logs directory
 logs/
 
-# Screenshots are not shipped with the repository (see README)
-docs/screenshots/
+# 界面截图随 README 一起分发（保留仓库内截图，不上传临时/生成文件）
+# docs/screenshots/ 已取消忽略
