@@ -1,6 +1,6 @@
-# AI 智能体桥接器 (ai-bridge) v5.5.5
+# AI 智能体桥接器 (ai-bridge) v6.0.0
 
-[![Version](https://img.shields.io/badge/version-5.5.5-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases)
+[![Version](https://img.shields.io/badge/version-v6.0.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases/v6.0.0)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](./docker-compose.yml)
@@ -29,10 +29,15 @@
 
 ## ✨ 核心特性
 
-### v5.1.0（当前）
-- **📅 计划模块**：周计划 / 日计划、状态机、优先级、演示数据
-- **📝 一键周报**：聚合本周计划 + 完成任务 + 知识库新增，输出 Markdown，支持复制 / 下载
-- **⚙️ 多状态过滤**：「处理中」tab 同时匹配 assigned + processing 状态
+### v6.0.0（当前）
+- **🤖 AI Bridge Skill 统一**：将 `docs/weixin-agent.skill.md` 替换为 `docs/ai-bridge.skill.md`，与项目同名
+- **📐 明确中间程序定位**：skill 中弱化执行细节，强调 `/home/kali/ai-bridge` 作为 Trae Agent 与外部系统（微信、Web 工作台）的通信媒介
+- **🧾 Evidence 协议对齐**：保留心跳保活、长轮询、任务执行、执行依据提交的完整规范
+
+### v5.5.5
+- 产品化基础：Docker 部署、统一版本号、受信代理、权限校验、依赖清理、`.env.example`
+
+### v5.1.0
 
 ### v5.0.0
 - **🕸 知识图谱**：Cytoscape.js 可视化，节点按分类着色、cose 布局、拖拽缩放
@@ -116,8 +121,8 @@ npm run smoke
                  ▼
 ┌─────────────────────────────────────────────────────────┐
 │  外部智能体                                              │
-│  ├─ Trae Agent（通过 weixin-agent skill）                │
-│  └─ 微信 ClawBot（扫码登录 / 消息收发）                  │
+│  ├─ Trae Agent（通过 ai-bridge skill）                     │
+│  └─ 微信 ClawBot（扫码登录 / 消息收发）                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -179,6 +184,7 @@ ai-bridge/
 ├── Dockerfile                  # Docker 镜像
 ├── .env.example                # 环境变量示例
 └── docs/                       # 文档
+    └── ai-bridge.skill.md      # Trae 智能体技能定义
 ```
 
 ---
@@ -316,7 +322,7 @@ interface Task {
 
 ## 🤖 配套 Skill
 
-- [weixin-agent.skill.md](https://gitee.com/yzj1/ai-bridge/blob/main/docs/weixin-agent.skill.md) —— Trae 智能体技能
+- [ai-bridge.skill.md](https://gitee.com/yzj1/ai-bridge/blob/main/docs/ai-bridge.skill.md) —— Trae 智能体技能
   - 心跳保活（每 5 秒）
   - 长轮询获取任务（≤ 30 秒）
   - 提交结果（含 evidence）
@@ -380,6 +386,7 @@ lsof -ti:4567 | xargs -r kill -9
 
 ## 📝 版本历史
 
+- **v6.0.0**（2026-07-25）：统一 skill 为 `ai-bridge`，明确中间程序路径 `/home/kali/ai-bridge`，弱化执行细节，强调通信媒介定位
 - **v5.5.5**（2026-07-24）：产品化基础：Docker 部署、统一版本号、受信代理、权限校验、依赖清理、.env.example
 - **v5.1.0**（2026-07-23）：计划模块、一键周报、多状态过滤、知识图谱稳定化
 - **v5.0.0**（2026-07-22）：多面板工作台、知识库 2.0、工作流、微信 Claw 适配层
