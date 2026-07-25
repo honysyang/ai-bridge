@@ -11,19 +11,35 @@
 
 ## 📸 界面预览
 
-7 个核心界面：
+> 以下截图由 `chromium --headless` 在 `http://localhost:4567` 截取。图片保存在 `docs/screenshots/` 目录，随仓库分发。
 
-| 模块 | 说明 |
-|------|------|
-| 💬 聊天 | 三栏工作台：会话 / 任务流 / 详情 |
-| 📖 知识库 | 7 个分类、26+ 条目，支持搜索/筛选 |
-| 🕸 知识图谱 | Cytoscape 可视化，22 条关联 |
-| ⚙️ 工作流 | 多步任务模板（3 步示例：查茅台股价 → 查飞天茅台酒价） |
-| 📅 计划 | 周计划 / 日计划，状态跟踪 |
-| 📝 周报 | 一键汇总本周数据为 Markdown |
-| 💬 微信 Claw | iLink Bot 已登录状态、二维码扫码入口 |
+### 💬 聊天
 
-> 💡 截图不再随仓库分发（减少 clone 体积）。如需查看，请运行服务后使用浏览器或 headless Chromium 自行截取。
+![聊天界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/chat.png)
+
+### 📖 知识库
+
+![知识库界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/kb.png)
+
+### 🕸 知识图谱
+
+![知识图谱界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/kb-graph.png)
+
+### ⚙️ 工作流
+
+![工作流界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/workflow.png)
+
+### 📅 计划
+
+![计划界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/plan.png)
+
+### 📝 周报
+
+![周报界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/report.png)
+
+### 💬 微信 Claw
+
+![微信 Claw 界面](https://gitee.com/yzj1/ai-bridge/raw/main/docs/screenshots/claw.png)
 
 ---
 
