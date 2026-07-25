@@ -18,6 +18,7 @@ import { requireRole } from '../middleware/auth.js';
 import { sqliteStore } from '../lib/sqlite-store.js';
 import { getAppVersion, getAppName, getAppDescription } from '../lib/version.js';
 import { writeAudit, readAudit, getAuditStats } from '../lib/audit.js';
+import { skillRouter } from './skill.js';
 
 export const systemRouter = Router();
 
@@ -290,3 +291,6 @@ systemRouter.get(
     });
   })
 );
+
+// Skill 安装子路由
+systemRouter.use('/skill', skillRouter);

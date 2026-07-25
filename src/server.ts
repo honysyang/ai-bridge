@@ -7,6 +7,7 @@ import { sessionManager } from './session.js';
 import { clawManager } from './claw/index.js';
 import { clawConfig } from './claw/config.js';
 import { kbStore } from './kb-store.js';
+import { kbChunkStore } from './kb-chunk-store.js';
 import { kbLinkStore } from './kb-link-store.js';
 import { workflowStore } from './workflow-store.js';
 import * as fs from 'fs';
@@ -135,6 +136,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // - 处理方式：命中 .html 时 readFile + 替换 + 发送
 // - 性能：首页 / login.html 1 次读取，替换是 O(n) 简单字符串操作，无感知
 const PUBLIC_DIR = path.join(__dirname, '../public');
+const DOCS_DIR = path.join(process.cwd(), 'docs');
 
 app.get(['/', '/index.html', '/login.html'], (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -154,6 +156,8 @@ app.get(['/', '/index.html', '/login.html'], (req: Request, res: Response, next:
 });
 
 app.use(express.static(PUBLIC_DIR));
+// v6.0.0: 暴露 docs/screenshots 给前端弹窗使用本地图片，避免 Gitee raw 403
+app.use('/docs/screenshots', express.static(path.join(DOCS_DIR, 'screenshots')));
 
 // 兜底：favicon.ico 用 1x1 透明 PNG 响应（避免浏览器 404 噪声）
 app.get('/favicon.ico', (_req, res) => {
@@ -330,9 +334,13 @@ export async function startServer(port: number = 4567) {
   }
   // 加载知识库（如无 kb.jsonl 则写入示例数据）
   const kbLoad = kbStore.loadAll();
+  // 加载知识库片段
+  const kbChunksLoad = kbChunkStore.loadAll();
   // 加载知识库关联（首次启动 seed 示例关联）
   const kbLinksLoad = kbLinkStore.loadAll();
   seedKBLinksIfEmpty();
+  // v5.6.0: 后台索引所有 pending 的知识库条目
+  kbStore.schedulePendingReindex();
   // 加载工作流（如无 wf.jsonl 则写入示例数据）
   const wfLoad = workflowStore.loadAll();
 
@@ -345,8 +353,8 @@ export async function startServer(port: number = 4567) {
   taskQueue.addLog(
     kbLoad.seeded ? 'success' : 'info',
     'kb',
-    `知识库${kbLoad.seeded ? '已初始化（首次启动写入示例）' : '已加载'}: 分类 ${kbLoad.categories}, 条目 ${kbLoad.items}`,
-    kbLoad as any
+    `知识库${kbLoad.seeded ? '已初始化（首次启动写入示例）' : '已加载'}: 分类 ${kbLoad.categories}, 条目 ${kbLoad.items}, chunks ${kbChunksLoad.chunks}`,
+    { ...kbLoad, chunks: kbChunksLoad.chunks } as any
   );
   taskQueue.addLog(
     wfLoad.seeded ? 'success' : 'info',

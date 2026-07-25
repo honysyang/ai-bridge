@@ -146,6 +146,40 @@
     }
   }
 
+  function renderEmbeddingModelSelect(providers, providerId, selectedModel, elementId, hintId) {
+    const sel = $(elementId || 'setting-embedding-model');
+    const hint = hintId ? $(hintId) : $('setting-embedding-model-hint');
+    if (!sel) return;
+    const p = providers.find((x) => x.id === providerId);
+    if (!p) {
+      sel.innerHTML = '<option value="">-- 请先选服务商 --</option>';
+      if (hint) hint.textContent = '';
+      return;
+    }
+    const embeddingModels = p.models.filter((m) => m.tier === 'embedding');
+    if (embeddingModels.length === 0) {
+      sel.innerHTML = '<option value="">-- 该服务商暂无 Embedding 模型 --</option>';
+      if (hint) hint.textContent = '';
+      return;
+    }
+    sel.innerHTML = embeddingModels
+      .map(
+        (m) =>
+          `<option value="${escapeHtml(m.id)}" ${m.id === selectedModel ? 'selected' : ''}>${escapeHtml(m.name)}</option>`
+      )
+      .join('');
+    if (hint) {
+      const m = embeddingModels.find((x) => x.id === selectedModel) || embeddingModels[0];
+      if (m) {
+        const ctx = m.context_window ? `${(m.context_window / 1000).toFixed(0)}K 上下文` : '';
+        const tier = m.tier ? ` · ${m.tier}` : '';
+        hint.textContent = [m.description, ctx, tier].filter(Boolean).join(' · ');
+      } else {
+        hint.textContent = '';
+      }
+    }
+  }
+
   function renderCustomProviderList() {
     const el = $('custom-provider-list');
     if (!el) return;
@@ -302,6 +336,17 @@
       renderProviderSelect(providers, config.kb_provider, 'setting-kb-provider');
       renderModelSelect(providers, config.kb_provider, config.kb_model, 'setting-kb-model', 'setting-kb-model-hint');
 
+      renderProviderSelect(providers, config.embedding_provider, 'setting-embedding-provider');
+      renderEmbeddingModelSelect(
+        providers,
+        config.embedding_provider,
+        config.embedding_model,
+        'setting-embedding-model',
+        'setting-embedding-model-hint'
+      );
+      setValue('setting-embedding-dimensions', config.embedding_dimensions || 1536);
+      setValue('setting-embedding-batch-size', config.embedding_batch_size || 8);
+
       editingCustomProviders = JSON.parse(JSON.stringify(config.custom_providers || []));
       renderCustomProviderList();
 
@@ -328,11 +373,18 @@
       showNotification('❌ 请选择知识库模型', 'error');
       return;
     }
+    const embeddingProvider = valueOf('setting-embedding-provider');
+    const embeddingModel = valueOf('setting-embedding-model');
+    if (embeddingProvider && !embeddingModel) {
+      showNotification('❌ 请选择 Embedding 模型', 'error');
+      return;
+    }
     try {
       const customProviders = readCustomProvidersFromUI();
       const enabled = new Set(catalogCache?.config?.enabled_providers || []);
       customProviders.forEach((p) => enabled.add(p.id));
       if (kbProvider) enabled.add(kbProvider);
+      if (embeddingProvider) enabled.add(embeddingProvider);
       await api('/api/models/config', {
         method: 'PATCH',
         body: {
@@ -341,6 +393,10 @@
           enabled_providers: Array.from(enabled),
           kb_provider: kbProvider || null,
           kb_model: kbModel || null,
+          embedding_provider: embeddingProvider || null,
+          embedding_model: embeddingModel || null,
+          embedding_dimensions: parseInt(valueOf('setting-embedding-dimensions'), 10) || 1536,
+          embedding_batch_size: parseInt(valueOf('setting-embedding-batch-size'), 10) || 8,
           custom_providers: customProviders,
           model_params: {
             temperature: parseFloat(valueOf('setting-model-temperature')) || 0.7,
@@ -420,6 +476,8 @@
       // v5.5.7: 主题固定为 indigo，仅同步语言
       global.Core.setTheme();
       if (data.ui?.language) global.Core.setLanguage(data.ui.language);
+      // v6.0.0: 加载 skill 安装信息
+      await loadSkillInfo();
     } catch (e) {
       showNotification(`❌ 系统设置加载失败: ${e.message}`, 'error');
     }
@@ -873,6 +931,91 @@
     }
   }
 
+  // ======== Skill 安装区段 ========
+
+  async function loadSkillInfo() {
+    try {
+      const [{ data: skill }, { data: installed }] = await Promise.all([
+        api('/api/system/skill'),
+        api('/api/system/skill/installed')
+      ]);
+      setValue('setting-skill-version', skill.version);
+      const installedTargets = (installed.installed || []).map((i) => i.target).join(', ');
+      const resultEl = $('setting-skill-result');
+      if (resultEl) {
+        if (installed.installed && installed.installed.length > 0) {
+          resultEl.hidden = false;
+          resultEl.className = 'skill-result-box';
+          resultEl.textContent = `✅ 已检测到安装：${installedTargets}\n\n${getGuideText(installed.installed[0].path)}`;
+        } else {
+          resultEl.hidden = true;
+          resultEl.textContent = '';
+        }
+      }
+    } catch (e) {
+      showNotification(`❌ Skill 信息加载失败: ${e.message}`, 'error');
+    }
+  }
+
+  function getGuideText(skillPath) {
+    return `最佳使用方式：\n1. 在智能体对话中说「基于 ai-bridge skill 连接 bridge」或「启动 ai-bridge」。\n2. AI 会自动访问 http://localhost:4567 的任务队列。\n3. 确保 ai-bridge 服务运行，AI 将持续接收并执行任务。\n\nSkill 文件路径：${skillPath}`;
+  }
+
+  async function handleInstallSkill() {
+    const target = valueOf('setting-skill-target');
+    const customPath = valueOf('setting-skill-custom-path');
+    const resultEl = $('setting-skill-result');
+    const contentEl = $('setting-skill-content');
+    if (contentEl) contentEl.hidden = true;
+    try {
+      const { data } = await api('/api/system/skill/install', {
+        method: 'POST',
+        body: { target, customPath: target === 'custom' ? customPath : undefined }
+      });
+      if (resultEl) {
+        resultEl.hidden = false;
+        resultEl.className = 'skill-result-box';
+        resultEl.textContent = `${data.already_exists ? '✅ 已更新' : '✅ 安装成功'}（目标：${data.target}）\n\n${data.guide}`;
+      }
+      showNotification(data.already_exists ? '✅ Skill 已更新' : '✅ Skill 已安装', 'success');
+    } catch (e) {
+      if (resultEl) {
+        resultEl.hidden = false;
+        resultEl.className = 'skill-result-box error';
+        resultEl.textContent = `❌ 安装失败：${e.message}`;
+      }
+    }
+  }
+
+  async function handleReadSkill() {
+    const resultEl = $('setting-skill-result');
+    const contentEl = $('setting-skill-content');
+    try {
+      const { data } = await api('/api/system/skill');
+      if (contentEl) {
+        contentEl.hidden = false;
+        contentEl.textContent = data.content;
+      }
+      if (resultEl) {
+        resultEl.hidden = false;
+        resultEl.className = 'skill-result-box';
+        resultEl.textContent = `📄 项目 skill 文件：${data.file}\n版本：${data.version}\n长度：${data.content.length} 字符`;
+      }
+    } catch (e) {
+      if (resultEl) {
+        resultEl.hidden = false;
+        resultEl.className = 'skill-result-box error';
+        resultEl.textContent = `❌ 读取失败：${e.message}`;
+      }
+    }
+  }
+
+  function toggleSkillCustomPath() {
+    const target = valueOf('setting-skill-target');
+    const group = $('setting-skill-custom-path-group');
+    if (group) group.hidden = target !== 'custom';
+  }
+
   // ======== 顶部统一操作 ========
 
   async function handleSave() {
@@ -953,13 +1096,28 @@
       );
       setDirty(true);
     });
+    $('setting-embedding-provider')?.addEventListener('change', (e) => {
+      if (!catalogCache) return;
+      const cfg = catalogCache.config;
+      renderEmbeddingModelSelect(
+        catalogCache.providers,
+        e.target.value,
+        cfg.embedding_model,
+        'setting-embedding-model',
+        'setting-embedding-model-hint'
+      );
+      setDirty(true);
+    });
     [
       'setting-model-name',
       'setting-model-temperature',
       'setting-model-max-tokens',
       'setting-model-top-p',
       'setting-model-freq-penalty',
-      'setting-kb-model'
+      'setting-kb-model',
+      'setting-embedding-model',
+      'setting-embedding-dimensions',
+      'setting-embedding-batch-size'
     ].forEach((id) => {
       $(id)?.addEventListener('change', () => setDirty(true));
     });
@@ -1015,6 +1173,11 @@
 
     // 用户管理
     $('btn-add-user')?.addEventListener('click', addUser);
+
+    // Skill 安装
+    $('setting-skill-target')?.addEventListener('change', toggleSkillCustomPath);
+    $('btn-skill-install')?.addEventListener('click', handleInstallSkill);
+    $('btn-skill-read')?.addEventListener('click', handleReadSkill);
   }
 
   function initSettings() {

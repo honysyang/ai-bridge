@@ -30,31 +30,43 @@
       icon: '💬',
       title: '创建第一个会话',
       desc: '在「聊天」面板左侧会话列表点击 ＋ 新建会话，发送消息或任务。所有任务会自动入队，由智能体处理。',
-      tip: '支持文本、任务、代码片段等多种消息类型'
+      tip: '支持文本、任务、代码片段等多种消息类型',
+      image: '/docs/screenshots/chat.png'
     },
     {
       icon: '📖',
       title: '加载知识库演示数据',
       desc: '进入「知识库」面板，点击「加载演示」按钮，一键写入 6 个分类、20+ 条目，并自动生成关联，开启图谱视图查看。',
-      tip: '知识库条目可用于 RAG 检索和任务上下文增强'
+      tip: '知识库条目可用于 RAG 检索和任务上下文增强',
+      image: '/docs/screenshots/kb.png'
     },
     {
       icon: '⚙️',
       title: '执行工作流批量任务',
       desc: '在「工作流」面板选择模板（如「每日天气推送」），点击「执行」即可按依赖顺序自动创建任务，无需手动添加每步。',
-      tip: '支持自定义工作流和步骤参数'
+      tip: '支持自定义工作流和步骤参数',
+      image: '/docs/screenshots/workflow.png'
     },
     {
       icon: '📅',
       title: '制定计划与生成周报',
       desc: '在「计划」面板添加周/日计划，支持到期微信提醒。周报抽屉一键聚合本周计划、任务、知识库，复制粘贴即可汇报。',
-      tip: '计划可与任务联动，自动追踪完成状态'
+      tip: '计划可与任务联动，自动追踪完成状态',
+      image: '/docs/screenshots/plan.png'
     },
     {
       icon: '🔌',
       title: '接入微信消息互通',
       desc: '点击右上角「微信」图标，扫码登录 ClawBot。微信消息会自动入队，处理结果原路回复给用户。',
-      tip: '支持空闲提醒和任务完成自动回复'
+      tip: '支持空闲提醒和任务完成自动回复',
+      image: '/docs/screenshots/claw.png'
+    },
+    {
+      icon: '🤖',
+      title: '安装 Skill 让 AI 接管',
+      desc: '进入「设置 → 系统行为」，在 AI Bridge Skill 卡片中选择目标环境（Trae / Trae CN / 自定义），点击「一键安装」后，即可在智能体对话中说「启动 ai-bridge」开始自动轮询任务。',
+      tip: 'Skill 是 AI 与 bridge 之间的通信协议说明书',
+      image: '/docs/screenshots/report.png'
     }
   ];
 
@@ -268,11 +280,16 @@
       (_, i) => `<span class="tour-dot ${i === currentTourStep ? 'active' : ''}" data-idx="${i}"></span>`
     ).join('');
 
+    const imageHtml = step.image
+      ? `<div class="tour-image-wrap"><img src="${escapeHtml(step.image)}" alt="${escapeHtml(step.title)}" class="tour-image" onerror="this.style.display='none'"/></div>`
+      : '';
+
     tourModal.innerHTML = `
       <div class="tour-modal">
         <button class="tour-modal-close" aria-label="关闭">×</button>
         <div class="tour-modal-body">
           <div class="tour-visual">${step.icon}</div>
+          ${imageHtml}
           <div class="tour-step-number">步骤 ${currentTourStep + 1} / ${total}</div>
           <h3 class="tour-title">${escapeHtml(step.title)}</h3>
           <p class="tour-desc">${escapeHtml(step.desc)}</p>

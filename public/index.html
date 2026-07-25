@@ -517,7 +517,7 @@
               <section
                 class="settings-section"
                 id="settings-section-models"
-                data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型"
+                data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型 Embedding 向量"
               >
                 <div class="settings-section-block">
                   <div class="settings-block-title">💬 普通模型</div>
@@ -629,6 +629,41 @@
                     </div>
                   </div>
                 </div>
+
+                <div class="settings-section-block">
+                  <div class="settings-block-title">🔢 Embedding 模型</div>
+                  <p class="settings-block-desc">用于知识库向量检索（必须配置才能启用语义搜索）</p>
+
+                  <div class="settings-card">
+                    <div class="settings-card-head">
+                      <h3>📐 向量 Embedding 模型</h3>
+                      <p class="settings-card-hint">
+                        将知识库文本转换为向量，支持 OpenAI / 通义千问 / 智谱 / Ollama 等兼容接口
+                      </p>
+                    </div>
+                    <div class="settings-form-grid settings-form-grid-2">
+                      <div class="form-group">
+                        <label>服务商</label>
+                        <select id="setting-embedding-provider" class="form-input"></select>
+                      </div>
+                      <div class="form-group">
+                        <label>模型</label>
+                        <select id="setting-embedding-model" class="form-input"></select>
+                        <div class="form-hint" id="setting-embedding-model-hint">--</div>
+                      </div>
+                      <div class="form-group">
+                        <label>向量维度</label>
+                        <input type="number" id="setting-embedding-dimensions" class="form-input" min="1" max="8192" />
+                        <div class="form-hint">常见：text-embedding-3-small=1536，千问 V3=1024</div>
+                      </div>
+                      <div class="form-group">
+                        <label>批处理大小</label>
+                        <input type="number" id="setting-embedding-batch-size" class="form-input" min="1" max="64" />
+                        <div class="form-hint">单次请求最多生成多少个向量</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </section>
 
               <!-- ===== 区段：系统行为 ===== -->
@@ -636,7 +671,7 @@
                 class="settings-section"
                 id="settings-section-system"
                 hidden
-                data-search-keywords="系统 主题 密度 语言 动画 任务 优先级 重试 归档 心跳 长轮询"
+                data-search-keywords="系统 主题 密度 语言 动画 任务 优先级 重试 归档 心跳 长轮询 skill AI Bridge Skill 安装 智能体"
               >
                 <div class="settings-card">
                   <div class="settings-card-head">
@@ -708,6 +743,42 @@
                       <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input" />
                     </div>
                   </div>
+                </div>
+
+                <div class="settings-card" id="settings-skill-card">
+                  <div class="settings-card-head">
+                    <h3>🤖 AI Bridge Skill</h3>
+                    <p class="settings-card-hint">将 skill 安装到智能体环境，AI 即可连接本 bridge</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>项目 skill 版本</label>
+                      <input type="text" id="setting-skill-version" class="form-input" readonly />
+                    </div>
+                    <div class="form-group">
+                      <label>安装目标</label>
+                      <select id="setting-skill-target" class="form-input">
+                        <option value="trae-cn">Trae CN（~/.trae-cn/skills）</option>
+                        <option value="trae">Trae（~/.trae/skills）</option>
+                        <option value="custom">自定义路径</option>
+                      </select>
+                    </div>
+                    <div class="form-group" id="setting-skill-custom-path-group" hidden>
+                      <label>自定义路径</label>
+                      <input
+                        type="text"
+                        id="setting-skill-custom-path"
+                        class="form-input"
+                        placeholder="/absolute/path/to/skills"
+                      />
+                    </div>
+                  </div>
+                  <div class="settings-form-grid" style="margin-top: 12px">
+                    <button class="btn-primary" id="btn-skill-install">🚀 一键安装</button>
+                    <button class="btn-secondary" id="btn-skill-read">📖 读取 skill 内容</button>
+                  </div>
+                  <div id="setting-skill-result" class="skill-result-box" hidden></div>
+                  <pre id="setting-skill-content" class="skill-content-box" hidden></pre>
                 </div>
               </section>
 
