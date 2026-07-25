@@ -1,1242 +1,1310 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ai-bridge 智能体桥接器 · 控制台</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230f172a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='central' font-size='28' font-family='-apple-system,BlinkMacSystemFont,Arial,sans-serif' font-weight='700' fill='%23f8fafc' letter-spacing='-1'%3EAB%3C/text%3E%3Crect x='14' y='44' width='36' height='2' fill='%231d4ed8'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v={VERSION}">
-  <!-- Cytoscape.js for knowledge graph (v4.3.0) -->
-  <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
-</head>
-<body>
-  <!-- ========== Header ========== -->
-  <header class="app-header">
-    <div class="header-left">
-      <h1>ai-bridge <span class="version" id="app-version">v--</span></h1>
-      <p class="subtitle" id="header-subtitle">智能体桥接控制台 · 知识库 · 工作流 · 计划 · 设置</p>
-    </div>
-    <div class="header-right">
-      <!-- v5.4.0: 用户徽章 + 登出 -->
-      <span id="user-badge" class="queue-badge" title="当前登录用户" style="cursor:default;">👤 -</span>
-      <button class="header-btn" id="btn-logout" title="登出">⎋</button>
-      <!-- 微信 Claw 状态徽章（v4.0.0） -->
-      <button class="wechat-status" id="wechat-status" data-state="disconnected" title="点击管理微信连接">
-        <span class="ws-icon"></span>
-        <span class="ws-text">未连接</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ai-bridge 智能体桥接器 · 控制台</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%230f172a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' dominant-baseline='central' font-size='28' font-family='-apple-system,BlinkMacSystemFont,Arial,sans-serif' font-weight='700' fill='%23f8fafc' letter-spacing='-1'%3EAB%3C/text%3E%3Crect x='14' y='44' width='36' height='2' fill='%231d4ed8'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="style.css?v={VERSION}" />
+    <!-- Cytoscape.js for knowledge graph (v4.3.0) -->
+    <script src="https://cdn.jsdelivr.net/npm/cytoscape@3.30.4/dist/cytoscape.min.js"></script>
+  </head>
+  <body>
+    <!-- ========== Header ========== -->
+    <header class="app-header">
+      <div class="header-left">
+        <h1>ai-bridge <span class="version" id="app-version">v--</span></h1>
+        <p class="subtitle" id="header-subtitle">智能体桥接控制台 · 知识库 · 工作流 · 计划 · 设置</p>
+      </div>
+      <div class="header-right">
+        <!-- v5.5.7: 语言切换 -->
+        <button class="header-btn" id="btn-lang" title="切换语言">中/En</button>
+        <!-- v5.4.0: 用户徽章 + 登出 -->
+        <span id="user-badge" class="queue-badge" title="当前登录用户" style="cursor: default">👤 -</span>
+        <button class="header-btn" id="btn-logout" title="登出">⎋</button>
+        <!-- 微信 Claw 状态徽章（v4.0.0） -->
+        <button class="wechat-status" id="wechat-status" data-state="disconnected" title="点击管理微信连接">
+          <span class="ws-icon"></span>
+          <span class="ws-text">未连接</span>
+        </button>
+        <span id="connection-status" class="status connected">● 已连接</span>
+        <span id="queue-stats" class="queue-badge">队列: -</span>
+        <span id="sessions-count" class="queue-badge">会话: -</span>
+        <button class="header-btn" id="btn-open-logs">📜 日志</button>
+        <button class="header-btn" id="btn-open-stats">📊 存储</button>
+      </div>
+    </header>
+
+    <!-- v5.5.6: 移动端菜单按钮 -->
+    <button id="mobile-menu-toggle" class="mobile-menu-toggle" aria-label="打开菜单">☰</button>
+
+    <!-- ========== Tab 菜单 ========== -->
+    <nav class="tab-menu" role="tablist" id="tab-menu">
+      <button class="tab-btn active" data-tab="chat" role="tab" aria-selected="true">
+        <span class="tab-icon">💬</span>
+        <span class="tab-label">对话</span>
+        <span class="tab-count" id="tab-count-chat" hidden>0</span>
       </button>
-      <span id="connection-status" class="status connected">● 已连接</span>
-      <span id="queue-stats" class="queue-badge">队列: -</span>
-      <span id="sessions-count" class="queue-badge">会话: -</span>
-      <button class="header-btn" id="btn-open-logs">📜 日志</button>
-      <button class="header-btn" id="btn-open-stats">📊 存储</button>
-    </div>
-  </header>
+      <button class="tab-btn" data-tab="kb" role="tab" aria-selected="false">
+        <span class="tab-icon">📚</span>
+        <span class="tab-label">知识库</span>
+        <span class="tab-count" id="tab-count-kb" hidden>0</span>
+      </button>
+      <button class="tab-btn" data-tab="workflow" role="tab" aria-selected="false">
+        <span class="tab-icon">▦</span>
+        <span class="tab-label">工作流</span>
+        <span class="tab-count" id="tab-count-wf" hidden>0</span>
+      </button>
+      <button class="tab-btn" data-tab="plan" role="tab" aria-selected="false">
+        <span class="tab-icon">🗓</span>
+        <span class="tab-label">计划</span>
+        <span class="tab-count" id="tab-count-plan" hidden>0</span>
+      </button>
+      <button class="tab-btn" data-tab="overview" role="tab" aria-selected="false">
+        <span class="tab-icon">📈</span>
+        <span class="tab-label">概览</span>
+      </button>
+      <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">设置</span>
+      </button>
+    </nav>
 
-  <!-- ========== Tab 菜单 ========== -->
-  <nav class="tab-menu" role="tablist">
-    <button class="tab-btn active" data-tab="chat" role="tab" aria-selected="true">
-      <span class="tab-icon">💬</span>
-      <span class="tab-label">对话</span>
-      <span class="tab-count" id="tab-count-chat" hidden>0</span>
-    </button>
-    <button class="tab-btn" data-tab="kb" role="tab" aria-selected="false">
-      <span class="tab-icon">📚</span>
-      <span class="tab-label">知识库</span>
-      <span class="tab-count" id="tab-count-kb" hidden>0</span>
-    </button>
-    <button class="tab-btn" data-tab="workflow" role="tab" aria-selected="false">
-      <span class="tab-icon">▦</span>
-      <span class="tab-label">工作流</span>
-      <span class="tab-count" id="tab-count-wf" hidden>0</span>
-    </button>
-    <button class="tab-btn" data-tab="plan" role="tab" aria-selected="false">
-      <span class="tab-icon">🗓</span>
-      <span class="tab-label">计划</span>
-      <span class="tab-count" id="tab-count-plan" hidden>0</span>
-    </button>
-    <button class="tab-btn" data-tab="overview" role="tab" aria-selected="false">
-      <span class="tab-icon">📈</span>
-      <span class="tab-label">概览</span>
-    </button>
-    <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false">
-      <span class="tab-icon">⚙️</span>
-      <span class="tab-label">设置</span>
-    </button>
-  </nav>
-
-  <!-- ========== 多面板工作台 ========== -->
-  <div class="workspace">
-
-    <!-- ===== 面板：聊天（原三栏） ===== -->
-    <div class="panel panel-chat" id="panel-chat">
-    <!-- ===== 中左栏：会话列表 ===== -->
-    <aside class="col col-left" id="col-left">
-      <div class="col-header">
-        <h2>💬 会话</h2>
-        <button class="icon-btn" id="btn-new-session" title="新建会话">＋</button>
-      </div>
-      <div class="col-toolbar">
-        <input type="search" id="session-search" placeholder="搜索会话..." class="search-input">
-        <select id="session-filter" class="filter-select">
-          <option value="active">活跃</option>
-          <option value="archived">归档</option>
-          <option value="all">全部</option>
-        </select>
-      </div>
-      <div class="session-list" id="session-list">
-        <div class="empty-state">
-          <div class="empty-icon">💬</div>
-          <div class="empty-text">暂无会话</div>
-          <div class="empty-hint">点击右上角 ＋ 新建</div>
-        </div>
-      </div>
-    </aside>
-
-    <!-- 分隔条 1 -->
-    <div class="splitter splitter-vertical" id="splitter-1" data-target="col-left"></div>
-
-    <!-- ===== 中栏：任务流 ===== -->
-    <main class="col col-middle" id="col-middle">
-      <div class="col-header">
-        <h2 id="middle-title">📌 任务流</h2>
-        <div class="col-actions">
-          <button class="icon-btn-sm" id="btn-refresh-tasks" title="刷新">↻</button>
-        </div>
-      </div>
-      <div class="col-toolbar">
-        <div class="filter-tabs" id="task-filter-tabs">
-          <button class="tab active" data-filter="all">全部</button>
-          <button class="tab" data-filter="pending">待处理</button>
-          <button class="tab" data-filter="processing">处理中</button>
-          <button class="tab" data-filter="completed">已完成</button>
-          <button class="tab" data-filter="failed">失败</button>
-        </div>
-      </div>
-      <div class="task-flow" id="task-flow">
-        <div class="empty-state">
-          <div class="empty-icon">📭</div>
-          <div class="empty-text">请选择或新建会话</div>
-          <div class="empty-hint">在左侧会话列表中选择</div>
-        </div>
-      </div>
-
-      <!-- 底部输入区（当前会话内） -->
-      <div class="compose-bar" id="compose-bar">
-        <textarea
-          id="compose-input"
-          class="compose-input"
-          placeholder="输入消息或任务... (Enter 发送，Shift+Enter 换行)"
-          rows="1"
-          disabled
-        ></textarea>
-        <div class="compose-options">
-          <select id="compose-type" disabled>
-            <option value="chat">💬 聊天</option>
-            <option value="query_info">🔍 查询</option>
-            <option value="generate_content">✍️ 生成</option>
-            <option value="analyze_data">📊 分析</option>
-            <option value="execute_command">⚡ 命令</option>
-            <option value="multi_step">🔄 多步</option>
-          </select>
-          <select id="compose-priority" disabled>
-            <option value="normal">普通</option>
-            <option value="high">高</option>
-            <option value="urgent">紧急</option>
-            <option value="low">低</option>
-          </select>
-          <button class="compose-send" id="btn-compose-send" disabled>
-            <span>🚀</span>
-          </button>
-        </div>
-      </div>
-    </main>
-
-    <!-- 分隔条 2 -->
-    <div class="splitter splitter-vertical" id="splitter-2" data-target="col-right"></div>
-
-    <!-- ===== 右栏：任务详情 ===== -->
-    <aside class="col col-right" id="col-right">
-      <div class="col-header">
-        <h2>🔍 详情</h2>
-        <div class="col-actions">
-          <button class="icon-btn-sm" id="btn-close-detail" title="关闭详情">×</button>
-        </div>
-      </div>
-      <div class="col-body" id="detail-body">
-        <div class="empty-state">
-          <div class="empty-icon">👈</div>
-          <div class="empty-text">选择任务查看详情</div>
-          <div class="empty-hint">点击中间栏的任务卡片</div>
-        </div>
-      </div>
-    </aside>
-    </div><!-- /panel-chat -->
-
-    <!-- ===== 面板：知识库（重做版） ===== -->
-    <div class="panel panel-kb" id="panel-kb" hidden>
-      <div class="kb-panel">
-        <div class="kb-toolbar">
-          <div class="filter-tabs" id="kb-view-tabs">
-            <button class="tab active" data-view="list">📋 列表</button>
-            <button class="tab" data-view="graph">🕸 图谱</button>
+    <!-- ========== 多面板工作台 ========== -->
+    <div class="workspace">
+      <!-- ===== 面板：聊天（原三栏） ===== -->
+      <div class="panel panel-chat" id="panel-chat">
+        <!-- ===== 中左栏：会话列表 ===== -->
+        <aside class="col col-left" id="col-left">
+          <div class="col-header">
+            <h2>💬 会话</h2>
+            <button class="icon-btn" id="btn-new-session" title="新建会话">＋</button>
           </div>
-          <input type="search" id="kb-search" placeholder="🔍 搜索知识..." class="search-input">
-          <select id="kb-cat-filter" class="filter-select">
-            <option value="all">全部分类</option>
-          </select>
-          <button class="btn-primary" id="btn-kb-new-category">+ 新建分类</button>
-          <button class="btn-secondary" id="btn-kb-new-item">+ 新建条目</button>
-          <button class="btn-demo" id="btn-kb-seed-demo" title="一键加载演示分类/条目/关联">🎁 演示数据</button>
-        </div>
-        <!-- 列表视图 -->
-        <div class="kb-content kb-view-list" id="kb-view-list">
-          <aside class="kb-side" id="kb-side">
-            <!-- 分类树由 JS 渲染 -->
-          </aside>
-          <main class="kb-main" id="kb-main">
-            <div class="kb-items-header">
-              <span id="kb-items-title">全部条目</span>
-              <span class="kb-items-count" id="kb-items-count">--</span>
+          <div class="col-toolbar">
+            <input type="search" id="session-search" placeholder="搜索会话..." class="search-input" />
+            <select id="session-filter" class="filter-select">
+              <option value="active">活跃</option>
+              <option value="archived">归档</option>
+              <option value="all">全部</option>
+            </select>
+          </div>
+          <div class="session-list" id="session-list">
+            <div class="empty-state">
+              <div class="empty-icon">💬</div>
+              <div class="empty-text">暂无会话</div>
+              <div class="empty-hint">点击右上角 ＋ 新建</div>
             </div>
-            <div class="kb-items-list" id="kb-items-list">
-              <div class="empty-state empty-state-large">
-                <div class="empty-icon">📖</div>
-                <div class="empty-text">知识库空空如也</div>
-                <div class="empty-hint">点击「🎁 演示数据」一键加载 6 个分类、25+ 条目、20+ 关联，立即体验</div>
-                <button class="btn-demo btn-demo-large" id="btn-kb-seed-demo-2">🎁 一键加载演示数据</button>
+          </div>
+        </aside>
+
+        <!-- 分隔条 1 -->
+        <div class="splitter splitter-vertical" id="splitter-1" data-target="col-left"></div>
+
+        <!-- ===== 中栏：任务流 ===== -->
+        <main class="col col-middle" id="col-middle">
+          <div class="col-header">
+            <h2 id="middle-title">📌 任务流</h2>
+            <div class="col-actions">
+              <button class="icon-btn-sm" id="btn-refresh-tasks" title="刷新">↻</button>
+            </div>
+          </div>
+          <div class="col-toolbar">
+            <div class="filter-tabs" id="task-filter-tabs">
+              <button class="tab active" data-filter="all">全部</button>
+              <button class="tab" data-filter="pending">待处理</button>
+              <button class="tab" data-filter="processing">处理中</button>
+              <button class="tab" data-filter="completed">已完成</button>
+              <button class="tab" data-filter="failed">失败</button>
+            </div>
+          </div>
+          <div class="task-flow" id="task-flow">
+            <div class="empty-state">
+              <div class="empty-icon">📭</div>
+              <div class="empty-text">请选择或新建会话</div>
+              <div class="empty-hint">在左侧会话列表中选择</div>
+            </div>
+          </div>
+
+          <!-- 底部输入区（当前会话内） -->
+          <div class="compose-bar" id="compose-bar">
+            <textarea
+              id="compose-input"
+              class="compose-input"
+              placeholder="输入消息或任务... (Enter 发送，Shift+Enter 换行)"
+              rows="1"
+              disabled
+            ></textarea>
+            <div class="compose-options">
+              <select id="compose-type" disabled>
+                <option value="chat">💬 聊天</option>
+                <option value="query_info">🔍 查询</option>
+                <option value="generate_content">✍️ 生成</option>
+                <option value="analyze_data">📊 分析</option>
+                <option value="execute_command">⚡ 命令</option>
+                <option value="multi_step">🔄 多步</option>
+              </select>
+              <select id="compose-priority" disabled>
+                <option value="normal">普通</option>
+                <option value="high">高</option>
+                <option value="urgent">紧急</option>
+                <option value="low">低</option>
+              </select>
+              <button class="compose-send" id="btn-compose-send" disabled>
+                <span>🚀</span>
+              </button>
+            </div>
+          </div>
+        </main>
+
+        <!-- 分隔条 2 -->
+        <div class="splitter splitter-vertical" id="splitter-2" data-target="col-right"></div>
+
+        <!-- ===== 右栏：任务详情 ===== -->
+        <aside class="col col-right" id="col-right">
+          <div class="col-header">
+            <h2>🔍 详情</h2>
+            <div class="col-actions">
+              <button class="icon-btn-sm" id="btn-close-detail" title="关闭详情">×</button>
+            </div>
+          </div>
+          <div class="col-body" id="detail-body">
+            <div class="empty-state">
+              <div class="empty-icon">👈</div>
+              <div class="empty-text">选择任务查看详情</div>
+              <div class="empty-hint">点击中间栏的任务卡片</div>
+            </div>
+          </div>
+        </aside>
+      </div>
+      <!-- /panel-chat -->
+
+      <!-- ===== 面板：知识库（重做版） ===== -->
+      <div class="panel panel-kb" id="panel-kb" hidden>
+        <div class="kb-panel">
+          <div class="kb-toolbar">
+            <div class="filter-tabs" id="kb-view-tabs">
+              <button class="tab active" data-view="list">📋 列表</button>
+              <button class="tab" data-view="graph">🕸 图谱</button>
+            </div>
+            <input type="search" id="kb-search" placeholder="🔍 搜索知识..." class="search-input" />
+            <select id="kb-cat-filter" class="filter-select">
+              <option value="all">全部分类</option>
+            </select>
+            <button class="btn-primary" id="btn-kb-new-category">+ 新建分类</button>
+            <button class="btn-secondary" id="btn-kb-new-item">+ 新建条目</button>
+            <button class="btn-demo" id="btn-kb-seed-demo" title="一键加载演示分类/条目/关联">🎁 演示数据</button>
+          </div>
+          <!-- 列表视图 -->
+          <div class="kb-content kb-view-list" id="kb-view-list">
+            <aside class="kb-side" id="kb-side">
+              <!-- 分类树由 JS 渲染 -->
+            </aside>
+            <main class="kb-main" id="kb-main">
+              <div class="kb-items-header">
+                <span id="kb-items-title">全部条目</span>
+                <span class="kb-items-count" id="kb-items-count">--</span>
+              </div>
+              <div class="kb-items-list" id="kb-items-list">
+                <div class="empty-state empty-state-large">
+                  <div class="empty-icon">📖</div>
+                  <div class="empty-text">知识库空空如也</div>
+                  <div class="empty-hint">点击「🎁 演示数据」一键加载 6 个分类、25+ 条目、20+ 关联，立即体验</div>
+                  <button class="btn-demo btn-demo-large" id="btn-kb-seed-demo-2">🎁 一键加载演示数据</button>
+                </div>
+              </div>
+            </main>
+          </div>
+          <!-- 图谱视图 -->
+          <div class="kb-content kb-view-graph" id="kb-view-graph" hidden>
+            <aside class="kb-graph-side" id="kb-graph-side">
+              <h3>连接条目</h3>
+              <div class="kb-graph-form">
+                <label>源条目</label>
+                <select id="kb-link-source"></select>
+                <label>目标条目</label>
+                <select id="kb-link-target"></select>
+                <label>关系类型</label>
+                <select id="kb-link-type">
+                  <option value="related">相关</option>
+                  <option value="depends_on">依赖</option>
+                  <option value="references">引用</option>
+                  <option value="contains">包含</option>
+                </select>
+                <label>标注（可选）</label>
+                <input type="text" id="kb-link-label" placeholder="如：用于查询" maxlength="32" />
+                <button class="btn-primary" id="kb-link-create">+ 创建关联</button>
+              </div>
+              <h3 style="margin-top: 18px">
+                关联列表
+                <span id="kb-link-count" class="kb-items-count" style="background: transparent; padding: 0">--</span>
+              </h3>
+              <div class="kb-link-list" id="kb-link-list"></div>
+            </aside>
+            <main class="kb-graph-main">
+              <div id="cy"></div>
+              <div class="cy-tip" id="cy-tip">点击节点查看详情 · 拖拽节点调整布局 · 滚轮缩放</div>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 面板：工作流 ===== -->
+      <div class="panel panel-workflow" id="panel-workflow" hidden>
+        <div class="wf-panel">
+          <div class="wf-toolbar">
+            <input type="search" id="wf-search" placeholder="🔍 搜索工作流..." class="search-input" />
+            <button class="btn-primary" id="btn-wf-new">+ 新建工作流</button>
+            <button class="btn-demo" id="btn-wf-seed-demo" title="一键加载 9 个示例工作流">🎁 演示数据</button>
+          </div>
+          <div class="wf-content">
+            <aside class="wf-side" id="wf-side">
+              <!-- 工作流列表由 JS 渲染 -->
+            </aside>
+            <main class="wf-main" id="wf-main">
+              <div class="wf-empty" id="wf-empty">
+                <div class="empty-icon">⚙️</div>
+                <div class="empty-text">工作流还是空的</div>
+                <div class="empty-hint">
+                  点击「🎁 演示数据」加载 9 个示例工作流（股票分析、天气推送、销售月报、应急响应…）
+                </div>
+                <button class="btn-demo btn-demo-large" id="btn-wf-seed-demo-2">🎁 一键加载演示数据</button>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 面板：计划（v5.1.0） ===== -->
+      <div class="panel panel-plan" id="panel-plan" hidden>
+        <div class="plan-panel">
+          <div class="plan-toolbar">
+            <div class="plan-toolbar-left">
+              <input type="search" id="plan-search" placeholder="🔍 搜索计划..." class="search-input" />
+              <select id="plan-type-filter" class="filter-select">
+                <option value="all">全部类型</option>
+                <option value="week">📆 周计划</option>
+                <option value="day">📅 日计划</option>
+              </select>
+              <select id="plan-status-filter" class="filter-select">
+                <option value="all">全部状态</option>
+                <option value="pending">⏳ 待开始</option>
+                <option value="in_progress">⚙️ 进行中</option>
+                <option value="done">✅ 已完成</option>
+                <option value="cancelled">❌ 已取消</option>
+              </select>
+              <select id="plan-week-filter" class="filter-select">
+                <option value="current">📍 本周</option>
+                <option value="next">➡️ 下周</option>
+                <option value="all">🗓 全部</option>
+              </select>
+            </div>
+            <div class="plan-toolbar-right">
+              <button class="btn-secondary" id="btn-plan-report" title="汇总本周计划 + 完成任务，生成 Markdown 周报">
+                📝 生成周报
+              </button>
+              <button class="btn-primary" id="btn-plan-new">+ 新建计划</button>
+              <button class="btn-demo" id="btn-plan-seed-demo" title="一键加载示例计划">🎁 演示数据</button>
+            </div>
+          </div>
+          <div class="plan-content">
+            <aside class="plan-side" id="plan-side">
+              <!-- 计划分组列表由 JS 渲染 -->
+            </aside>
+            <main class="plan-main" id="plan-main">
+              <div class="plan-empty" id="plan-empty">
+                <div class="empty-icon">📅</div>
+                <div class="empty-text">计划还是空的</div>
+                <div class="empty-hint">点击「🎁 演示数据」加载示例计划，或点击「+ 新建计划」开始记录</div>
+                <button class="btn-demo btn-demo-large" id="btn-plan-seed-demo-2">🎁 一键加载演示数据</button>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 面板：概览（v5.5.7 简洁版） ===== -->
+      <div class="panel panel-overview" id="panel-overview" hidden>
+        <div class="overview-toolbar">
+          <div class="overview-toolbar-title">系统概览</div>
+          <div class="overview-toolbar-actions">
+            <button class="btn-secondary" id="btn-overview-tour">🚀 新用户上手</button>
+          </div>
+        </div>
+        <div class="overview-content">
+          <div class="overview-container">
+            <!-- KPI 卡片 -->
+            <div class="overview-stats">
+              <div class="stat-card" data-stat="tasks">
+                <div class="stat-icon">📌</div>
+                <div class="stat-meta">
+                  <div class="stat-label">任务总数</div>
+                  <div class="stat-value" data-value>--</div>
+                  <div class="stat-trend" data-trend>--</div>
+                </div>
+              </div>
+              <div class="stat-card" data-stat="success_rate">
+                <div class="stat-icon">✅</div>
+                <div class="stat-meta">
+                  <div class="stat-label">成功率</div>
+                  <div class="stat-value" data-value>--</div>
+                  <div class="stat-trend" data-trend>--</div>
+                </div>
+              </div>
+              <div class="stat-card" data-stat="kb">
+                <div class="stat-icon">📖</div>
+                <div class="stat-meta">
+                  <div class="stat-label">知识库</div>
+                  <div class="stat-value" data-value>--</div>
+                  <div class="stat-trend" data-trend>分类 / 条目 / 关联</div>
+                </div>
+              </div>
+              <div class="stat-card" data-stat="sessions">
+                <div class="stat-icon">💬</div>
+                <div class="stat-meta">
+                  <div class="stat-label">会话</div>
+                  <div class="stat-value" data-value>--</div>
+                  <div class="stat-trend" data-trend>活跃 / 归档</div>
+                </div>
               </div>
             </div>
-          </main>
-        </div>
-        <!-- 图谱视图 -->
-        <div class="kb-content kb-view-graph" id="kb-view-graph" hidden>
-          <aside class="kb-graph-side" id="kb-graph-side">
-            <h3>连接条目</h3>
-            <div class="kb-graph-form">
-              <label>源条目</label>
-              <select id="kb-link-source"></select>
-              <label>目标条目</label>
-              <select id="kb-link-target"></select>
-              <label>关系类型</label>
-              <select id="kb-link-type">
-                <option value="related">相关</option>
-                <option value="depends_on">依赖</option>
-                <option value="references">引用</option>
-                <option value="contains">包含</option>
-              </select>
-              <label>标注（可选）</label>
-              <input type="text" id="kb-link-label" placeholder="如：用于查询" maxlength="32">
-              <button class="btn-primary" id="kb-link-create">+ 创建关联</button>
+
+            <!-- 快捷操作 -->
+            <div class="overview-quick">
+              <h3>快捷操作</h3>
+              <div class="quick-grid">
+                <button class="quick-card" data-quick="new-session">
+                  <div class="quick-icon">💬</div>
+                  <div class="quick-text">
+                    <div class="quick-title">新建会话</div>
+                    <div class="quick-hint">开始一个话题或任务</div>
+                  </div>
+                </button>
+                <button class="quick-card" data-quick="add-task">
+                  <div class="quick-icon">📌</div>
+                  <div class="quick-text">
+                    <div class="quick-title">提交任务</div>
+                    <div class="quick-hint">在当前会话发送任务</div>
+                  </div>
+                </button>
+                <button class="quick-card" data-quick="kb-demo">
+                  <div class="quick-icon">🎁</div>
+                  <div class="quick-text">
+                    <div class="quick-title">演示知识库</div>
+                    <div class="quick-hint">加载 6 分类 25+ 条目</div>
+                  </div>
+                </button>
+                <button class="quick-card" data-quick="wf-demo">
+                  <div class="quick-icon">⚙️</div>
+                  <div class="quick-text">
+                    <div class="quick-title">演示工作流</div>
+                    <div class="quick-hint">加载 9 个示例工作流</div>
+                  </div>
+                </button>
+              </div>
             </div>
-            <h3 style="margin-top:18px">关联列表 <span id="kb-link-count" class="kb-items-count" style="background:transparent;padding:0">--</span></h3>
-            <div class="kb-link-list" id="kb-link-list"></div>
+
+            <!-- 图表区 -->
+            <div class="overview-charts">
+              <div class="chart-card">
+                <div class="chart-header"><h3>📈 任务趋势（近 7 天）</h3></div>
+                <div class="chart-body" id="overview-trend-chart">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="chart-header"><h3>📊 任务来源分布</h3></div>
+                <div class="chart-body" id="overview-source-chart">
+                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 最近活动 -->
+            <div class="chart-card overview-activity">
+              <div class="chart-header">
+                <h3>🕐 最近活动</h3>
+                <span class="chart-hint" id="overview-activity-count">--</span>
+              </div>
+              <div class="chart-body" id="overview-activity-list">
+                <div class="empty-state"><div class="empty-text">加载中...</div></div>
+              </div>
+            </div>
+
+            <!-- 系统健康 -->
+            <div class="chart-card">
+              <div class="chart-header"><h3>⚙️ 系统健康</h3></div>
+              <div class="chart-body" id="overview-health">
+                <div class="empty-state"><div class="empty-text">加载中...</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 面板：设置（v5.5.7 视觉重构） ===== -->
+      <div class="panel panel-settings" id="panel-settings" hidden>
+        <div class="settings-layout">
+          <!-- 左侧导航 -->
+          <aside class="settings-sidebar" id="settings-sidebar">
+            <div class="settings-search-wrap">
+              <input
+                type="search"
+                id="settings-search"
+                class="settings-search"
+                placeholder="搜索设置项..."
+                autocomplete="off"
+              />
+            </div>
+            <nav class="settings-nav" id="settings-nav" role="tablist">
+              <button class="settings-nav-item active" data-section="models" role="tab" aria-selected="true">
+                <span class="settings-nav-icon">🤖</span>
+                <span class="settings-nav-label">AI 模型</span>
+              </button>
+              <button class="settings-nav-item" data-section="system" role="tab" aria-selected="false">
+                <span class="settings-nav-icon">🛠</span>
+                <span class="settings-nav-label">系统行为</span>
+              </button>
+              <button class="settings-nav-item" data-section="logs" role="tab" aria-selected="false">
+                <span class="settings-nav-icon">📜</span>
+                <span class="settings-nav-label">日志与存储</span>
+              </button>
+              <button class="settings-nav-item" data-section="wechat" role="tab" aria-selected="false">
+                <span class="settings-nav-icon">💬</span>
+                <span class="settings-nav-label">微信桥接</span>
+              </button>
+              <button
+                class="settings-nav-item"
+                data-section="users"
+                role="tab"
+                aria-selected="false"
+                data-admin-only="true"
+              >
+                <span class="settings-nav-icon">👥</span>
+                <span class="settings-nav-label">用户管理</span>
+              </button>
+              <button class="settings-nav-item" data-section="security" role="tab" aria-selected="false">
+                <span class="settings-nav-icon">🔐</span>
+                <span class="settings-nav-label">安全</span>
+              </button>
+              <button class="settings-nav-item" data-section="about" role="tab" aria-selected="false">
+                <span class="settings-nav-icon">ℹ️</span>
+                <span class="settings-nav-label">关于</span>
+              </button>
+            </nav>
           </aside>
-          <main class="kb-graph-main">
-            <div id="cy"></div>
-            <div class="cy-tip" id="cy-tip">点击节点查看详情 · 拖拽节点调整布局 · 滚轮缩放</div>
+
+          <!-- 右侧内容区 -->
+          <main class="settings-main">
+            <div class="settings-toolbar">
+              <div class="settings-toolbar-title">
+                <span id="settings-toolbar-title-text">AI 模型</span>
+                <span class="settings-dirty-badge" id="settings-dirty-badge" hidden>● 未保存</span>
+              </div>
+              <div class="settings-toolbar-actions">
+                <button class="btn-secondary" id="btn-settings-refresh" title="重新加载当前页设置">刷新</button>
+                <button class="btn-secondary" id="btn-settings-cancel" title="撤销当前页未保存改动">取消</button>
+                <button class="btn-primary" id="btn-settings-save" title="保存当前页设置">保存</button>
+                <button class="btn-secondary" id="btn-settings-reset-all" title="恢复当前区段为默认值">恢复默认</button>
+              </div>
+            </div>
+
+            <div class="settings-content">
+              <!-- ===== 区段：AI 模型 ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-models"
+                data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型"
+              >
+                <div class="settings-section-block">
+                  <div class="settings-block-title">💬 普通模型</div>
+                  <p class="settings-block-desc">日常对话与任务默认使用的模型</p>
+
+                  <div class="settings-card">
+                    <div class="settings-card-head">
+                      <h3>🤖 当前默认模型</h3>
+                      <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
+                    </div>
+                    <div class="settings-form-grid settings-form-grid-2">
+                      <div class="form-group">
+                        <label>服务商</label>
+                        <select id="setting-model-provider" class="form-input"></select>
+                      </div>
+                      <div class="form-group">
+                        <label>模型</label>
+                        <select id="setting-model-name" class="form-input"></select>
+                        <div class="form-hint" id="setting-model-name-hint">--</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="settings-card">
+                    <div class="settings-card-head">
+                      <h3>⚙️ 生成参数</h3>
+                      <p class="settings-card-hint">控制默认生成行为</p>
+                    </div>
+                    <div class="settings-form-grid settings-form-grid-4">
+                      <div class="form-group">
+                        <label>Temperature</label>
+                        <input
+                          type="number"
+                          id="setting-model-temperature"
+                          class="form-input"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                        />
+                        <div class="form-hint">0=确定，1=平衡</div>
+                      </div>
+                      <div class="form-group">
+                        <label>Max Tokens</label>
+                        <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000" />
+                      </div>
+                      <div class="form-group">
+                        <label>Top P</label>
+                        <input type="number" id="setting-model-top-p" class="form-input" min="0" max="1" step="0.05" />
+                      </div>
+                      <div class="form-group">
+                        <label>Frequency Penalty</label>
+                        <input
+                          type="number"
+                          id="setting-model-freq-penalty"
+                          class="form-input"
+                          min="-2"
+                          max="2"
+                          step="0.1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="settings-card">
+                    <div class="settings-card-head settings-card-head-between">
+                      <div>
+                        <h3>🏭 自定义服务商</h3>
+                        <p class="settings-card-hint">选择服务商 → 填写 Base URL → 添加模型 → 输入 API 密钥</p>
+                      </div>
+                      <button class="btn-secondary btn-sm" id="btn-add-provider">＋ 新建服务商</button>
+                    </div>
+                    <div class="provider-list" id="custom-provider-list">
+                      <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                    </div>
+                  </div>
+
+                  <div class="settings-card settings-callout">
+                    <div class="callout-icon">🔐</div>
+                    <div class="callout-body">
+                      <strong>关于 API 密钥</strong>
+                      <p>
+                        内置服务商的密钥从
+                        <code>~/.config/agent-canvas/secrets.env</code> 读取（只读遮罩）。自定义服务商的 API
+                        密钥保存在服务端配置文件中，请确保 data 目录权限安全。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-section-block">
+                  <div class="settings-block-title">📚 知识库模型</div>
+                  <p class="settings-block-desc">用于知识库 RAG 检索后的内容生成</p>
+
+                  <div class="settings-card">
+                    <div class="settings-card-head">
+                      <h3>🧠 知识库专用模型</h3>
+                      <p class="settings-card-hint">RAG 检索后生成答案时使用的模型</p>
+                    </div>
+                    <div class="settings-form-grid settings-form-grid-2">
+                      <div class="form-group">
+                        <label>服务商</label>
+                        <select id="setting-kb-provider" class="form-input"></select>
+                      </div>
+                      <div class="form-group">
+                        <label>模型</label>
+                        <select id="setting-kb-model" class="form-input"></select>
+                        <div class="form-hint" id="setting-kb-model-hint">--</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== 区段：系统行为 ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-system"
+                hidden
+                data-search-keywords="系统 主题 密度 语言 动画 任务 优先级 重试 归档 心跳 长轮询"
+              >
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🎨 界面偏好</h3>
+                    <p class="settings-card-hint">密度、动画、语言（主题固定为 Indigo Modern）</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>密度</label>
+                      <select id="setting-ui-density" class="form-input">
+                        <option value="comfortable">宽松</option>
+                        <option value="compact">紧凑</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>语言</label>
+                      <select id="setting-ui-language" class="form-input">
+                        <option value="zh-CN">简体中文</option>
+                        <option value="en-US">English</option>
+                      </select>
+                    </div>
+                    <div class="form-group form-check">
+                      <label><input type="checkbox" id="setting-ui-animations" /> 启用界面动画</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>📌 任务行为</h3>
+                    <p class="settings-card-hint">新建任务的默认行为</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>默认优先级</label>
+                      <select id="setting-task-priority" class="form-input">
+                        <option value="low">低</option>
+                        <option value="normal">普通</option>
+                        <option value="high">高</option>
+                        <option value="urgent">紧急</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label>失败重试次数</label>
+                      <input type="number" id="setting-task-retries" min="0" max="10" class="form-input" />
+                    </div>
+                    <div class="form-group form-check">
+                      <label><input type="checkbox" id="setting-task-auto-retry" /> 失败自动重试</label>
+                    </div>
+                    <div class="form-group">
+                      <label>完成后归档（天）</label>
+                      <input type="number" id="setting-task-archive-days" min="1" max="365" class="form-input" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🌉 桥接器</h3>
+                    <p class="settings-card-hint">心跳 / 长轮询参数（修改后下次启动生效）</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>心跳间隔（秒）</label>
+                      <input type="number" id="setting-bridge-heartbeat" min="1" max="60" class="form-input" />
+                    </div>
+                    <div class="form-group">
+                      <label>长轮询超时（秒）</label>
+                      <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input" />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== 区段：日志与存储 ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-logs"
+                hidden
+                data-search-keywords="日志 存储 数据目录 清理 日志级别 保留天数 备份 导出"
+              >
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>📜 日志</h3>
+                    <p class="settings-card-hint">日志级别、保留策略、清理</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>日志级别（启动）</label>
+                      <select id="setting-log-level" class="form-input">
+                        <option value="debug">debug</option>
+                        <option value="info">info</option>
+                        <option value="warn">warn</option>
+                        <option value="error">error</option>
+                      </select>
+                      <div class="form-hint">运行时可通过 <code>LOG_LEVEL</code> 环境变量覆盖（需重启）</div>
+                    </div>
+                    <div class="form-group">
+                      <label>保留天数（0=永久）</label>
+                      <input type="number" id="setting-log-retention" min="0" max="365" class="form-input" />
+                    </div>
+                    <div class="form-group form-check">
+                      <label><input type="checkbox" id="setting-log-console" /> 同时输出到控制台</label>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>💾 数据存储</h3>
+                    <p class="settings-card-hint">data 目录概览</p>
+                  </div>
+                  <div class="storage-info" id="settings-storage-info">
+                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                  </div>
+                </div>
+
+                <div class="settings-card settings-danger">
+                  <div class="settings-card-head">
+                    <h3>⚠️ 危险操作</h3>
+                    <p class="settings-card-hint">下列操作不可撤销，请谨慎</p>
+                  </div>
+                  <div class="settings-card-actions">
+                    <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">
+                      🗑 立即清理日志
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== 区段：微信桥接（v5.5.0 空闲提醒） ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-wechat"
+                hidden
+                data-search-keywords="微信 claw 桥接 自动回复 去重 空闲提醒 工作窗口 冷却"
+              >
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>💬 微信基础配置</h3>
+                    <p class="settings-card-hint">自动回复、消息去重、连接参数</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group form-check">
+                      <label><input type="checkbox" id="setting-claw-enabled" /> 启用微信 Claw 桥接</label>
+                    </div>
+                    <div class="form-group form-check">
+                      <label><input type="checkbox" id="setting-claw-auto-reply" /> 任务完成后自动回复微信</label>
+                    </div>
+                    <div class="form-group">
+                      <label>消息去重窗口（毫秒）</label>
+                      <input type="number" id="setting-claw-dedup" class="form-input" min="0" step="1000" />
+                      <div class="form-hint">同一 msg_id 在此时间内的重复消息会被丢弃（默认 5 分钟）</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card settings-callout">
+                  <div class="callout-icon">💡</div>
+                  <div class="callout-body">
+                    <strong>空闲提醒（v5.5.0 新增）</strong>
+                    <p>
+                      当某个微信用户
+                      <strong>N 分钟</strong>
+                      没有发新任务时，自动发送一条提醒。可选发送今日数据摘要、最近任务总结或两者结合。默认
+                      <strong>关闭</strong>，需用户显式开启。
+                    </p>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>⏰ 空闲提醒 · 触发条件</h3>
+                    <p class="settings-card-hint">满足下列<strong>全部</strong>条件时，发送一条提醒</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group form-check">
+                      <label><input type="checkbox" id="setting-idle-enabled" /> 启用空闲提醒</label>
+                    </div>
+                    <div class="form-group">
+                      <label>检查间隔（分钟）</label>
+                      <input type="number" id="setting-idle-interval" class="form-input" min="1" max="1440" />
+                      <div class="form-hint">后台多久检查一次活跃用户（默认 5 分钟）</div>
+                    </div>
+                    <div class="form-group">
+                      <label>最少静默时间（分钟）</label>
+                      <input type="number" id="setting-idle-min-quiet" class="form-input" min="1" max="1440" />
+                      <div class="form-hint">用户最后一条任务/消息后，至少 N 分钟才发（默认 5 分钟）</div>
+                    </div>
+                    <div class="form-group">
+                      <label>同 wxid 冷却时间（分钟）</label>
+                      <input type="number" id="setting-idle-cooldown" class="form-input" min="1" max="1440" />
+                      <div class="form-hint">同一用户两次提醒之间的最小间隔（默认 30 分钟，避免打扰）</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🕐 空闲提醒 · 时间窗口</h3>
+                    <p class="settings-card-hint">只在工作时间内提醒，休息时间静默（跨天支持）</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>工作时间起始（小时 0-23）</label>
+                      <input type="number" id="setting-idle-work-start" class="form-input" min="0" max="23" />
+                    </div>
+                    <div class="form-group">
+                      <label>工作时间结束（小时 0-24）</label>
+                      <input type="number" id="setting-idle-work-end" class="form-input" min="0" max="24" />
+                    </div>
+                    <div class="form-group">
+                      <label>休息时间起始（小时 0-23）</label>
+                      <input type="number" id="setting-idle-rest-start" class="form-input" min="0" max="23" />
+                    </div>
+                    <div class="form-group">
+                      <label>休息时间结束（小时 0-24，跨天则小于 start）</label>
+                      <input type="number" id="setting-idle-rest-end" class="form-input" min="0" max="24" />
+                      <div class="form-hint">例：22-7 表示 22:00 至次日 07:00 休息（不提醒）</div>
+                    </div>
+                    <div class="form-group">
+                      <label>当前窗口状态</label>
+                      <div class="form-hint" id="setting-idle-window-status">--</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>📤 空闲提醒 · 消息内容</h3>
+                    <p class="settings-card-hint">选择要发送的内容类型（可多选）</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group form-check">
+                      <label
+                        ><input type="checkbox" id="setting-idle-msg-daily" /> 📊 今日数据摘要（任务数 / 成功率 /
+                        累计）</label
+                      >
+                    </div>
+                    <div class="form-group form-check">
+                      <label
+                        ><input type="checkbox" id="setting-idle-msg-task" /> 📋 最近任务总结（最近 10 条 Q&A）</label
+                      >
+                    </div>
+                  </div>
+                  <div class="settings-card-actions">
+                    <button class="btn-secondary" id="btn-setting-idle-tick">🚀 立即触发一次</button>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>📊 空闲提醒 · 运行时状态</h3>
+                    <p class="settings-card-hint">最近一次检查、发送、冷却情况</p>
+                  </div>
+                  <div class="about-grid" id="settings-idle-status">
+                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== 区段：用户管理 ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-users"
+                hidden
+                data-search-keywords="用户管理 多用户 角色 admin operator viewer 创建用户 删除用户 重置密码 启用 禁用"
+              >
+                <div class="settings-section-block">
+                  <div class="settings-block-title">👥 用户管理</div>
+                  <p class="settings-block-desc">仅管理员可操作</p>
+
+                  <div class="settings-card">
+                    <div class="settings-card-head settings-card-head-between">
+                      <div>
+                        <h3>📋 用户列表</h3>
+                        <p class="settings-card-hint">系统中所有用户账号</p>
+                      </div>
+                      <button class="btn-primary btn-sm" id="btn-add-user">＋ 新建用户</button>
+                    </div>
+                    <div class="user-list-wrap">
+                      <table class="data-table" id="user-list-table">
+                        <thead>
+                          <tr>
+                            <th>用户名</th>
+                            <th>显示名</th>
+                            <th>角色</th>
+                            <th>状态</th>
+                            <th>创建时间</th>
+                            <th>上次登录</th>
+                            <th class="text-right">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td colspan="7" class="muted">加载中...</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== 区段：安全 ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-security"
+                hidden
+                data-search-keywords="安全 用户 密码 登录 JWT 本地访问 白名单 权限"
+              >
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🔐 当前用户</h3>
+                    <p class="settings-card-hint">登录会话与角色信息</p>
+                  </div>
+                  <div class="about-grid" id="settings-user-info">
+                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                  </div>
+                </div>
+
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🔑 修改密码</h3>
+                    <p class="settings-card-hint">仅当前登录用户可修改</p>
+                  </div>
+                  <div class="settings-form-grid">
+                    <div class="form-group">
+                      <label>当前密码</label>
+                      <input type="password" id="setting-current-password" class="form-input" placeholder="当前密码" />
+                    </div>
+                    <div class="form-group">
+                      <label>新密码</label>
+                      <input
+                        type="password"
+                        id="setting-new-password"
+                        class="form-input"
+                        placeholder="至少 8 位，含字母和数字"
+                      />
+                    </div>
+                    <div class="form-group">
+                      <label>确认新密码</label>
+                      <input
+                        type="password"
+                        id="setting-confirm-password"
+                        class="form-input"
+                        placeholder="再次输入新密码"
+                      />
+                    </div>
+                  </div>
+                  <div class="settings-card-actions">
+                    <button class="btn-primary" id="btn-setting-change-password">🔒 修改密码</button>
+                  </div>
+                </div>
+
+                <div class="settings-card settings-callout">
+                  <div class="callout-icon">🛡️</div>
+                  <div class="callout-body">
+                    <strong>关于本地访问白名单</strong>
+                    <p>
+                      本地访问（127.0.0.1 / localhost / 192.168.x.x /
+                      10.x.x.x）默认自动放行。远程访问需登录。如需修改白名单或 JWT 过期时间，请编辑
+                      <code>~/.config/agent-canvas/secrets.env</code> 并重启服务。
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <!-- ===== 区段：关于 ===== -->
+              <section
+                class="settings-section"
+                id="settings-section-about"
+                hidden
+                data-search-keywords="关于 ai-bridge 版本 运行时间 内存 数据目录 Claw 状态"
+              >
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>ℹ️ 关于 ai-bridge</h3>
+                    <p class="settings-card-hint">运行时信息</p>
+                  </div>
+                  <div class="about-grid" id="settings-about-info">
+                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                  </div>
+                </div>
+                <div class="settings-card">
+                  <div class="settings-card-head">
+                    <h3>🔌 微信 Claw 状态</h3>
+                    <p class="settings-card-hint">iLink Bot 连接信息</p>
+                  </div>
+                  <div class="about-grid" id="settings-claw-info">
+                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                  </div>
+                </div>
+              </section>
+            </div>
           </main>
         </div>
       </div>
-    </div>
 
-    <!-- ===== 面板：工作流 ===== -->
-    <div class="panel panel-workflow" id="panel-workflow" hidden>
-      <div class="wf-panel">
-        <div class="wf-toolbar">
-          <input type="search" id="wf-search" placeholder="🔍 搜索工作流..." class="search-input">
-          <button class="btn-primary" id="btn-wf-new">+ 新建工作流</button>
-          <button class="btn-demo" id="btn-wf-seed-demo" title="一键加载 9 个示例工作流">🎁 演示数据</button>
+      <!-- ===== 抽屉：KB 条目详情/编辑 ===== -->
+      <div class="drawer" id="kb-drawer" aria-hidden="true">
+        <div class="drawer-header">
+          <h2 id="kb-drawer-title">📖 条目详情</h2>
+          <button class="drawer-close" data-close="kb-drawer" aria-label="关闭">×</button>
         </div>
-        <div class="wf-content">
-          <aside class="wf-side" id="wf-side">
-            <!-- 工作流列表由 JS 渲染 -->
-          </aside>
-          <main class="wf-main" id="wf-main">
-            <div class="wf-empty" id="wf-empty">
-              <div class="empty-icon">⚙️</div>
-              <div class="empty-text">工作流还是空的</div>
-              <div class="empty-hint">点击「🎁 演示数据」加载 9 个示例工作流（股票分析、天气推送、销售月报、应急响应…）</div>
-              <button class="btn-demo btn-demo-large" id="btn-wf-seed-demo-2">🎁 一键加载演示数据</button>
-            </div>
-          </main>
+        <div class="drawer-body">
+          <div class="form-group">
+            <label>标题 *</label>
+            <input type="text" id="kb-drawer-title-input" maxlength="64" placeholder="如：查茅台价格" />
+          </div>
+          <div class="form-group">
+            <label>分类 *</label>
+            <select id="kb-drawer-cat-select"></select>
+          </div>
+          <div class="form-group">
+            <label>正文 *<small>（点击条目会填入聊天输入框）</small></label>
+            <textarea id="kb-drawer-body-input" rows="10" maxlength="4000" placeholder="条目正文"></textarea>
+          </div>
+          <div class="form-group">
+            <label>标签<small>（用英文逗号分隔，最多 8 个）</small></label>
+            <input type="text" id="kb-drawer-tags-input" placeholder="如：股票, 茅台" />
+          </div>
+          <div class="form-group form-meta">
+            <span id="kb-drawer-meta"></span>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn-secondary" id="kb-drawer-cancel">取消</button>
+          <button class="btn-primary" id="kb-drawer-save">保存</button>
+          <button class="btn-danger" id="kb-drawer-delete" style="display: none">删除</button>
         </div>
       </div>
-    </div>
 
-    <!-- ===== 面板：计划（v5.1.0） ===== -->
-    <div class="panel panel-plan" id="panel-plan" hidden>
-      <div class="plan-panel">
-        <div class="plan-toolbar">
-          <div class="plan-toolbar-left">
-            <input type="search" id="plan-search" placeholder="🔍 搜索计划..." class="search-input">
-            <select id="plan-type-filter" class="filter-select">
-              <option value="all">全部类型</option>
-              <option value="week">📆 周计划</option>
+      <!-- ===== 抽屉：工作流步骤编辑 ===== -->
+      <div class="drawer" id="wf-drawer" aria-hidden="true">
+        <div class="drawer-header">
+          <h2 id="wf-drawer-title">⚙️ 编辑工作流</h2>
+          <button class="drawer-close" data-close="wf-drawer" aria-label="关闭">×</button>
+        </div>
+        <div class="drawer-body">
+          <div class="form-group">
+            <label>名称 *</label>
+            <input type="text" id="wf-drawer-name-input" maxlength="64" placeholder="如：股票分析报告" />
+          </div>
+          <div class="form-group">
+            <label>图标</label>
+            <input type="text" id="wf-drawer-icon-input" maxlength="2" placeholder="📊" />
+          </div>
+          <div class="form-group">
+            <label>描述</label>
+            <textarea
+              id="wf-drawer-desc-input"
+              rows="2"
+              maxlength="200"
+              placeholder="一句话说明这个工作流做什么"
+            ></textarea>
+          </div>
+          <div class="form-group">
+            <label>步骤</label>
+            <div id="wf-steps-list"></div>
+            <button class="btn-secondary" id="wf-add-step">+ 添加步骤</button>
+          </div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn-secondary" id="wf-drawer-cancel">取消</button>
+          <button class="btn-primary" id="wf-drawer-save">保存</button>
+          <button class="btn-danger" id="wf-drawer-delete" style="display: none">删除</button>
+        </div>
+      </div>
+
+      <!-- ===== 抽屉：计划条目详情/编辑（v5.1.0） ===== -->
+      <div class="drawer" id="plan-drawer" aria-hidden="true">
+        <div class="drawer-header">
+          <h2 id="plan-drawer-title">📅 计划详情</h2>
+          <button class="drawer-close" data-close="plan-drawer" aria-label="关闭">×</button>
+        </div>
+        <div class="drawer-body">
+          <div class="form-group">
+            <label>标题 *</label>
+            <input type="text" id="plan-drawer-title-input" maxlength="64" placeholder="如：完成项目代码审查" />
+          </div>
+          <div class="form-group">
+            <label>类型 *</label>
+            <select id="plan-drawer-type-select">
               <option value="day">📅 日计划</option>
+              <option value="week">📆 周计划</option>
             </select>
-            <select id="plan-status-filter" class="filter-select">
-              <option value="all">全部状态</option>
+          </div>
+          <div class="form-group">
+            <label>日期 *</label>
+            <input type="date" id="plan-drawer-date-input" />
+          </div>
+          <div class="form-group">
+            <label>状态</label>
+            <select id="plan-drawer-status-select">
               <option value="pending">⏳ 待开始</option>
               <option value="in_progress">⚙️ 进行中</option>
               <option value="done">✅ 已完成</option>
               <option value="cancelled">❌ 已取消</option>
             </select>
-            <select id="plan-week-filter" class="filter-select">
-              <option value="current">📍 本周</option>
-              <option value="next">➡️ 下周</option>
-              <option value="all">🗓 全部</option>
-            </select>
           </div>
-          <div class="plan-toolbar-right">
-            <button class="btn-secondary" id="btn-plan-report" title="汇总本周计划 + 完成任务，生成 Markdown 周报">📝 生成周报</button>
-            <button class="btn-primary" id="btn-plan-new">+ 新建计划</button>
-            <button class="btn-demo" id="btn-plan-seed-demo" title="一键加载示例计划">🎁 演示数据</button>
-          </div>
-        </div>
-        <div class="plan-content">
-          <aside class="plan-side" id="plan-side">
-            <!-- 计划分组列表由 JS 渲染 -->
-          </aside>
-          <main class="plan-main" id="plan-main">
-            <div class="plan-empty" id="plan-empty">
-              <div class="empty-icon">📅</div>
-              <div class="empty-text">计划还是空的</div>
-              <div class="empty-hint">点击「🎁 演示数据」加载示例计划，或点击「+ 新建计划」开始记录</div>
-              <button class="btn-demo btn-demo-large" id="btn-plan-seed-demo-2">🎁 一键加载演示数据</button>
-            </div>
-          </main>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== 面板：概览（统计数据 + 新用户上手） ===== -->
-    <div class="panel panel-overview" id="panel-overview" hidden>
-      <div class="overview-container">
-        <div class="overview-hero">
-          <div>
-            <h1 class="overview-title">📊 系统概览</h1>
-            <p class="overview-subtitle" id="overview-greeting">欢迎使用 ai-bridge</p>
-          </div>
-          <div class="overview-actions">
-            <button class="btn-primary" id="btn-overview-tour">🚀 新用户上手</button>
-            <button class="btn-secondary" id="btn-overview-refresh">↻ 刷新</button>
-          </div>
-        </div>
-
-        <div class="overview-stats" id="overview-stats">
-          <div class="stat-card" data-stat="tasks">
-            <div class="stat-icon">📌</div>
-            <div class="stat-meta">
-              <div class="stat-label">任务总数</div>
-              <div class="stat-value" data-value>--</div>
-              <div class="stat-trend" data-trend>--</div>
-            </div>
-          </div>
-          <div class="stat-card" data-stat="success_rate">
-            <div class="stat-icon">✅</div>
-            <div class="stat-meta">
-              <div class="stat-label">成功率</div>
-              <div class="stat-value" data-value>--</div>
-              <div class="stat-trend" data-trend>--</div>
-            </div>
-          </div>
-          <div class="stat-card" data-stat="kb">
-            <div class="stat-icon">📖</div>
-            <div class="stat-meta">
-              <div class="stat-label">知识库</div>
-              <div class="stat-value" data-value>--</div>
-              <div class="stat-trend" data-trend>分类 / 条目 / 关联</div>
-            </div>
-          </div>
-          <div class="stat-card" data-stat="wf">
-            <div class="stat-icon">⚙️</div>
-            <div class="stat-meta">
-              <div class="stat-label">工作流</div>
-              <div class="stat-value" data-value>--</div>
-              <div class="stat-trend" data-trend>模板 / 步骤</div>
-            </div>
-          </div>
-          <div class="stat-card" data-stat="sessions">
-            <div class="stat-icon">💬</div>
-            <div class="stat-meta">
-              <div class="stat-label">会话</div>
-              <div class="stat-value" data-value>--</div>
-              <div class="stat-trend" data-trend>活跃 / 归档</div>
-            </div>
-          </div>
-          <div class="stat-card" data-stat="storage">
-            <div class="stat-icon">💾</div>
-            <div class="stat-meta">
-              <div class="stat-label">存储占用</div>
-              <div class="stat-value" data-value>--</div>
-              <div class="stat-trend" data-trend>--</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="overview-charts">
-          <div class="chart-card">
-            <div class="chart-header"><h3>📈 任务趋势（近 7 天）</h3></div>
-            <div class="chart-body" id="overview-trend-chart">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
-          </div>
-          <div class="chart-card">
-            <div class="chart-header"><h3>📊 任务来源分布</h3></div>
-            <div class="chart-body" id="overview-source-chart">
-              <div class="empty-state"><div class="empty-text">加载中...</div></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="overview-quick">
-          <h3>快捷操作</h3>
-          <div class="quick-grid">
-            <button class="quick-card" data-quick="new-session">
-              <div class="quick-icon">💬</div>
-              <div class="quick-text">
-                <div class="quick-title">新建会话</div>
-                <div class="quick-hint">开始一个话题或任务</div>
-              </div>
-            </button>
-            <button class="quick-card" data-quick="add-task">
-              <div class="quick-icon">📌</div>
-              <div class="quick-text">
-                <div class="quick-title">提交任务</div>
-                <div class="quick-hint">在当前会话发送任务</div>
-              </div>
-            </button>
-            <button class="quick-card" data-quick="kb-demo">
-              <div class="quick-icon">🎁</div>
-              <div class="quick-text">
-                <div class="quick-title">演示知识库</div>
-                <div class="quick-hint">加载 6 分类 25+ 条目</div>
-              </div>
-            </button>
-            <button class="quick-card" data-quick="wf-demo">
-              <div class="quick-icon">⚙️</div>
-              <div class="quick-text">
-                <div class="quick-title">演示工作流</div>
-                <div class="quick-hint">加载 9 个示例工作流</div>
-              </div>
-            </button>
-            <button class="quick-card" data-quick="plan-demo">
-              <div class="quick-icon">📅</div>
-              <div class="quick-text">
-                <div class="quick-title">演示计划</div>
-                <div class="quick-hint">添加周/日计划样例</div>
-              </div>
-            </button>
-            <button class="quick-card" data-quick="report">
-              <div class="quick-icon">📝</div>
-              <div class="quick-text">
-                <div class="quick-title">生成周报</div>
-                <div class="quick-hint">聚合本周计划与任务</div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div class="chart-card overview-activity">
-          <div class="chart-header">
-            <h3>🕐 最近活动</h3>
-            <span class="chart-hint" id="overview-activity-count">--</span>
-          </div>
-          <div class="chart-body" id="overview-activity-list">
-            <div class="empty-state"><div class="empty-text">加载中...</div></div>
-          </div>
-        </div>
-
-        <div class="chart-card">
-          <div class="chart-header"><h3>⚙️ 系统健康</h3></div>
-          <div class="chart-body" id="overview-health">
-            <div class="empty-state"><div class="empty-text">加载中...</div></div>
-          </div>
-        </div>
-
-        <div class="overview-tour" id="overview-tour" hidden>
-          <div class="tour-header">
-            <h2>🚀 5 分钟上手 ai-bridge</h2>
-            <button class="drawer-close" id="btn-tour-close" aria-label="关闭">×</button>
-          </div>
-          <div class="tour-steps">
-            <div class="tour-step"><div class="tour-step-num">1</div><div class="tour-step-content"><h4>💬 在「聊天」面板创建第一个会话</h4><p>左侧会话列表点 ＋ 新建会话，发送消息或任务。所有任务会自动入队，由智能体处理。</p></div></div>
-            <div class="tour-step"><div class="tour-step-num">2</div><div class="tour-step-content"><h4>📖 浏览「知识库」加载演示数据</h4><p>点击「加载演示」按钮，会写入 6 个分类、20+ 条目（含工作流、安全、最佳实践等），并自动生成 22 条关联，开启图谱视图查看。</p></div></div>
-            <div class="tour-step"><div class="tour-step-num">3</div><div class="tour-step-content"><h4>⚙️ 执行「工作流」批量任务</h4><p>工作流是多步任务模板（如「每日天气推送」）。点「执行」会按依赖顺序自动创建任务，无需手动添加每步。</p></div></div>
-            <div class="tour-step"><div class="tour-step-num">4</div><div class="tour-step-content"><h4>📅 制定「计划」与生成周报</h4><p>在计划面板添加周/日计划，支持到期微信提醒。周报抽屉一键聚合本周计划、任务、知识库，复制粘贴即可汇报。</p></div></div>
-            <div class="tour-step"><div class="tour-step-num">5</div><div class="tour-step-content"><h4>🔌 接入「微信」实现消息互通</h4><p>点击右上角「微信」图标，扫码登录 ClawBot。微信消息会自动入队，处理结果原路回复给用户。</p></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== 面板：设置（v5.5.5）分栏设置 ===== -->
-    <div class="panel panel-settings" id="panel-settings" hidden>
-      <div class="settings-layout">
-        <!-- 左侧导航 -->
-        <aside class="settings-sidebar" id="settings-sidebar">
-          <div class="settings-search-wrap">
-            <input type="search" id="settings-search" class="settings-search" placeholder="搜索设置项..." autocomplete="off">
-          </div>
-          <nav class="settings-nav" id="settings-nav" role="tablist">
-            <button class="settings-nav-item active" data-section="models" role="tab" aria-selected="true">
-              <span class="settings-nav-icon">🤖</span>
-              <span class="settings-nav-label">AI 模型</span>
-            </button>
-            <button class="settings-nav-item" data-section="system" role="tab" aria-selected="false">
-              <span class="settings-nav-icon">🛠</span>
-              <span class="settings-nav-label">系统行为</span>
-            </button>
-            <button class="settings-nav-item" data-section="logs" role="tab" aria-selected="false">
-              <span class="settings-nav-icon">📜</span>
-              <span class="settings-nav-label">日志与存储</span>
-            </button>
-            <button class="settings-nav-item" data-section="wechat" role="tab" aria-selected="false">
-              <span class="settings-nav-icon">💬</span>
-              <span class="settings-nav-label">微信桥接</span>
-            </button>
-            <button class="settings-nav-item" data-section="users" role="tab" aria-selected="false" data-admin-only="true">
-              <span class="settings-nav-icon">👥</span>
-              <span class="settings-nav-label">用户管理</span>
-            </button>
-            <button class="settings-nav-item" data-section="security" role="tab" aria-selected="false">
-              <span class="settings-nav-icon">🔐</span>
-              <span class="settings-nav-label">安全</span>
-            </button>
-            <button class="settings-nav-item" data-section="about" role="tab" aria-selected="false">
-              <span class="settings-nav-icon">ℹ️</span>
-              <span class="settings-nav-label">关于</span>
-            </button>
-          </nav>
-        </aside>
-
-        <!-- 右侧内容区 -->
-        <main class="settings-main">
-          <div class="settings-toolbar">
-            <div class="settings-toolbar-title">
-              <span id="settings-toolbar-title-text">AI 模型</span>
-              <span class="settings-dirty-badge" id="settings-dirty-badge" hidden>● 未保存</span>
-            </div>
-            <div class="settings-toolbar-actions">
-              <button class="btn-secondary" id="btn-settings-refresh" title="重新加载当前页设置">刷新</button>
-              <button class="btn-secondary" id="btn-settings-cancel" title="撤销当前页未保存改动">取消</button>
-              <button class="btn-primary" id="btn-settings-save" title="保存当前页设置">保存</button>
-              <button class="btn-secondary" id="btn-settings-reset-all" title="恢复当前区段为默认值">恢复默认</button>
-            </div>
-          </div>
-
-          <div class="settings-content">
-            <!-- ===== 区段：AI 模型 ===== -->
-            <section class="settings-section" id="settings-section-models" data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型">
-              <div class="settings-section-block">
-                <div class="settings-block-title">💬 普通模型</div>
-                <p class="settings-block-desc">日常对话与任务默认使用的模型</p>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>🤖 当前默认模型</h3>
-                    <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
-                  </div>
-                  <div class="settings-form-grid settings-form-grid-2">
-                    <div class="form-group">
-                      <label>服务商</label>
-                      <select id="setting-model-provider" class="form-input"></select>
-                    </div>
-                    <div class="form-group">
-                      <label>模型</label>
-                      <select id="setting-model-name" class="form-input"></select>
-                      <div class="form-hint" id="setting-model-name-hint">--</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>⚙️ 生成参数</h3>
-                    <p class="settings-card-hint">控制默认生成行为</p>
-                  </div>
-                  <div class="settings-form-grid settings-form-grid-4">
-                    <div class="form-group">
-                      <label>Temperature</label>
-                      <input type="number" id="setting-model-temperature" class="form-input" min="0" max="2" step="0.1">
-                      <div class="form-hint">0=确定，1=平衡</div>
-                    </div>
-                    <div class="form-group">
-                      <label>Max Tokens</label>
-                      <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000">
-                    </div>
-                    <div class="form-group">
-                      <label>Top P</label>
-                      <input type="number" id="setting-model-top-p" class="form-input" min="0" max="1" step="0.05">
-                    </div>
-                    <div class="form-group">
-                      <label>Frequency Penalty</label>
-                      <input type="number" id="setting-model-freq-penalty" class="form-input" min="-2" max="2" step="0.1">
-                    </div>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head settings-card-head-between">
-                    <div>
-                      <h3>🏭 自定义服务商</h3>
-                      <p class="settings-card-hint">选择服务商 → 填写 Base URL → 添加模型 → 输入 API 密钥</p>
-                    </div>
-                    <button class="btn-secondary btn-sm" id="btn-add-provider">＋ 新建服务商</button>
-                  </div>
-                  <div class="provider-list" id="custom-provider-list">
-                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                  </div>
-                </div>
-
-                <div class="settings-card settings-callout">
-                  <div class="callout-icon">🔐</div>
-                  <div class="callout-body">
-                    <strong>关于 API 密钥</strong>
-                    <p>内置服务商的密钥从 <code>~/.config/agent-canvas/secrets.env</code> 读取（只读遮罩）。自定义服务商的 API 密钥保存在服务端配置文件中，请确保 data 目录权限安全。</p>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-section-block">
-                <div class="settings-block-title">📚 知识库模型</div>
-                <p class="settings-block-desc">用于知识库 RAG 检索后的内容生成</p>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>🧠 知识库专用模型</h3>
-                    <p class="settings-card-hint">RAG 检索后生成答案时使用的模型</p>
-                  </div>
-                  <div class="settings-form-grid settings-form-grid-2">
-                    <div class="form-group">
-                      <label>服务商</label>
-                      <select id="setting-kb-provider" class="form-input"></select>
-                    </div>
-                    <div class="form-group">
-                      <label>模型</label>
-                      <select id="setting-kb-model" class="form-input"></select>
-                      <div class="form-hint" id="setting-kb-model-hint">--</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- ===== 区段：系统行为 ===== -->
-            <section class="settings-section" id="settings-section-system" hidden data-search-keywords="系统 主题 密度 语言 动画 任务 优先级 重试 归档 心跳 长轮询">
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🎨 界面偏好</h3>
-                  <p class="settings-card-hint">主题、密度、动画、语言</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>主题</label>
-                    <select id="setting-ui-theme" class="form-input">
-                      <option value="auto">🌓 跟随系统</option>
-                      <option value="light">☀️ 浅色</option>
-                      <option value="dark">🌙 深色</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>密度</label>
-                    <select id="setting-ui-density" class="form-input">
-                      <option value="comfortable">宽松</option>
-                      <option value="compact">紧凑</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>语言</label>
-                    <select id="setting-ui-language" class="form-input">
-                      <option value="zh-CN">简体中文</option>
-                      <option value="en-US">English</option>
-                    </select>
-                  </div>
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-ui-animations"> 启用界面动画</label>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>📌 任务行为</h3>
-                  <p class="settings-card-hint">新建任务的默认行为</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>默认优先级</label>
-                    <select id="setting-task-priority" class="form-input">
-                      <option value="low">低</option>
-                      <option value="normal">普通</option>
-                      <option value="high">高</option>
-                      <option value="urgent">紧急</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label>失败重试次数</label>
-                    <input type="number" id="setting-task-retries" min="0" max="10" class="form-input">
-                  </div>
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-task-auto-retry"> 失败自动重试</label>
-                  </div>
-                  <div class="form-group">
-                    <label>完成后归档（天）</label>
-                    <input type="number" id="setting-task-archive-days" min="1" max="365" class="form-input">
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🌉 桥接器</h3>
-                  <p class="settings-card-hint">心跳 / 长轮询参数（修改后下次启动生效）</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>心跳间隔（秒）</label>
-                    <input type="number" id="setting-bridge-heartbeat" min="1" max="60" class="form-input">
-                  </div>
-                  <div class="form-group">
-                    <label>长轮询超时（秒）</label>
-                    <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input">
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- ===== 区段：日志与存储 ===== -->
-            <section class="settings-section" id="settings-section-logs" hidden data-search-keywords="日志 存储 数据目录 清理 日志级别 保留天数 备份 导出">
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>📜 日志</h3>
-                  <p class="settings-card-hint">日志级别、保留策略、清理</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>日志级别（启动）</label>
-                    <select id="setting-log-level" class="form-input">
-                      <option value="debug">debug</option>
-                      <option value="info">info</option>
-                      <option value="warn">warn</option>
-                      <option value="error">error</option>
-                    </select>
-                    <div class="form-hint">运行时可通过 <code>LOG_LEVEL</code> 环境变量覆盖（需重启）</div>
-                  </div>
-                  <div class="form-group">
-                    <label>保留天数（0=永久）</label>
-                    <input type="number" id="setting-log-retention" min="0" max="365" class="form-input">
-                  </div>
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-log-console"> 同时输出到控制台</label>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>💾 数据存储</h3>
-                  <p class="settings-card-hint">data 目录概览</p>
-                </div>
-                <div class="storage-info" id="settings-storage-info">
-                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                </div>
-              </div>
-
-              <div class="settings-card settings-danger">
-                <div class="settings-card-head">
-                  <h3>⚠️ 危险操作</h3>
-                  <p class="settings-card-hint">下列操作不可撤销，请谨慎</p>
-                </div>
-                <div class="settings-card-actions">
-                  <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">🗑 立即清理日志</button>
-                </div>
-              </div>
-            </section>
-
-            <!-- ===== 区段：微信桥接（v5.5.0 空闲提醒） ===== -->
-            <section class="settings-section" id="settings-section-wechat" hidden data-search-keywords="微信 claw 桥接 自动回复 去重 空闲提醒 工作窗口 冷却">
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>💬 微信基础配置</h3>
-                  <p class="settings-card-hint">自动回复、消息去重、连接参数</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-claw-enabled"> 启用微信 Claw 桥接</label>
-                  </div>
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-claw-auto-reply"> 任务完成后自动回复微信</label>
-                  </div>
-                  <div class="form-group">
-                    <label>消息去重窗口（毫秒）</label>
-                    <input type="number" id="setting-claw-dedup" class="form-input" min="0" step="1000">
-                    <div class="form-hint">同一 msg_id 在此时间内的重复消息会被丢弃（默认 5 分钟）</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-card settings-callout">
-                <div class="callout-icon">💡</div>
-                <div class="callout-body">
-                  <strong>空闲提醒（v5.5.0 新增）</strong>
-                  <p>当某个微信用户 <strong>N 分钟</strong> 没有发新任务时，自动发送一条提醒。可选发送今日数据摘要、最近任务总结或两者结合。默认 <strong>关闭</strong>，需用户显式开启。</p>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>⏰ 空闲提醒 · 触发条件</h3>
-                  <p class="settings-card-hint">满足下列<strong>全部</strong>条件时，发送一条提醒</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-idle-enabled"> 启用空闲提醒</label>
-                  </div>
-                  <div class="form-group">
-                    <label>检查间隔（分钟）</label>
-                    <input type="number" id="setting-idle-interval" class="form-input" min="1" max="1440">
-                    <div class="form-hint">后台多久检查一次活跃用户（默认 5 分钟）</div>
-                  </div>
-                  <div class="form-group">
-                    <label>最少静默时间（分钟）</label>
-                    <input type="number" id="setting-idle-min-quiet" class="form-input" min="1" max="1440">
-                    <div class="form-hint">用户最后一条任务/消息后，至少 N 分钟才发（默认 5 分钟）</div>
-                  </div>
-                  <div class="form-group">
-                    <label>同 wxid 冷却时间（分钟）</label>
-                    <input type="number" id="setting-idle-cooldown" class="form-input" min="1" max="1440">
-                    <div class="form-hint">同一用户两次提醒之间的最小间隔（默认 30 分钟，避免打扰）</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🕐 空闲提醒 · 时间窗口</h3>
-                  <p class="settings-card-hint">只在工作时间内提醒，休息时间静默（跨天支持）</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>工作时间起始（小时 0-23）</label>
-                    <input type="number" id="setting-idle-work-start" class="form-input" min="0" max="23">
-                  </div>
-                  <div class="form-group">
-                    <label>工作时间结束（小时 0-24）</label>
-                    <input type="number" id="setting-idle-work-end" class="form-input" min="0" max="24">
-                  </div>
-                  <div class="form-group">
-                    <label>休息时间起始（小时 0-23）</label>
-                    <input type="number" id="setting-idle-rest-start" class="form-input" min="0" max="23">
-                  </div>
-                  <div class="form-group">
-                    <label>休息时间结束（小时 0-24，跨天则小于 start）</label>
-                    <input type="number" id="setting-idle-rest-end" class="form-input" min="0" max="24">
-                    <div class="form-hint">例：22-7 表示 22:00 至次日 07:00 休息（不提醒）</div>
-                  </div>
-                  <div class="form-group">
-                    <label>当前窗口状态</label>
-                    <div class="form-hint" id="setting-idle-window-status">--</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>📤 空闲提醒 · 消息内容</h3>
-                  <p class="settings-card-hint">选择要发送的内容类型（可多选）</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-idle-msg-daily"> 📊 今日数据摘要（任务数 / 成功率 / 累计）</label>
-                  </div>
-                  <div class="form-group form-check">
-                    <label><input type="checkbox" id="setting-idle-msg-task"> 📋 最近任务总结（最近 10 条 Q&A）</label>
-                  </div>
-                </div>
-                <div class="settings-card-actions">
-                  <button class="btn-secondary" id="btn-setting-idle-tick">🚀 立即触发一次</button>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>📊 空闲提醒 · 运行时状态</h3>
-                  <p class="settings-card-hint">最近一次检查、发送、冷却情况</p>
-                </div>
-                <div class="about-grid" id="settings-idle-status">
-                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                </div>
-              </div>
-            </section>
-
-            <!-- ===== 区段：用户管理 ===== -->
-            <section class="settings-section" id="settings-section-users" hidden data-search-keywords="用户管理 多用户 角色 admin operator viewer 创建用户 删除用户 重置密码 启用 禁用">
-              <div class="settings-section-block">
-                <div class="settings-block-title">👥 用户管理</div>
-                <p class="settings-block-desc">仅管理员可操作</p>
-
-                <div class="settings-card">
-                  <div class="settings-card-head settings-card-head-between">
-                    <div>
-                      <h3>📋 用户列表</h3>
-                      <p class="settings-card-hint">系统中所有用户账号</p>
-                    </div>
-                    <button class="btn-primary btn-sm" id="btn-add-user">＋ 新建用户</button>
-                  </div>
-                  <div class="user-list-wrap">
-                    <table class="data-table" id="user-list-table">
-                      <thead>
-                        <tr>
-                          <th>用户名</th>
-                          <th>显示名</th>
-                          <th>角色</th>
-                          <th>状态</th>
-                          <th>创建时间</th>
-                          <th>上次登录</th>
-                          <th class="text-right">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr><td colspan="7" class="muted">加载中...</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <!-- ===== 区段：安全 ===== -->
-            <section class="settings-section" id="settings-section-security" hidden data-search-keywords="安全 用户 密码 登录 JWT 本地访问 白名单 权限">
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🔐 当前用户</h3>
-                  <p class="settings-card-hint">登录会话与角色信息</p>
-                </div>
-                <div class="about-grid" id="settings-user-info">
-                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                </div>
-              </div>
-
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🔑 修改密码</h3>
-                  <p class="settings-card-hint">仅当前登录用户可修改</p>
-                </div>
-                <div class="settings-form-grid">
-                  <div class="form-group">
-                    <label>当前密码</label>
-                    <input type="password" id="setting-current-password" class="form-input" placeholder="当前密码">
-                  </div>
-                  <div class="form-group">
-                    <label>新密码</label>
-                    <input type="password" id="setting-new-password" class="form-input" placeholder="至少 8 位，含字母和数字">
-                  </div>
-                  <div class="form-group">
-                    <label>确认新密码</label>
-                    <input type="password" id="setting-confirm-password" class="form-input" placeholder="再次输入新密码">
-                  </div>
-                </div>
-                <div class="settings-card-actions">
-                  <button class="btn-primary" id="btn-setting-change-password">🔒 修改密码</button>
-                </div>
-              </div>
-
-              <div class="settings-card settings-callout">
-                <div class="callout-icon">🛡️</div>
-                <div class="callout-body">
-                  <strong>关于本地访问白名单</strong>
-                  <p>本地访问（127.0.0.1 / localhost / 192.168.x.x / 10.x.x.x）默认自动放行。远程访问需登录。如需修改白名单或 JWT 过期时间，请编辑 <code>~/.config/agent-canvas/secrets.env</code> 并重启服务。</p>
-                </div>
-              </div>
-            </section>
-
-            <!-- ===== 区段：关于 ===== -->
-            <section class="settings-section" id="settings-section-about" hidden data-search-keywords="关于 ai-bridge 版本 运行时间 内存 数据目录 Claw 状态">
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>ℹ️ 关于 ai-bridge</h3>
-                  <p class="settings-card-hint">运行时信息</p>
-                </div>
-                <div class="about-grid" id="settings-about-info">
-                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                </div>
-              </div>
-              <div class="settings-card">
-                <div class="settings-card-head">
-                  <h3>🔌 微信 Claw 状态</h3>
-                  <p class="settings-card-hint">iLink Bot 连接信息</p>
-                </div>
-                <div class="about-grid" id="settings-claw-info">
-                  <div class="empty-state"><div class="empty-text">加载中...</div></div>
-                </div>
-              </div>
-            </section>
-          </div>
-        </main>
-      </div>
-    </div>
-
-    <!-- ===== 抽屉：KB 条目详情/编辑 ===== -->
-    <div class="drawer" id="kb-drawer" aria-hidden="true">
-      <div class="drawer-header">
-        <h2 id="kb-drawer-title">📖 条目详情</h2>
-        <button class="drawer-close" data-close="kb-drawer" aria-label="关闭">×</button>
-      </div>
-      <div class="drawer-body">
-        <div class="form-group">
-          <label>标题 *</label>
-          <input type="text" id="kb-drawer-title-input" maxlength="64" placeholder="如：查茅台价格">
-        </div>
-        <div class="form-group">
-          <label>分类 *</label>
-          <select id="kb-drawer-cat-select"></select>
-        </div>
-        <div class="form-group">
-          <label>正文 *<small>（点击条目会填入聊天输入框）</small></label>
-          <textarea id="kb-drawer-body-input" rows="10" maxlength="4000" placeholder="条目正文"></textarea>
-        </div>
-        <div class="form-group">
-          <label>标签<small>（用英文逗号分隔，最多 8 个）</small></label>
-          <input type="text" id="kb-drawer-tags-input" placeholder="如：股票, 茅台">
-        </div>
-        <div class="form-group form-meta">
-          <span id="kb-drawer-meta"></span>
-        </div>
-      </div>
-      <div class="drawer-footer">
-        <button class="btn-secondary" id="kb-drawer-cancel">取消</button>
-        <button class="btn-primary" id="kb-drawer-save">保存</button>
-        <button class="btn-danger" id="kb-drawer-delete" style="display:none">删除</button>
-      </div>
-    </div>
-
-    <!-- ===== 抽屉：工作流步骤编辑 ===== -->
-    <div class="drawer" id="wf-drawer" aria-hidden="true">
-      <div class="drawer-header">
-        <h2 id="wf-drawer-title">⚙️ 编辑工作流</h2>
-        <button class="drawer-close" data-close="wf-drawer" aria-label="关闭">×</button>
-      </div>
-      <div class="drawer-body">
-        <div class="form-group">
-          <label>名称 *</label>
-          <input type="text" id="wf-drawer-name-input" maxlength="64" placeholder="如：股票分析报告">
-        </div>
-        <div class="form-group">
-          <label>图标</label>
-          <input type="text" id="wf-drawer-icon-input" maxlength="2" placeholder="📊">
-        </div>
-        <div class="form-group">
-          <label>描述</label>
-          <textarea id="wf-drawer-desc-input" rows="2" maxlength="200" placeholder="一句话说明这个工作流做什么"></textarea>
-        </div>
-        <div class="form-group">
-          <label>步骤</label>
-          <div id="wf-steps-list"></div>
-          <button class="btn-secondary" id="wf-add-step">+ 添加步骤</button>
-        </div>
-      </div>
-      <div class="drawer-footer">
-        <button class="btn-secondary" id="wf-drawer-cancel">取消</button>
-        <button class="btn-primary" id="wf-drawer-save">保存</button>
-        <button class="btn-danger" id="wf-drawer-delete" style="display:none">删除</button>
-      </div>
-    </div>
-
-    <!-- ===== 抽屉：计划条目详情/编辑（v5.1.0） ===== -->
-    <div class="drawer" id="plan-drawer" aria-hidden="true">
-      <div class="drawer-header">
-        <h2 id="plan-drawer-title">📅 计划详情</h2>
-        <button class="drawer-close" data-close="plan-drawer" aria-label="关闭">×</button>
-      </div>
-      <div class="drawer-body">
-        <div class="form-group">
-          <label>标题 *</label>
-          <input type="text" id="plan-drawer-title-input" maxlength="64" placeholder="如：完成项目代码审查">
-        </div>
-        <div class="form-group">
-          <label>类型 *</label>
-          <select id="plan-drawer-type-select">
-            <option value="day">📅 日计划</option>
-            <option value="week">📆 周计划</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>日期 *</label>
-          <input type="date" id="plan-drawer-date-input">
-        </div>
-        <div class="form-group">
-          <label>状态</label>
-          <select id="plan-drawer-status-select">
-            <option value="pending">⏳ 待开始</option>
-            <option value="in_progress">⚙️ 进行中</option>
-            <option value="done">✅ 已完成</option>
-            <option value="cancelled">❌ 已取消</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>优先级</label>
-          <select id="plan-drawer-priority-select">
-            <option value="low">低</option>
-            <option value="normal" selected>普通</option>
-            <option value="high">高</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>⏰ 提醒时间（可选）</label>
-          <input type="datetime-local" id="plan-drawer-remind-input">
-          <div class="form-hint" style="font-size:11px;color:var(--text-muted);margin-top:4px">
-            到达设定时间后会通过通知中心和微信提醒
-          </div>
-        </div>
-        <div class="form-group">
-          <label>提醒渠道</label>
-          <div class="checkbox-group" style="padding:0">
-            <label><input type="checkbox" id="plan-drawer-remind-inapp" checked> 💻 网页通知</label>
-            <label><input type="checkbox" id="plan-drawer-remind-wechat"> 💬 微信推送</label>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>详细说明</label>
-          <textarea id="plan-drawer-details-input" rows="6" maxlength="2000" placeholder="补充细节、子任务、依赖等"></textarea>
-        </div>
-        <div class="form-group form-meta">
-          <span id="plan-drawer-meta"></span>
-        </div>
-      </div>
-      <div class="drawer-footer">
-        <button class="btn-secondary" id="plan-drawer-cancel">取消</button>
-        <button class="btn-primary" id="plan-drawer-save">保存</button>
-        <button class="btn-danger" id="plan-drawer-delete" style="display:none">删除</button>
-      </div>
-    </div>
-
-    <!-- ========== 抽屉：周报生成器 ========== -->
-    <div class="drawer drawer-wide" id="report-drawer" aria-hidden="true">
-      <div class="drawer-header">
-        <h2>📝 周报生成器</h2>
-        <button class="drawer-close" data-close="report-drawer" aria-label="关闭">×</button>
-      </div>
-      <div class="drawer-body">
-        <div class="form-row">
           <div class="form-group">
-            <label>选择周</label>
-            <select id="report-week-select">
-              <option value="current">📍 本周</option>
-              <option value="last">◀ 上周</option>
-              <option value="next">▶ 下周</option>
+            <label>优先级</label>
+            <select id="plan-drawer-priority-select">
+              <option value="low">低</option>
+              <option value="normal" selected>普通</option>
+              <option value="high">高</option>
             </select>
           </div>
           <div class="form-group">
-            <label>包含章节</label>
-            <div class="checkbox-group">
-              <label><input type="checkbox" id="report-sec-summary" checked> 📊 数据总览</label>
-              <label><input type="checkbox" id="report-sec-plans" checked> ✅ 本周完成</label>
-              <label><input type="checkbox" id="report-sec-progress" checked> ⚙️ 进行中</label>
-              <label><input type="checkbox" id="report-sec-tasks" checked> 📨 完成任务</label>
-              <label><input type="checkbox" id="report-sec-kb"> 📚 知识库新增</label>
-              <label><input type="checkbox" id="report-sec-next" checked> 🎯 下周计划</label>
-              <label><input type="checkbox" id="report-sec-tips"> 💡 改进建议</label>
+            <label>⏰ 提醒时间（可选）</label>
+            <input type="datetime-local" id="plan-drawer-remind-input" />
+            <div class="form-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 4px">
+              到达设定时间后会通过通知中心和微信提醒
             </div>
           </div>
+          <div class="form-group">
+            <label>提醒渠道</label>
+            <div class="checkbox-group" style="padding: 0">
+              <label><input type="checkbox" id="plan-drawer-remind-inapp" checked /> 💻 网页通知</label>
+              <label><input type="checkbox" id="plan-drawer-remind-wechat" /> 💬 微信推送</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>详细说明</label>
+            <textarea
+              id="plan-drawer-details-input"
+              rows="6"
+              maxlength="2000"
+              placeholder="补充细节、子任务、依赖等"
+            ></textarea>
+          </div>
+          <div class="form-group form-meta">
+            <span id="plan-drawer-meta"></span>
+          </div>
         </div>
-        <div class="form-group">
-          <label>周报预览（Markdown）</label>
-          <textarea id="report-output" rows="20" readonly placeholder="点击「🔄 生成」汇总本周数据..."></textarea>
+        <div class="drawer-footer">
+          <button class="btn-secondary" id="plan-drawer-cancel">取消</button>
+          <button class="btn-primary" id="plan-drawer-save">保存</button>
+          <button class="btn-danger" id="plan-drawer-delete" style="display: none">删除</button>
         </div>
-        <div class="form-meta" id="report-meta"></div>
+      </div>
+
+      <!-- ========== 抽屉：周报生成器 ========== -->
+      <div class="drawer drawer-wide" id="report-drawer" aria-hidden="true">
+        <div class="drawer-header">
+          <h2>📝 周报生成器</h2>
+          <button class="drawer-close" data-close="report-drawer" aria-label="关闭">×</button>
+        </div>
+        <div class="drawer-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label>选择周</label>
+              <select id="report-week-select">
+                <option value="current">📍 本周</option>
+                <option value="last">◀ 上周</option>
+                <option value="next">▶ 下周</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>包含章节</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" id="report-sec-summary" checked /> 📊 数据总览</label>
+                <label><input type="checkbox" id="report-sec-plans" checked /> ✅ 本周完成</label>
+                <label><input type="checkbox" id="report-sec-progress" checked /> ⚙️ 进行中</label>
+                <label><input type="checkbox" id="report-sec-tasks" checked /> 📨 完成任务</label>
+                <label><input type="checkbox" id="report-sec-kb" /> 📚 知识库新增</label>
+                <label><input type="checkbox" id="report-sec-next" checked /> 🎯 下周计划</label>
+                <label><input type="checkbox" id="report-sec-tips" /> 💡 改进建议</label>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>周报预览（Markdown）</label>
+            <textarea id="report-output" rows="20" readonly placeholder="点击「🔄 生成」汇总本周数据..."></textarea>
+          </div>
+          <div class="form-meta" id="report-meta"></div>
+        </div>
+        <div class="drawer-footer">
+          <button class="btn-secondary" id="report-copy" disabled>📋 复制</button>
+          <button class="btn-secondary" id="report-download" disabled>💾 下载 .md</button>
+          <button class="btn-secondary" data-close="report-drawer">关闭</button>
+          <button class="btn-primary" id="report-generate">🔄 生成</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 抽屉：系统日志 ========== -->
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <div class="drawer" id="log-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <h2>📜 系统日志</h2>
+        <button class="drawer-close" data-close="log-drawer" aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-toolbar">
+        <select id="log-level-filter">
+          <option value="">全部级别</option>
+          <option value="info">info</option>
+          <option value="success">success</option>
+          <option value="warn">warn</option>
+          <option value="error">error</option>
+          <option value="debug">debug</option>
+        </select>
+        <select id="log-source-filter">
+          <option value="">全部来源</option>
+          <option value="server">server</option>
+          <option value="bridge">bridge</option>
+          <option value="task">task</option>
+          <option value="agent">agent</option>
+          <option value="system">system</option>
+        </select>
+      </div>
+      <div class="drawer-body" id="log-drawer-list">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-text">暂无日志</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 抽屉：存储统计 ========== -->
+    <div class="drawer" id="stats-drawer" aria-hidden="true">
+      <div class="drawer-header">
+        <h2>📊 存储统计</h2>
+        <button class="drawer-close" data-close="stats-drawer" aria-label="关闭">×</button>
+      </div>
+      <div class="drawer-body" id="stats-drawer-body">
+        <div class="empty-state">
+          <div class="empty-icon">⏳</div>
+          <div class="empty-text">加载中...</div>
+        </div>
       </div>
       <div class="drawer-footer">
-        <button class="btn-secondary" id="report-copy" disabled>📋 复制</button>
-        <button class="btn-secondary" id="report-download" disabled>💾 下载 .md</button>
-        <button class="btn-secondary" data-close="report-drawer">关闭</button>
-        <button class="btn-primary" id="report-generate">🔄 生成</button>
+        <button class="drawer-btn" id="btn-export-data">📥 导出备份</button>
+        <button class="drawer-btn drawer-btn-danger" id="btn-wipe-data">🗑 清空数据</button>
       </div>
     </div>
-  </div>
 
-  <!-- ========== 抽屉：系统日志 ========== -->
-  <div class="drawer-overlay" id="drawer-overlay"></div>
-  <div class="drawer" id="log-drawer" aria-hidden="true">
-    <div class="drawer-header">
-      <h2>📜 系统日志</h2>
-      <button class="drawer-close" data-close="log-drawer" aria-label="关闭">×</button>
-    </div>
-    <div class="drawer-toolbar">
-      <select id="log-level-filter">
-        <option value="">全部级别</option>
-        <option value="info">info</option>
-        <option value="success">success</option>
-        <option value="warn">warn</option>
-        <option value="error">error</option>
-        <option value="debug">debug</option>
-      </select>
-      <select id="log-source-filter">
-        <option value="">全部来源</option>
-        <option value="server">server</option>
-        <option value="bridge">bridge</option>
-        <option value="task">task</option>
-        <option value="agent">agent</option>
-        <option value="system">system</option>
-      </select>
-    </div>
-    <div class="drawer-body" id="log-drawer-list">
-      <div class="empty-state">
-        <div class="empty-icon">📋</div>
-        <div class="empty-text">暂无日志</div>
+    <!-- ========== 微信 Claw 弹窗（v4.0.0） ========== -->
+    <div class="wechat-modal" id="wechat-modal" hidden>
+      <div class="wechat-modal-overlay" data-close-modal></div>
+      <div class="wechat-modal-card">
+        <header class="wmc-header">
+          <h3>📱 微信连接</h3>
+          <button class="wmc-close" data-close-modal aria-label="关闭">×</button>
+        </header>
+        <div class="wmc-body" id="wechat-modal-body">
+          <!-- 动态填充 -->
+        </div>
+        <footer class="wmc-footer" id="wechat-modal-footer">
+          <!-- 动态填充 -->
+        </footer>
       </div>
     </div>
-  </div>
 
-  <!-- ========== 抽屉：存储统计 ========== -->
-  <div class="drawer" id="stats-drawer" aria-hidden="true">
-    <div class="drawer-header">
-      <h2>📊 存储统计</h2>
-      <button class="drawer-close" data-close="stats-drawer" aria-label="关闭">×</button>
-    </div>
-    <div class="drawer-body" id="stats-drawer-body">
-      <div class="empty-state">
-        <div class="empty-icon">⏳</div>
-        <div class="empty-text">加载中...</div>
-      </div>
-    </div>
-    <div class="drawer-footer">
-      <button class="drawer-btn" id="btn-export-data">📥 导出备份</button>
-      <button class="drawer-btn drawer-btn-danger" id="btn-wipe-data">🗑 清空数据</button>
-    </div>
-  </div>
+    <!-- ========== 通知容器 ========== -->
+    <div id="notification-container"></div>
 
-  <!-- ========== 微信 Claw 弹窗（v4.0.0） ========== -->
-  <div class="wechat-modal" id="wechat-modal" hidden>
-    <div class="wechat-modal-overlay" data-close-modal></div>
-    <div class="wechat-modal-card">
-      <header class="wmc-header">
-        <h3>📱 微信连接</h3>
-        <button class="wmc-close" data-close-modal aria-label="关闭">×</button>
-      </header>
-      <div class="wmc-body" id="wechat-modal-body">
-        <!-- 动态填充 -->
-      </div>
-      <footer class="wmc-footer" id="wechat-modal-footer">
-        <!-- 动态填充 -->
-      </footer>
-    </div>
-  </div>
-
-  <!-- ========== 通知容器 ========== -->
-  <div id="notification-container"></div>
-
-  <!-- 客户端拆分模块（v5.5.1）：按依赖顺序加载，?v= 占位由 server 中间件替换为实际版本号 -->
-  <script src="js/core.js?v={VERSION}"></script>
-  <script src="js/sessions.js?v={VERSION}"></script>
-  <script src="js/tasks.js?v={VERSION}"></script>
-  <script src="js/kb.js?v={VERSION}"></script>
-  <script src="js/wf.js?v={VERSION}"></script>
-  <script src="js/plan.js?v={VERSION}"></script>
-  <script src="js/claw.js?v={VERSION}"></script>
-  <script src="js/overview.js?v={VERSION}"></script>
-  <script src="js/settings.js?v={VERSION}"></script>
-  <script src="js/main.js?v={VERSION}"></script>
-</body>
+    <!-- 客户端拆分模块（v5.5.1）：按依赖顺序加载，?v= 占位由 server 中间件替换为实际版本号 -->
+    <script src="js/core.js?v={VERSION}"></script>
+    <script src="js/sessions.js?v={VERSION}"></script>
+    <script src="js/tasks.js?v={VERSION}"></script>
+    <script src="js/kb.js?v={VERSION}"></script>
+    <script src="js/wf.js?v={VERSION}"></script>
+    <script src="js/plan.js?v={VERSION}"></script>
+    <script src="js/claw.js?v={VERSION}"></script>
+    <script src="js/overview.js?v={VERSION}"></script>
+    <script src="js/settings.js?v={VERSION}"></script>
+    <script src="js/main.js?v={VERSION}"></script>
+  </body>
 </html>

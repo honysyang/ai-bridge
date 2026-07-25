@@ -6,43 +6,129 @@
 (function (global) {
   'use strict';
 
-  // ======== i18n（统一状态/优先级/来源/类型的中文映射）========
+  // ======== i18n（v5.5.6：支持中英双语）========
   const I18N = {
-    status: {
-      pending: '⏳ 待处理',
-      assigned: '⚙️ 处理中',  // v5.1.1: 合并 assigned → 处理中（与 processing 同义）
-      processing: '⚙️ 处理中',
-      completed: '✅ 已完成',
-      failed: '❌ 失败'
+    'zh-CN': {
+      status: {
+        pending: '⏳ 待处理',
+        assigned: '⚙️ 处理中',
+        processing: '⚙️ 处理中',
+        completed: '✅ 已完成',
+        failed: '❌ 失败'
+      },
+      priority: {
+        low: '低',
+        normal: '普通',
+        high: '高',
+        urgent: '紧急'
+      },
+      source: {
+        wechat: '💬 微信',
+        chat: '💬 聊天',
+        manual: '✍️ 手动',
+        scheduled: '⏰ 定时',
+        system: '⚙️ 系统',
+        workflow: '🔄 工作流'
+      },
+      type: {
+        chat: '聊天',
+        reply_message: '回复消息',
+        query_info: '信息查询',
+        analyze_data: '数据分析',
+        generate_content: '内容生成',
+        execute_command: '执行命令',
+        multi_step: '多步任务'
+      },
+      ui: {
+        sessions: '会话',
+        tasks: '任务',
+        kb: '知识库',
+        workflow: '工作流',
+        plan: '计划',
+        overview: '概览',
+        settings: '设置',
+        logout: '登出',
+        loading: '加载中...',
+        noData: '暂无数据'
+      }
     },
-    priority: {
-      low: '低',
-      normal: '普通',
-      high: '高',
-      urgent: '紧急'
-    },
-    source: {
-      wechat: '💬 微信',
-      chat: '💬 聊天',
-      manual: '✍️ 手动',
-      scheduled: '⏰ 定时',
-      system: '⚙️ 系统',
-      workflow: '🔄 工作流'
-    },
-    type: {
-      chat: '聊天',
-      reply_message: '回复消息',
-      query_info: '信息查询',
-      analyze_data: '数据分析',
-      generate_content: '内容生成',
-      execute_command: '执行命令',
-      multi_step: '多步任务'
+    'en-US': {
+      status: {
+        pending: '⏳ Pending',
+        assigned: '⚙️ Assigned',
+        processing: '⚙️ Processing',
+        completed: '✅ Completed',
+        failed: '❌ Failed'
+      },
+      priority: {
+        low: 'Low',
+        normal: 'Normal',
+        high: 'High',
+        urgent: 'Urgent'
+      },
+      source: {
+        wechat: '💬 WeChat',
+        chat: '💬 Chat',
+        manual: '✍️ Manual',
+        scheduled: '⏰ Scheduled',
+        system: '⚙️ System',
+        workflow: '🔄 Workflow'
+      },
+      type: {
+        chat: 'Chat',
+        reply_message: 'Reply',
+        query_info: 'Query',
+        analyze_data: 'Analyze',
+        generate_content: 'Generate',
+        execute_command: 'Command',
+        multi_step: 'Multi-step'
+      },
+      ui: {
+        sessions: 'Sessions',
+        tasks: 'Tasks',
+        kb: 'Knowledge',
+        workflow: 'Workflow',
+        plan: 'Plans',
+        overview: 'Overview',
+        settings: 'Settings',
+        logout: 'Logout',
+        loading: 'Loading...',
+        noData: 'No data'
+      }
     }
   };
 
+  let currentLang = localStorage.getItem('aibridge_language') || 'zh-CN';
+
   function i18n(map, key) {
-    return (I18N[map] && I18N[map][key]) || key;
+    const dict = I18N[currentLang] || I18N['zh-CN'];
+    return (dict[map] && dict[map][key]) || key;
   }
+
+  function setLanguage(lang) {
+    if (!I18N[lang]) return;
+    currentLang = lang;
+    localStorage.setItem('aibridge_language', lang);
+    document.documentElement.lang = lang === 'en-US' ? 'en' : 'zh-CN';
+    applyThemeAndLang();
+  }
+
+  function applyThemeAndLang() {
+    // 触发全局重绘：简单做法是刷新页面，后续可优化为局部更新
+    if (typeof window !== 'undefined' && window.Core && window.Core.onSettingsChange) {
+      window.Core.onSettingsChange();
+    }
+  }
+
+  // v5.5.7: 固定 Indigo Modern 主题，不再提供切换
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', 'indigo');
+    localStorage.removeItem('aibridge_theme');
+  }
+  function setTheme() {
+    applyTheme();
+  }
+  applyTheme();
 
   // ======== State（全局共享状态）========
   const state = {
@@ -54,31 +140,31 @@
     sessionFilter: 'active',
     sessionSearch: '',
     detailTab: 'overview',
-    currentTab: 'chat',          // v4.2.1: 当前 tab
+    currentTab: 'chat', // v4.2.1: 当前 tab
     stats: null,
     claw: {
-      status: null,           // { state, wxid, nickname, ... }
+      status: null, // { state, wxid, nickname, ... }
       modalOpen: false,
       qrcodeTimer: null,
       lastQrcodeExpiresAt: null,
-      pollingTimer: null,     // v5.2.1: 状态轮询定时器
-      lastPolledState: null   // v5.2.1: 上次轮询的状态（用于 diff 触发重渲染）
+      pollingTimer: null, // v5.2.1: 状态轮询定时器
+      lastPolledState: null // v5.2.1: 上次轮询的状态（用于 diff 触发重渲染）
     },
-    workflows: [],               // v4.2.1: 工作流列表
-    currentWorkflowId: null,     // v4.2.1: 当前工作流
-    kbCategories: [],            // v4.2.1: 知识库分类
-    currentKbCategoryId: null,   // v4.2.1: 当前分类
-    kbItems: [],                 // v4.2.1: 知识库条目
-    kbLinks: [],                 // v4.3.0: 知识图谱关联
-    kbView: 'list',              // v4.3.0: KB 视图（list | graph）
-    cy: null,                    // v4.3.0: Cytoscape 实例
-    plans: [],                   // v5.1.0: 计划条目列表
-    currentPlanId: null,         // v5.1.0: 当前选中计划
+    workflows: [], // v4.2.1: 工作流列表
+    currentWorkflowId: null, // v4.2.1: 当前工作流
+    kbCategories: [], // v4.2.1: 知识库分类
+    currentKbCategoryId: null, // v4.2.1: 当前分类
+    kbItems: [], // v4.2.1: 知识库条目
+    kbLinks: [], // v4.3.0: 知识图谱关联
+    kbView: 'list', // v4.3.0: KB 视图（list | graph）
+    cy: null, // v4.3.0: Cytoscape 实例
+    plans: [], // v5.1.0: 计划条目列表
+    currentPlanId: null, // v5.1.0: 当前选中计划
     planFilter: {
       search: '',
-      type: 'all',               // all | day | week
-      status: 'all',             // all | pending | in_progress | done | cancelled
-      week: 'current'            // current | next | all
+      type: 'all', // all | day | week
+      status: 'all', // all | pending | in_progress | done | cancelled
+      week: 'current' // current | next | all
     }
   };
 
@@ -175,9 +261,11 @@
         global.__lastApiError.path && `URL: ${global.__lastApiError.path}`,
         global.__lastApiError.status && `HTTP: ${global.__lastApiError.status}`,
         global.__lastApiError.technical
-      ].filter(Boolean).join('\n');
+      ]
+        .filter(Boolean)
+        .join('\n');
     }
-    const copyable = opts.copyable != null ? opts.copyable : (type === 'error' && !!technical);
+    const copyable = opts.copyable != null ? opts.copyable : type === 'error' && !!technical;
 
     const container = document.getElementById('notification-container');
     if (!container) return;
@@ -203,8 +291,18 @@
         ev.stopPropagation();
         const detail = `[${type.toUpperCase()}] ${msg}\n${technical}`;
         copyToClipboard(detail).then(
-          () => { btn.textContent = '✓'; setTimeout(() => { btn.textContent = '📋'; }, 1500); },
-          () => { btn.textContent = '✗'; setTimeout(() => { btn.textContent = '📋'; }, 1500); }
+          () => {
+            btn.textContent = '✓';
+            setTimeout(() => {
+              btn.textContent = '📋';
+            }, 1500);
+          },
+          () => {
+            btn.textContent = '✗';
+            setTimeout(() => {
+              btn.textContent = '📋';
+            }, 1500);
+          }
         );
       });
       el.appendChild(btn);
@@ -215,6 +313,56 @@
       el.style.opacity = '0';
       setTimeout(() => el.remove(), 300);
     }, duration);
+  }
+
+  /**
+   * 自定义确认对话框（替代原生 confirm）
+   * @returns {Promise<boolean>}
+   */
+  function openConfirm({
+    title = '确认',
+    message = '',
+    confirmText = '确定',
+    cancelText = '取消',
+    danger = false
+  } = {}) {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay confirm-overlay';
+      overlay.innerHTML = `
+        <div class="modal confirm-modal" role="dialog" aria-modal="true" tabindex="-1">
+          <div class="modal-header">${escapeHtml(title)}</div>
+          <div class="modal-body">${message ? `<p style="margin:0;line-height:1.6;white-space:pre-wrap;">${escapeHtml(message)}</p>` : ''}</div>
+          <div class="modal-footer">
+            <button class="modal-btn confirm-cancel">${escapeHtml(cancelText)}</button>
+            <button class="modal-btn ${danger ? 'modal-btn-danger' : 'modal-btn-primary'} confirm-ok">${escapeHtml(confirmText)}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+
+      const modal = overlay.querySelector('.modal');
+      const okBtn = overlay.querySelector('.confirm-ok');
+      const cancelBtn = overlay.querySelector('.confirm-cancel');
+
+      function close(result) {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 200);
+        resolve(result);
+      }
+
+      okBtn.addEventListener('click', () => close(true));
+      cancelBtn.addEventListener('click', () => close(false));
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(false);
+      });
+      document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') {
+          close(false);
+          document.removeEventListener('keydown', esc);
+        }
+      });
+      okBtn.focus();
+    });
   }
 
   /**
@@ -234,22 +382,40 @@
     ta.style.left = '-9999px';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); } finally { document.body.removeChild(ta); }
+    try {
+      document.execCommand('copy');
+    } finally {
+      document.body.removeChild(ta);
+    }
   }
 
   /**
-   * 统一 API 调用（v5.2.0 增强错误处理，v5.4.0 增加 Bearer Token 注入）
-   * - 自动从 localStorage 读取 aibridge_token 并附加到 Authorization header
-   * - 401 错误时清空 token 并跳转到 /login.html
+   * 统一 API 调用（v5.2.0 增强错误处理，v5.5.6 改为 httpOnly Cookie + CSRF Token）
+   * - 自动从 document.cookie 读取 csrf token 并附加到 X-CSRF-Token header（非安全方法）
+   * - 401 错误时清空用户状态并跳转到 /login.html
    * - 错误 message 自动转中文（humanizeHttpError）
    * - 保留 e.technical/e.status/e.payload/e.network 用于调试与"复制详情"
    */
+  function getCookie(name) {
+    const m = document.cookie.match(
+      new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)')
+    );
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
   async function api(path, options = {}) {
-    const opts = { headers: { 'Content-Type': 'application/json' }, ...options };
-    // v5.4.0: 自动注入 Bearer Token
-    const token = localStorage.getItem('aibridge_token');
-    if (token && !opts.headers.Authorization) {
-      opts.headers.Authorization = 'Bearer ' + token;
+    const opts = {
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      ...options
+    };
+    // v5.5.6: 非安全方法自动附加 CSRF token（double submit cookie）
+    const method = (opts.method || 'GET').toUpperCase();
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const csrf = getCookie('aibridge_csrf');
+      if (csrf && !opts.headers['X-CSRF-Token']) {
+        opts.headers['X-CSRF-Token'] = csrf;
+      }
     }
     if (opts.body && typeof opts.body !== 'string') opts.body = JSON.stringify(opts.body);
 
@@ -268,10 +434,9 @@
       throw e;
     }
 
-    // v5.4.0: 401 → 清 token + 跳登录页
+    // v5.5.6: 401 → 清用户状态 + 跳登录页
     if (resp.status === 401 && path !== '/api/auth/login') {
       console.warn('[api] 401 未授权，跳转登录页');
-      localStorage.removeItem('aibridge_token');
       localStorage.removeItem('aibridge_user');
       // 仅当当前不在 login 页时才跳转
       if (!location.pathname.endsWith('/login.html')) {
@@ -295,8 +460,7 @@
     }
 
     if (!resp.ok || (data && data.success === false)) {
-      const technical = (data && data.error)
-        || (parseErr ? `响应解析失败 (${resp.status})` : `HTTP ${resp.status}`);
+      const technical = (data && data.error) || (parseErr ? `响应解析失败 (${resp.status})` : `HTTP ${resp.status}`);
       const userMsg = humanizeHttpError(resp.status, data);
       const e = new Error(userMsg);
       e.status = resp.status;
@@ -319,11 +483,10 @@
   }
 
   /**
-   * 登出（v5.4.0）：清 token + 跳转登录页
+   * 登出（v5.5.6）：后端清除 httpOnly cookie，前端清用户状态 + 跳转登录页
    */
   function logout() {
     api('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    localStorage.removeItem('aibridge_token');
     localStorage.removeItem('aibridge_user');
     location.replace('/login.html');
   }
@@ -351,7 +514,10 @@
   function installGlobalErrorHandlers() {
     window.addEventListener('error', (ev) => {
       // 资源加载失败（404 等）单独处理
-      if (ev.target && (ev.target.tagName === 'SCRIPT' || ev.target.tagName === 'LINK' || ev.target.tagName === 'IMG')) {
+      if (
+        ev.target &&
+        (ev.target.tagName === 'SCRIPT' || ev.target.tagName === 'LINK' || ev.target.tagName === 'IMG')
+      ) {
         const url = ev.target.src || ev.target.href || '';
         console.warn('[resource-error]', ev.target.tagName, url);
         return;
@@ -385,20 +551,27 @@
     });
 
     // 资源加载错误（capture 阶段才能监听到）
-    window.addEventListener('error', (ev) => {
-      if (ev.target && (ev.target.tagName === 'SCRIPT' || ev.target.tagName === 'LINK' || ev.target.tagName === 'IMG')) {
-        const url = ev.target.src || ev.target.href || '';
-        console.warn('[resource-error]', ev.target.tagName, url);
-        // 关键资源（CDN）失败时通知一次
-        if (url.includes('cytoscape') && shouldNotify('cdn:cytoscape')) {
-          showNotification({
-            msg: '知识图谱组件加载失败，图谱视图不可用',
-            type: 'warning',
-            duration: 5000
-          });
+    window.addEventListener(
+      'error',
+      (ev) => {
+        if (
+          ev.target &&
+          (ev.target.tagName === 'SCRIPT' || ev.target.tagName === 'LINK' || ev.target.tagName === 'IMG')
+        ) {
+          const url = ev.target.src || ev.target.href || '';
+          console.warn('[resource-error]', ev.target.tagName, url);
+          // 关键资源（CDN）失败时通知一次
+          if (url.includes('cytoscape') && shouldNotify('cdn:cytoscape')) {
+            showNotification({
+              msg: '知识图谱组件加载失败，图谱视图不可用',
+              type: 'warning',
+              duration: 5000
+            });
+          }
         }
-      }
-    }, true);
+      },
+      true
+    );
   }
 
   // ======== Hash Routing (v5.2.1 移到 core.js，避免 sessions/tasks 在 main.js 之前加载时拿不到 setHash) ========
@@ -411,27 +584,52 @@
   global.Core = {
     I18N,
     i18n,
+    setLanguage,
+    setTheme,
+    get currentLang() {
+      return currentLang;
+    },
+    get currentTheme() {
+      return 'indigo';
+    },
     state,
     escapeHtml,
     formatTime,
     formatRelative,
     formatBytes,
     showNotification,
+    openConfirm,
     api,
-    logout,                 // v5.4.0
+    logout, // v5.4.0
     copyToClipboard,
     humanizeHttpError,
     shouldNotify,
     installGlobalErrorHandlers,
     setHash,
     // 共享计时器（其他模块需要时通过 Core.ws/Core.heartbeatInterval 访问）
-    get ws() { return ws; },
-    set ws(v) { ws = v; },
-    get reconnectTimer() { return reconnectTimer; },
-    set reconnectTimer(v) { reconnectTimer = v; },
-    get heartbeatInterval() { return heartbeatInterval; },
-    set heartbeatInterval(v) { heartbeatInterval = v; },
-    get planReminderTimer() { return planReminderTimer; },
-    set planReminderTimer(v) { planReminderTimer = v; }
+    get ws() {
+      return ws;
+    },
+    set ws(v) {
+      ws = v;
+    },
+    get reconnectTimer() {
+      return reconnectTimer;
+    },
+    set reconnectTimer(v) {
+      reconnectTimer = v;
+    },
+    get heartbeatInterval() {
+      return heartbeatInterval;
+    },
+    set heartbeatInterval(v) {
+      heartbeatInterval = v;
+    },
+    get planReminderTimer() {
+      return planReminderTimer;
+    },
+    set planReminderTimer(v) {
+      planReminderTimer = v;
+    }
   };
 })(window);

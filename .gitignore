@@ -32,3 +32,5 @@ Thumbs.db
 # Winston logs directory
 logs/
 
+# Screenshots are not shipped with the repository (see README)
+docs/screenshots/

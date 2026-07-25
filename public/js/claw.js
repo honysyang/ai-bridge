@@ -33,14 +33,29 @@
     const textEl = badge.querySelector('.ws-text');
     if (!textEl) return;
     switch (status.state) {
-      case 'disconnected': textEl.textContent = '微信未连接'; break;
-      case 'qrcode':       textEl.textContent = '等待扫码'; break;
-      case 'connecting':   textEl.textContent = '连接中…'; break;
-      case 'connected':    textEl.textContent = status.nickname || status.wxid || '已连接'; break;
-      case 'reconnecting': textEl.textContent = '重新连接…'; break;
-      case 'banned':       textEl.textContent = '⚠️ 封号'; break;
-      case 'error':        textEl.textContent = '⚠️ 异常'; break;
-      default:             textEl.textContent = status.state;
+      case 'disconnected':
+        textEl.textContent = '微信未连接';
+        break;
+      case 'qrcode':
+        textEl.textContent = '等待扫码';
+        break;
+      case 'connecting':
+        textEl.textContent = '连接中…';
+        break;
+      case 'connected':
+        textEl.textContent = status.nickname || status.wxid || '已连接';
+        break;
+      case 'reconnecting':
+        textEl.textContent = '重新连接…';
+        break;
+      case 'banned':
+        textEl.textContent = '⚠️ 封号';
+        break;
+      case 'error':
+        textEl.textContent = '⚠️ 异常';
+        break;
+      default:
+        textEl.textContent = status.state;
     }
   }
 
@@ -83,9 +98,7 @@
         const prev = state.claw.status;
         state.claw.status = data;
         // 状态变化或 qrcode_url 变化时，重新渲染面板
-        if (!prev
-            || prev.state !== data.state
-            || (data.state === 'qrcode' && prev.qrcode_url !== data.qrcode_url)) {
+        if (!prev || prev.state !== data.state || (data.state === 'qrcode' && prev.qrcode_url !== data.qrcode_url)) {
           renderClawStatus();
           renderWechatModal();
           // 状态变成已连接时，给个提示
@@ -116,7 +129,8 @@
     const status = state.claw.status;
     if (!body || !footer) return;
     if (!status) {
-      body.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">加载中...</div></div>';
+      body.innerHTML =
+        '<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">加载中...</div></div>';
       footer.innerHTML = '';
       return;
     }
@@ -204,9 +218,7 @@
       const remaining = Math.max(0, Math.floor((expires - Date.now()) / 1000));
       const el = document.getElementById('qrcode-countdown');
       if (el) {
-        el.textContent = remaining > 0
-          ? `⏱ 二维码 ${remaining} 秒后过期`
-          : '❌ 二维码已过期，点击"刷新"重新获取';
+        el.textContent = remaining > 0 ? `⏱ 二维码 ${remaining} 秒后过期` : '❌ 二维码已过期，点击"刷新"重新获取';
         el.classList.toggle('expired', remaining === 0);
       }
     }, 1000);
@@ -236,7 +248,8 @@
   }
 
   async function logoutClaw() {
-    if (!confirm('确认退出微信登录？')) return;
+    const ok = await global.Core.openConfirm({ title: '退出登录', message: '确认退出微信登录？', confirmText: '退出' });
+    if (!ok) return;
     try {
       await api('/api/claw/logout', { method: 'POST', body: {} });
       showNotification('✓ 已退出', 'success');
@@ -248,7 +261,8 @@
   }
 
   async function restartClaw() {
-    if (!confirm('确认重启 Claw？')) return;
+    const ok = await global.Core.openConfirm({ title: '重启 Claw', message: '确认重启 Claw？', confirmText: '重启' });
+    if (!ok) return;
     try {
       await api('/api/claw/restart', { method: 'POST', body: {} });
       showNotification('✓ 已重启', 'success');
@@ -266,8 +280,8 @@
     closeWechatModal,
     renderWechatModal,
     startQrcodeCountdown,
-    startClawStatusPolling,   // v5.2.1
-    stopClawStatusPolling,    // v5.2.1
+    startClawStatusPolling, // v5.2.1
+    stopClawStatusPolling, // v5.2.1
     startClawLogin,
     refreshClawQrcode,
     logoutClaw,

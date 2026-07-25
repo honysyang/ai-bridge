@@ -31,7 +31,7 @@ import type {
   SendMessageResp,
   SendTypingReq,
   SendTypingResp,
-  GetConfigResp,
+  GetConfigResp
 } from './types.js';
 
 export type WeixinApiOptions = {
@@ -61,7 +61,7 @@ function readPackageJsonFromDir(_startDir: string): PackageJson {
   return {
     name: '@tencent-weixin/openclaw-weixin',
     version: '2.4.6',
-    ilink_appid: process.env.ILINK_APP_ID || '',
+    ilink_appid: process.env.ILINK_APP_ID || ''
   };
 }
 
@@ -86,6 +86,7 @@ export function sanitizeBotAgent(raw: string | undefined | null): string {
   if (!raw || typeof raw !== 'string') return DEFAULT_BOT_AGENT;
   const trimmed = raw.trim();
   if (!trimmed) return DEFAULT_BOT_AGENT;
+  // eslint-disable-next-line no-useless-escape
   const productRe = /^[A-Za-z0-9_.\-]{1,32}\/[A-Za-z0-9_.+\-]{1,32}$/;
   const commentCharRe = /^[\x20-\x27\x2A-\x7E]{1,64}$/;
   const rawTokens = trimmed.split(/\s+/);
@@ -145,7 +146,7 @@ export function sanitizeBotAgent(raw: string | undefined | null): string {
 export function buildBaseInfo(): BaseInfo {
   return {
     channel_version: CHANNEL_VERSION,
-    bot_agent: sanitizeBotAgent(loadConfigBotAgent()),
+    bot_agent: sanitizeBotAgent(loadConfigBotAgent())
   };
 }
 
@@ -165,7 +166,7 @@ function randomWechatUin(): string {
 function buildCommonHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'iLink-App-Id': ILINK_APP_ID,
-    'iLink-App-ClientVersion': String(ILINK_APP_CLIENT_VERSION),
+    'iLink-App-ClientVersion': String(ILINK_APP_CLIENT_VERSION)
   };
   const routeTag = loadConfigRouteTag();
   if (routeTag) {
@@ -179,15 +180,17 @@ function buildHeaders(opts: { token?: string }): Record<string, string> {
     'Content-Type': 'application/json',
     AuthorizationType: 'ilink_bot_token',
     'X-WECHAT-UIN': randomWechatUin(),
-    ...buildCommonHeaders(),
+    ...buildCommonHeaders()
   };
   if (opts.token?.trim()) {
     headers['Authorization'] = `Bearer ${opts.token.trim()}`;
   }
-  logger.debug(`requestHeaders: ${JSON.stringify({
-    ...headers,
-    Authorization: headers['Authorization'] ? 'Bearer ***' : undefined,
-  })}`);
+  logger.debug(
+    `requestHeaders: ${JSON.stringify({
+      ...headers,
+      Authorization: headers['Authorization'] ? 'Bearer ***' : undefined
+    })}`
+  );
   return headers;
 }
 
@@ -207,7 +210,7 @@ export function classifyFetchError(err: any): {
     return {
       type: 'dns',
       description: 'DNS resolution failed, check DNS configuration',
-      ...(matchedCode ? { code: matchedCode } : {}),
+      ...(matchedCode ? { code: matchedCode } : {})
     };
   }
   if (/ECONNREFUSED/i.test(causeStr)) {
@@ -217,7 +220,7 @@ export function classifyFetchError(err: any): {
     return {
       type: 'tcp',
       description: 'TCP connection timeout or unreachable',
-      ...(matchedCode ? { code: matchedCode } : {}),
+      ...(matchedCode ? { code: matchedCode } : {})
     };
   }
   if (/UND_ERR_SOCKET|SSL|TLS|CERT|UNABLE_TO_VERIFY|DEPTH_ZERO/i.test(causeStr)) {
@@ -250,13 +253,12 @@ export async function apiGetFetch(params: ApiGetFetchParams): Promise<string> {
   logger.debug(`GET ${redactUrl(url.toString())}`);
   const timeoutMs = params.timeoutMs;
   const controller = timeoutMs != null && timeoutMs > 0 ? new AbortController() : undefined;
-  const t =
-    controller != null && timeoutMs != null ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+  const t = controller != null && timeoutMs != null ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
   try {
     const res = await fetch(url.toString(), {
       method: 'GET',
       headers: hdrs,
-      ...(controller ? { signal: controller.signal } : {}),
+      ...(controller ? { signal: controller.signal } : {})
     });
     if (t !== undefined) clearTimeout(t);
     const rawText = await res.text();
@@ -279,10 +281,10 @@ export async function apiGetFetch(params: ApiGetFetchParams): Promise<string> {
   }
 }
 
-function combineAbortSignals(params: {
-  internal?: AbortController;
-  external?: AbortSignal;
-}): { signal: AbortSignal | undefined; cleanup: () => void } {
+function combineAbortSignals(params: { internal?: AbortController; external?: AbortSignal }): {
+  signal: AbortSignal | undefined;
+  cleanup: () => void;
+} {
   const { internal, external } = params;
   if (!external) {
     return { signal: internal?.signal, cleanup: () => {} };
@@ -298,7 +300,7 @@ function combineAbortSignals(params: {
   external.addEventListener('abort', onExternalAbort, { once: true });
   return {
     signal: internal.signal,
-    cleanup: () => external.removeEventListener('abort', onExternalAbort),
+    cleanup: () => external.removeEventListener('abort', onExternalAbort)
   };
 }
 
@@ -314,14 +316,14 @@ export async function apiPostFetch(params: ApiPostFetchParams): Promise<string> 
       : undefined;
   const { signal, cleanup } = combineAbortSignals({
     internal: controller,
-    external: params.abortSignal,
+    external: params.abortSignal
   });
   try {
     const res = await fetch(url.toString(), {
       method: 'POST',
       headers: hdrs,
       body: params.body,
-      ...(signal ? { signal } : {}),
+      ...(signal ? { signal } : {})
     });
     if (t !== undefined) clearTimeout(t);
     const rawText = await res.text();
@@ -356,13 +358,17 @@ export type GetBotQrcodeResp = {
   expires_at?: number;
 };
 
-export async function getBotQrcode(params: { baseUrl: string; botType?: number; timeoutMs?: number }): Promise<GetBotQrcodeResp> {
+export async function getBotQrcode(params: {
+  baseUrl: string;
+  botType?: number;
+  timeoutMs?: number;
+}): Promise<GetBotQrcodeResp> {
   const botType = params.botType ?? 3;
   const rawText = await apiGetFetch({
     baseUrl: params.baseUrl,
     endpoint: `ilink/bot/get_bot_qrcode?bot_type=${botType}`,
     timeoutMs: params.timeoutMs ?? DEFAULT_CONFIG_TIMEOUT_MS,
-    label: 'getBotQrcode',
+    label: 'getBotQrcode'
   });
   const resp = JSON.parse(rawText);
   return resp;
@@ -385,7 +391,7 @@ export async function getQrcodeStatus(params: {
     baseUrl: params.baseUrl,
     endpoint: `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(params.qrcode)}`,
     timeoutMs: params.timeoutMs ?? DEFAULT_CONFIG_TIMEOUT_MS,
-    label: 'getQrcodeStatus',
+    label: 'getQrcodeStatus'
   });
   return JSON.parse(rawText);
 }
@@ -410,18 +416,17 @@ export async function getUpdates(params: GetUpdatesParams): Promise<GetUpdatesRe
       endpoint: 'ilink/bot/getupdates',
       body: JSON.stringify({
         get_updates_buf: params.get_updates_buf ?? '',
-        base_info: buildBaseInfo(),
+        base_info: buildBaseInfo()
       }),
       token: params.token,
       timeoutMs: timeout,
       label: 'getUpdates',
-      abortSignal: params.abortSignal,
+      abortSignal: params.abortSignal
     });
     return JSON.parse(rawText) as GetUpdatesResp;
   } catch (err) {
     // v5.2.1: 更宽松的 abort 检测
-    const isAbort =
-      err instanceof Error && (err.name === 'AbortError' || /aborted/i.test(err.message));
+    const isAbort = err instanceof Error && (err.name === 'AbortError' || /aborted/i.test(err.message));
     if (isAbort) {
       if (params.abortSignal?.aborted) {
         logger.debug(`getUpdates: aborted by external signal`);
@@ -467,11 +472,11 @@ export async function getUploadUrl(params: GetUploadUrlParams): Promise<GetUploa
       thumb_filesize: params.thumb_filesize,
       no_need_thumb: params.no_need_thumb,
       aeskey: params.aeskey,
-      base_info: buildBaseInfo(),
+      base_info: buildBaseInfo()
     }),
     token: params.token,
     timeoutMs: params.timeoutMs ?? DEFAULT_API_TIMEOUT_MS,
-    label: 'getUploadUrl',
+    label: 'getUploadUrl'
   });
   return JSON.parse(rawText) as GetUploadUrlResp;
 }
@@ -490,7 +495,7 @@ export async function sendMessage(params: SendMessageParams): Promise<SendMessag
     body: JSON.stringify({ ...params.body, base_info: buildBaseInfo() }),
     token: params.token,
     timeoutMs: params.timeoutMs ?? DEFAULT_API_TIMEOUT_MS,
-    label: 'sendMessage',
+    label: 'sendMessage'
   });
   const resp = JSON.parse(rawText) as SendMessageResp;
   if (resp.ret && resp.ret !== 0) {
@@ -514,11 +519,11 @@ export async function getConfig(params: GetConfigParams): Promise<GetConfigResp>
     body: JSON.stringify({
       ilink_user_id: params.ilinkUserId,
       context_token: params.contextToken,
-      base_info: buildBaseInfo(),
+      base_info: buildBaseInfo()
     }),
     token: params.token,
     timeoutMs: params.timeoutMs ?? DEFAULT_CONFIG_TIMEOUT_MS,
-    label: 'getConfig',
+    label: 'getConfig'
   });
   return JSON.parse(rawText) as GetConfigResp;
 }
@@ -537,31 +542,39 @@ export async function sendTyping(params: SendTypingParams): Promise<SendTypingRe
     body: JSON.stringify({ ...params.body, base_info: buildBaseInfo() }),
     token: params.token,
     timeoutMs: params.timeoutMs ?? DEFAULT_CONFIG_TIMEOUT_MS,
-    label: 'sendTyping',
+    label: 'sendTyping'
   });
   return { ret: 0 };
 }
 
-export async function notifyStop(params: { baseUrl: string; token: string; timeoutMs?: number }): Promise<NotifyStopResp> {
+export async function notifyStop(params: {
+  baseUrl: string;
+  token: string;
+  timeoutMs?: number;
+}): Promise<NotifyStopResp> {
   const rawText = await apiPostFetch({
     baseUrl: params.baseUrl,
     endpoint: 'ilink/bot/msg/notifystop',
     body: JSON.stringify({ base_info: buildBaseInfo() }),
     token: params.token,
     timeoutMs: params.timeoutMs ?? DEFAULT_CONFIG_TIMEOUT_MS,
-    label: 'notifyStop',
+    label: 'notifyStop'
   });
   return JSON.parse(rawText) as NotifyStopResp;
 }
 
-export async function notifyStart(params: { baseUrl: string; token: string; timeoutMs?: number }): Promise<NotifyStartResp> {
+export async function notifyStart(params: {
+  baseUrl: string;
+  token: string;
+  timeoutMs?: number;
+}): Promise<NotifyStartResp> {
   const rawText = await apiPostFetch({
     baseUrl: params.baseUrl,
     endpoint: 'ilink/bot/msg/notifystart',
     body: JSON.stringify({ base_info: buildBaseInfo() }),
     token: params.token,
     timeoutMs: params.timeoutMs ?? DEFAULT_CONFIG_TIMEOUT_MS,
-    label: 'notifyStart',
+    label: 'notifyStart'
   });
   return JSON.parse(rawText) as NotifyStartResp;
 }

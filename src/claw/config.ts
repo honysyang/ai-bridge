@@ -9,8 +9,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ClawConfig, DEFAULT_CLAW_CONFIG } from './types.js';
+import { DATA_DIR } from '../lib/paths.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'claw-config.json');
 
 class ClawConfigManager {

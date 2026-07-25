@@ -14,21 +14,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { DATA_DIR } from './lib/paths.js';
 import { EventEmitter } from 'events';
-import {
-  KBLink,
-  KBLinkType,
-  KBListLinksResponse
-} from './kb-link-types.js';
+import { KBLink, KBLinkType, KBListLinksResponse } from './kb-link-types.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const LINKS_FILE = path.join(DATA_DIR, 'kb_links.jsonl');
 
 // ======== Op Types ========
 
-export type KBLinkOp =
-  | { op: 'create'; link: KBLink }
-  | { op: 'delete'; id: string; ts: number };
+export type KBLinkOp = { op: 'create'; link: KBLink } | { op: 'delete'; id: string; ts: number };
 
 // ======== Store Class ========
 
@@ -57,7 +51,10 @@ export class KBLinkStore extends EventEmitter {
       return { links: this.links.size, seeded: true, corrupted: 0 };
     }
 
-    const lines = fs.readFileSync(LINKS_FILE, 'utf-8').split('\n').filter(l => l.trim());
+    const lines = fs
+      .readFileSync(LINKS_FILE, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim());
     let corrupted = 0;
     for (const line of lines) {
       try {
@@ -84,17 +81,18 @@ export class KBLinkStore extends EventEmitter {
   // ======== Queries ========
 
   list(): KBListLinksResponse {
-    const links = Array.from(this.links.values())
-      .sort((a, b) => a.created_at - b.created_at);
+    const links = Array.from(this.links.values()).sort((a, b) => a.created_at - b.created_at);
     return { links, total: links.length };
   }
 
-  get(id: string): KBLink | undefined { return this.links.get(id); }
+  get(id: string): KBLink | undefined {
+    return this.links.get(id);
+  }
 
   /** 获取与某条目相关的所有关联（出入双向） */
   getForItem(itemId: string): KBLink[] {
     return Array.from(this.links.values())
-      .filter(l => l.source_id === itemId || l.target_id === itemId)
+      .filter((l) => l.source_id === itemId || l.target_id === itemId)
       .sort((a, b) => a.created_at - b.created_at);
   }
 
@@ -162,14 +160,23 @@ export class KBLinkStore extends EventEmitter {
    * 策略：按 title 匹配条目，再创建跨分类关联。
    * 查重：source+target+type 三元组已存在则跳过。
    */
-  seedDemo(kbItems: Array<{ id: string; title: string; category_id: string }>): { links_added: number; links_skipped: number; errors: string[] } {
+  seedDemo(kbItems: Array<{ id: string; title: string; category_id: string }>): {
+    links_added: number;
+    links_skipped: number;
+    errors: string[];
+  } {
     let added = 0;
     let skipped = 0;
     const errors: string[] = [];
     const byTitle = new Map<string, string>();
     for (const it of kbItems) byTitle.set(it.title, it.id);
 
-    type Link = { from: string; to: string; type: 'related' | 'depends_on' | 'references' | 'contains'; label?: string };
+    type Link = {
+      from: string;
+      to: string;
+      type: 'related' | 'depends_on' | 'references' | 'contains';
+      label?: string;
+    };
     const LINKS: Link[] = [
       // ===== Prompt ↔ 业务 =====
       { from: '查茅台价格', to: '茅台 600519', type: 'references', label: '查询目标' },
@@ -221,10 +228,12 @@ export class KBLinkStore extends EventEmitter {
 
   private appendOp(op: KBLinkOp): void {
     const line = JSON.stringify(op) + '\n';
-    this.writeQueue = this.writeQueue.then(() => this.doWrite(line)).catch((err) => {
-      this.writeErrors++;
-      console.error('[KBLinkStore] write failed:', err);
-    });
+    this.writeQueue = this.writeQueue
+      .then(() => this.doWrite(line))
+      .catch((err) => {
+        this.writeErrors++;
+        console.error('[KBLinkStore] write failed:', err);
+      });
   }
 
   private async doWrite(line: string): Promise<void> {

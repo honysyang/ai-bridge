@@ -6,12 +6,7 @@ import { taskQueue } from '../task-queue.js';
  * 统一响应格式：{ success: false, error: '...' }
  * 把 5xx 异常记入系统日志（task.addLog），方便事后排查
  */
-export function errorHandler(
-  err: any,
-  _req: Request,
-  res: Response,
-  _next: NextFunction
-) {
+export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
   const status = typeof err?.status === 'number' ? err.status : 500;
   const message = err?.message || 'Internal Server Error';
 

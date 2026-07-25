@@ -5,7 +5,10 @@ import { logger } from './lib/logger.js';
 
 const PORT = parseInt(process.env.PORT || '4567');
 
-startServer(PORT);
+startServer(PORT).catch((e: any) => {
+  logger.error('启动失败', { error: e.message });
+  process.exit(1);
+});
 
 // 优雅关闭：刷新所有未完成的写入
 async function gracefulShutdown(signal: string) {

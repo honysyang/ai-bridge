@@ -16,11 +16,14 @@ import { suggestPath } from '../lib/fs-suggest.js';
 
 export const fsRouter = Router();
 
-fsRouter.post('/suggest', asyncHandler((req, res) => {
-  const { prefix } = req.body || {};
-  if (typeof prefix !== 'string') {
-    return res.status(400).json({ success: false, error: '缺少 prefix（string）' });
-  }
-  const data = suggestPath(prefix);
-  res.json({ success: true, data });
-}));
+fsRouter.post(
+  '/suggest',
+  asyncHandler((req, res) => {
+    const { prefix } = req.body || {};
+    if (typeof prefix !== 'string') {
+      return res.status(400).json({ success: false, error: '缺少 prefix（string）' });
+    }
+    const data = suggestPath(prefix);
+    res.json({ success: true, data });
+  })
+);

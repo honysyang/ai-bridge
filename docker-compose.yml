@@ -1,0 +1,44 @@
+services:
+  ai-bridge:
+    build: .
+    image: ai-bridge:latest
+    container_name: ai-bridge
+    restart: unless-stopped
+    ports:
+      - "4567:4567"
+    environment:
+      # 基础配置
+      - NODE_ENV=production
+      - PORT=4567
+      - LOG_LEVEL=info
+      # JWT 密钥（建议修改成长期固定的强密钥）
+      - AIBRIDGE_JWT_SECRET=${AIBRIDGE_JWT_SECRET:-}
+      # 数据目录（容器内固定 /app/data）
+      - AIBRIDGE_DATA_DIR=/app/data
+      # SQLite 同步开关
+      - AIBRIDGE_SQLITE_SYNC=${AIBRIDGE_SQLITE_SYNC:-1}
+      # 请求体大小限制
+      - AIBRIDGE_BODY_LIMIT=${AIBRIDGE_BODY_LIMIT:-10mb}
+      # CORS 白名单（多个用逗号分隔）
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      # 信任的反向代理（默认信任本地/链路本地/唯一本地）
+      - AIBRIDGE_TRUSTED_PROXIES=${AIBRIDGE_TRUSTED_PROXIES:-loopback,linklocal,uniquelocal}
+      # 本地放行网段（默认仅 127.0.0.1/::1）
+      - AIBRIDGE_LOCAL_NETWORKS=${AIBRIDGE_LOCAL_NETWORKS:-127.0.0.1,::1}
+      # 微信 iLink 配置（可选）
+      - ILINK_APP_ID=${ILINK_APP_ID:-}
+      - ILINK_BOT_TOKEN=${ILINK_BOT_TOKEN:-}
+      - ILINK_BOT_AGENT=${ILINK_BOT_AGENT:-}
+    volumes:
+      - ai-bridge-data:/app/data
+      # 如需挂载外部 secrets.env，可取消下面注释
+      # - ~/.config/agent-canvas:/root/.config/agent-canvas:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4567/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  ai-bridge-data:

@@ -34,23 +34,24 @@ import { storage } from './storage.js';
 import { sessionManager } from './session.js';
 import { modelsConfig } from './lib/models-config.js';
 import { retrieveAndFormat } from './lib/kb-retriever.js';
+import { emitWebhook } from './lib/webhook.js';
 import { EventEmitter } from 'events';
 
 /** 允许的状态转换表（key=from, value=合法 to 集合） */
 const ALLOWED_TRANSITIONS: Record<TaskStatus, Set<TaskStatus>> = {
-  pending:    new Set<TaskStatus>(['assigned']),
-  assigned:   new Set<TaskStatus>(['processing', 'completed', 'failed']),
+  pending: new Set<TaskStatus>(['assigned']),
+  assigned: new Set<TaskStatus>(['processing', 'completed', 'failed']),
   processing: new Set<TaskStatus>(['completed', 'failed']),
-  completed:  new Set<TaskStatus>(['pending']),
-  failed:     new Set<TaskStatus>(['pending'])
+  completed: new Set<TaskStatus>(['pending']),
+  failed: new Set<TaskStatus>(['pending'])
 };
 
 /** 优先级排序权重（数值越小越优先） */
 const PRIORITY_RANK: Record<TaskPriority, number> = {
   urgent: 0,
-  high:   1,
+  high: 1,
   normal: 2,
-  low:    3
+  low: 3
 };
 
 export class TaskQueue extends EventEmitter {
@@ -99,7 +100,7 @@ export class TaskQueue extends EventEmitter {
    * v5.4.2: 根据 task_type 解析使用的 provider/model，写入 context.model_routing
    * v5.5.2: 自动 RAG —— 用 task.data.content 检索 KB Top-3 写入 context.kb_retrieval
    */
-  addTask(taskData: Omit<Task, 'id' | 'status' | 'created_at'>): Task {
+  async addTask(taskData: Omit<Task, 'id' | 'status' | 'created_at'>): Promise<Task> {
     this.taskIdCounter++;
     const sessionId = taskData.session_id || 'sess-default';
     // v5.4.0: 自动从 session 继承 project_dir
@@ -119,7 +120,7 @@ export class TaskQueue extends EventEmitter {
       kbRetrieval = {
         query: taskData.data?.content || '',
         context: result.context,
-        items: result.items.map(it => ({
+        items: result.items.map((it) => ({
           id: it.id,
           title: it.title,
           category_id: it.category_id,
@@ -154,28 +155,39 @@ export class TaskQueue extends EventEmitter {
       context
     };
 
-    storage.appendTask(fullTask);
+    await storage.appendTask(fullTask);
     this.notifyWaiters(fullTask);
     this.emit('task_added', fullTask);
-    this.addLog('info', 'task', `任务创建: ${fullTask.id} (${fullTask.type}/${fullTask.priority}) → ${routing.provider}/${routing.model} · KB命中 ${kbRetrieval.hit_count}`, {
-      task_id: fullTask.id,
+    emitWebhook('task.created', {
+      id: fullTask.id,
       type: fullTask.type,
-      priority: fullTask.priority,
-      session_id: fullTask.session_id,
-      project_dir: fullTask.project_dir,
-      routing,
-      kb_hit_count: kbRetrieval.hit_count,
-      kb_titles: kbRetrieval.items.map(i => i.title)
+      status: fullTask.status,
+      session_id: fullTask.session_id
     });
+    this.addLog(
+      'info',
+      'task',
+      `任务创建: ${fullTask.id} (${fullTask.type}/${fullTask.priority}) → ${routing.provider}/${routing.model} · KB命中 ${kbRetrieval.hit_count}`,
+      {
+        task_id: fullTask.id,
+        type: fullTask.type,
+        priority: fullTask.priority,
+        session_id: fullTask.session_id,
+        project_dir: fullTask.project_dir,
+        routing,
+        kb_hit_count: kbRetrieval.hit_count,
+        kb_titles: kbRetrieval.items.map((i) => i.title)
+      }
+    );
     return fullTask;
   }
 
   /** 创建一个手动任务（来源 manual-input） */
-  createManualTask(
+  async createManualTask(
     content: string,
     type: TaskType = 'reply_message',
     priority: TaskPriority = 'normal'
-  ): Task {
+  ): Promise<Task> {
     return this.addTask({
       type,
       priority,
@@ -185,7 +197,7 @@ export class TaskQueue extends EventEmitter {
   }
 
   /** 创建一个聊天任务（来源 chat-user） */
-  createChatTask(content: string, fromUser: string = 'chat-user'): Task {
+  async createChatTask(content: string, fromUser: string = 'chat-user'): Promise<Task> {
     return this.addTask({
       type: 'chat',
       priority: 'normal',
@@ -208,7 +220,7 @@ export class TaskQueue extends EventEmitter {
       });
 
       const next = pending[0];
-      this.transition(next.id, 'assigned', { assigned_to: 'trae-agent' });
+      await this.transition(next.id, 'assigned', { assigned_to: 'trae-agent' });
       const updated = storage.getTask(next.id)!;
       this.emit('task_assigned', updated);
       this.addLog('info', 'task', `任务已分配: ${updated.id}`, { task_id: updated.id });
@@ -235,8 +247,8 @@ export class TaskQueue extends EventEmitter {
    * 把任务标记为 processing（预留 API，server.ts 当前未调用）
    * 合法前置状态：assigned
    */
-  markProcessing(taskId: string, agentId: string = 'trae-agent'): boolean {
-    const ok = this.transition(taskId, 'processing', {
+  async markProcessing(taskId: string, agentId: string = 'trae-agent'): Promise<boolean> {
+    const ok = await this.transition(taskId, 'processing', {
       assigned_to: agentId,
       started_at: Date.now()
     });
@@ -252,25 +264,27 @@ export class TaskQueue extends EventEmitter {
    * 提交任务结果
    * status=success → completed；status=partial|failed → failed
    */
-  submitResult(result: TaskResult): void {
+  async submitResult(result: TaskResult): Promise<void> {
     const newStatus: TaskStatus = result.status === 'success' ? 'completed' : 'failed';
-    const ok = storage.updateTask(result.task_id, {
+    const ok = await storage.updateTask(result.task_id, {
       status: newStatus,
       result,
       completed_at: result.completed_at
     });
 
     if (ok) {
-      this.emit('task_completed', result);
+      if (newStatus === 'completed') {
+        this.emit('task_completed', result);
+        emitWebhook('task.completed', { task_id: result.task_id, status: newStatus, result: result.result });
+      } else {
+        this.emit('task_failed', result);
+        emitWebhook('task.failed', { task_id: result.task_id, status: newStatus, result: result.result });
+      }
       this.emit('result', result);
     }
 
-    const logLevel: LogLevel =
-      result.status === 'success'  ? 'success' :
-      result.status === 'partial'  ? 'warn'    : 'error';
-    const statusText =
-      result.status === 'success' ? '完成' :
-      result.status === 'failed'  ? '失败' : '部分完成';
+    const logLevel: LogLevel = result.status === 'success' ? 'success' : result.status === 'partial' ? 'warn' : 'error';
+    const statusText = result.status === 'success' ? '完成' : result.status === 'failed' ? '失败' : '部分完成';
     this.addLog(logLevel, 'task', `任务${statusText}: ${result.task_id}`, {
       task_id: result.task_id,
       summary: result.result.summary
@@ -280,13 +294,13 @@ export class TaskQueue extends EventEmitter {
   /**
    * 重试任务：把 completed/failed 重新置为 pending，并清空 result/started/completed
    */
-  retryTask(taskId: string): Task | null {
+  async retryTask(taskId: string): Promise<Task | null> {
     const task = storage.getTask(taskId);
     if (!task) return null;
     if (task.status !== 'failed' && task.status !== 'completed') {
       return null;
     }
-    storage.updateTask(taskId, {
+    await storage.updateTask(taskId, {
       status: 'pending',
       result: undefined,
       completed_at: undefined,
@@ -303,7 +317,7 @@ export class TaskQueue extends EventEmitter {
    * v5.4.2: 撤回任务（undo）—— 把 completed/failed 的任务回退到 pending
    * 与 retryTask 的区别：会保存原 result 到 context.undo_history，可恢复
    */
-  undoTask(taskId: string): { task: Task; undone: boolean; history: any[] } | null {
+  async undoTask(taskId: string): Promise<{ task: Task; undone: boolean; history: any[] } | null> {
     const task = storage.getTask(taskId);
     if (!task) return null;
     if (task.status !== 'failed' && task.status !== 'completed') {
@@ -321,7 +335,7 @@ export class TaskQueue extends EventEmitter {
     // 保留最近 5 次历史
     const history = prevHistory.slice(-5);
 
-    storage.updateTask(taskId, {
+    await storage.updateTask(taskId, {
       status: 'pending',
       result: undefined,
       completed_at: undefined,
@@ -330,7 +344,10 @@ export class TaskQueue extends EventEmitter {
     });
     const updated = storage.getTask(taskId)!;
     this.notifyWaiters(updated);
-    this.addLog('info', 'task', `任务撤回: ${taskId} (历史 ${history.length} 条)`, { task_id: taskId, history_size: history.length });
+    this.addLog('info', 'task', `任务撤回: ${taskId} (历史 ${history.length} 条)`, {
+      task_id: taskId,
+      history_size: history.length
+    });
     this.emit('task_added', updated);
     return { task: updated, undone: true, history };
   }
@@ -338,7 +355,7 @@ export class TaskQueue extends EventEmitter {
   /**
    * v5.4.2: 恢复任务（restore）—— 从 undo_history 中恢复某次的结果
    */
-  restoreTask(taskId: string, historyIndex?: number): Task | null {
+  async restoreTask(taskId: string, historyIndex?: number): Promise<Task | null> {
     const task = storage.getTask(taskId);
     if (!task) return null;
     const history: any[] = (task.context?.undo_history as any[]) || [];
@@ -348,7 +365,7 @@ export class TaskQueue extends EventEmitter {
     if (!item) return null;
     // 弹出该条
     const newHistory = history.filter((_, i) => i !== idx);
-    storage.updateTask(taskId, {
+    await storage.updateTask(taskId, {
       status: item.prev_status || 'completed',
       result: item.prev_result,
       completed_at: item.prev_completed_at,
@@ -372,13 +389,13 @@ export class TaskQueue extends EventEmitter {
    *  - context.parent_context 汇总原任务的 result 关键字段
    *  - data.from_user = 'followup'，data.extra.parent_task_id 便于前端溯源
    */
-  createFollowupTask(opts: {
+  async createFollowupTask(opts: {
     parent_task_id: string;
     content: string;
     type?: TaskType;
     priority?: TaskPriority;
     source?: TaskSource;
-  }): { task: Task; parent: Task } | null {
+  }): Promise<{ task: Task; parent: Task } | null> {
     const parent = storage.getTask(opts.parent_task_id);
     if (!parent) return null;
     if (!opts.content || !opts.content.trim()) return null;
@@ -408,7 +425,7 @@ export class TaskQueue extends EventEmitter {
       followup_at: Date.now()
     };
 
-    const followup = this.addTask({
+    const followup = await this.addTask({
       type: parentType,
       priority: parentPriority,
       source: parentSource,
@@ -434,8 +451,8 @@ export class TaskQueue extends EventEmitter {
   }
 
   /** 删除任务 */
-  deleteTask(taskId: string): boolean {
-    const ok = storage.deleteTask(taskId);
+  async deleteTask(taskId: string): Promise<boolean> {
+    const ok = await storage.deleteTask(taskId);
     if (ok) {
       this.addLog('warn', 'task', `任务删除: ${taskId}`, { task_id: taskId });
       this.emit('task_deleted', { id: taskId });
@@ -453,15 +470,27 @@ export class TaskQueue extends EventEmitter {
 
   getRecentTasks(
     limit: number = 50,
-    filter?: { status?: TaskStatus; type?: TaskType; source?: TaskSource; session_id?: string }
+    filter?: { status?: TaskStatus; type?: TaskType; source?: TaskSource; session_id?: string; offset?: number }
   ): Task[] {
     return storage.getRecentTasks(limit, filter);
   }
 
-  getPendingTasks(): Task[]    { return storage.getAllTasks().filter(t => t.status === 'pending'); }
-  getProcessingTasks(): Task[] { return storage.getAllTasks().filter(t => t.status === 'processing'); }
-  getCompletedTasks(): Task[]  { return storage.getAllTasks().filter(t => t.status === 'completed'); }
-  getFailedTasks(): Task[]     { return storage.getAllTasks().filter(t => t.status === 'failed'); }
+  countTasks(filter?: { status?: TaskStatus; type?: TaskType; source?: TaskSource; session_id?: string }): number {
+    return storage.countTasks(filter);
+  }
+
+  getPendingTasks(): Task[] {
+    return storage.getAllTasks().filter((t) => t.status === 'pending');
+  }
+  getProcessingTasks(): Task[] {
+    return storage.getAllTasks().filter((t) => t.status === 'processing');
+  }
+  getCompletedTasks(): Task[] {
+    return storage.getAllTasks().filter((t) => t.status === 'completed');
+  }
+  getFailedTasks(): Task[] {
+    return storage.getAllTasks().filter((t) => t.status === 'failed');
+  }
 
   /**
    * 队列统计：单遍 O(N)，由 storage 提供
@@ -494,7 +523,7 @@ export class TaskQueue extends EventEmitter {
   //  System Log（薄包装 storage）
   // ============================================================
 
-  addLog(level: LogLevel, source: LogSource, message: string, meta?: Record<string, any>): LogEntry {
+  async addLog(level: LogLevel, source: LogSource, message: string, meta?: Record<string, any>): Promise<LogEntry> {
     this.logIdCounter++;
     const entry: LogEntry = {
       id: `log-${Date.now()}-${this.logIdCounter}`,
@@ -504,7 +533,12 @@ export class TaskQueue extends EventEmitter {
       meta,
       created_at: Date.now()
     };
-    storage.appendLog(entry);
+    try {
+      await storage.appendLog(entry);
+    } catch (e) {
+      // 日志写入失败不应阻塞业务主流程
+      console.error('[taskQueue] log append failed:', e);
+    }
     this.emit('log_added', entry);
     return entry;
   }
@@ -524,7 +558,7 @@ export class TaskQueue extends EventEmitter {
    * 显式状态转换：校验合法性后调用 storage.updateTask
    * 非法转换会被拒绝（return false），并打 warn 日志
    */
-  private transition(taskId: string, to: TaskStatus, patch: Record<string, any> = {}): boolean {
+  private async transition(taskId: string, to: TaskStatus, patch: Record<string, any> = {}): Promise<boolean> {
     const task = storage.getTask(taskId);
     if (!task) return false;
     const allowed = ALLOWED_TRANSITIONS[task.status];

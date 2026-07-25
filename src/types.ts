@@ -1,7 +1,7 @@
 // ======== Task Types ========
 
 export type TaskType =
-  | 'chat'             // 聊天消息（每次对话入队为任务）
+  | 'chat' // 聊天消息（每次对话入队为任务）
   | 'reply_message'
   | 'query_info'
   | 'analyze_data'
@@ -23,18 +23,18 @@ export interface TaskData {
 
 export interface Task {
   id: string;
-  session_id?: string;        // v3.0.0: 归属会话（可选，缺省走 default 会话）
+  session_id?: string; // v3.0.0: 归属会话（可选，缺省走 default 会话）
   type: TaskType;
   priority: TaskPriority;
   source: TaskSource;
   data: TaskData;
   context?: any;
-  project_dir?: string;       // v5.4.0: 从 session 继承的执行目录（agent 用作 cwd）
+  project_dir?: string; // v5.4.0: 从 session 继承的执行目录（agent 用作 cwd）
   created_at: number;
   status: TaskStatus;
   assigned_to?: string;
-  started_at?: number;     // 转为 processing 的时间
-  completed_at?: number;   // 提交结果的时间
+  started_at?: number; // 转为 processing 的时间
+  completed_at?: number; // 提交结果的时间
   result?: TaskResult;
 }
 
@@ -160,16 +160,16 @@ export interface HeartbeatResponse {
 export type SessionStatus = 'active' | 'archived';
 
 export interface Session {
-  id: string;                     // sess-{ts}-{counter}
-  name: string;                   // 用户命名
-  description?: string;           // 可选备注
-  project_dir?: string;           // v5.4.0: 项目目录，任务执行 cwd
+  id: string; // sess-{ts}-{counter}
+  name: string; // 用户命名
+  description?: string; // 可选备注
+  project_dir?: string; // v5.4.0: 项目目录，任务执行 cwd
   created_at: number;
-  updated_at: number;             // 任意变更时更新
-  task_count: number;             // 缓存，避免每次 count
-  last_task_summary?: string;     // 最近一条任务内容（用于会话列表预览）
-  status: SessionStatus;          // 归档后不出现在默认列表
-  meta?: Record<string, any>;     // 用户自定义标签
+  updated_at: number; // 任意变更时更新
+  task_count: number; // 缓存，避免每次 count
+  last_task_summary?: string; // 最近一条任务内容（用于会话列表预览）
+  status: SessionStatus; // 归档后不出现在默认列表
+  meta?: Record<string, any>; // 用户自定义标签
 }
 
 // ======== System Log ========

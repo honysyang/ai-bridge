@@ -1,0 +1,275 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AI 智能体桥接器 (ai-bridge) API",
+    "description": "Trae IDE / 微信 ClawBot 与 AI 智能体之间的通用中间层。",
+    "version": "5.5.5",
+    "contact": {
+      "name": "ai-bridge",
+      "url": "https://gitee.com/yzj1/ai-bridge"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4567",
+      "description": "本地开发服务器"
+    }
+  ],
+  "security": [
+    {
+      "cookieAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "健康检查",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "服务运行中",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "用户登录",
+        "tags": ["Auth"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                },
+                "required": ["username", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "登录成功" },
+          "401": { "description": "用户名或密码错误" },
+          "429": { "description": "请求过于频繁" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "登出",
+        "tags": ["Auth"],
+        "responses": {
+          "200": { "description": "登出成功" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "当前登录用户信息",
+        "tags": ["Auth"],
+        "responses": {
+          "200": { "description": "用户信息" },
+          "401": { "description": "未登录" }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "summary": "任务列表",
+        "tags": ["Tasks"],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 50 } },
+          { "name": "status", "in": "query", "schema": { "type": "string" } },
+          { "name": "type", "in": "query", "schema": { "type": "string" } },
+          { "name": "source", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "任务列表" }
+        }
+      },
+      "post": {
+        "summary": "创建任务",
+        "tags": ["Tasks"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": { "type": "string" },
+                  "type": { "type": "string", "default": "chat" },
+                  "priority": { "type": "string", "default": "normal" },
+                  "session_id": { "type": "string" }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "创建成功" },
+          "400": { "description": "参数错误" }
+        }
+      }
+    },
+    "/api/task/poll": {
+      "get": {
+        "summary": "长轮询获取待处理任务（Agent 使用）",
+        "tags": ["Agent"],
+        "security": [],
+        "parameters": [
+          { "name": "timeout", "in": "query", "schema": { "type": "integer", "default": 30 } }
+        ],
+        "responses": {
+          "200": { "description": "任务或空响应" }
+        }
+      }
+    },
+    "/api/task/complete": {
+      "post": {
+        "summary": "提交任务结果（Agent 使用）",
+        "tags": ["Agent"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "result": { "type": "object" }
+                },
+                "required": ["id", "result"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "提交成功" }
+        }
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "summary": "会话列表",
+        "tags": ["Sessions"],
+        "responses": {
+          "200": { "description": "会话列表" }
+        }
+      }
+    },
+    "/api/kb": {
+      "get": {
+        "summary": "知识库目录",
+        "tags": ["Knowledge Base"],
+        "responses": {
+          "200": { "description": "知识库数据" }
+        }
+      }
+    },
+    "/api/system/info": {
+      "get": {
+        "summary": "系统运行时信息",
+        "tags": ["System"],
+        "responses": {
+          "200": { "description": "系统信息" }
+        }
+      }
+    },
+    "/api/system/settings": {
+      "get": {
+        "summary": "读取系统设置",
+        "tags": ["System"],
+        "responses": {
+          "200": { "description": "设置内容" }
+        }
+      },
+      "patch": {
+        "summary": "更新系统设置",
+        "tags": ["System"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "更新成功" }
+        }
+      }
+    },
+    "/api/system/audit": {
+      "get": {
+        "summary": "审计日志（admin）",
+        "tags": ["System"],
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+          { "name": "action", "in": "query", "schema": { "type": "string" } },
+          { "name": "actor", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "审计日志" }
+        }
+      }
+    },
+    "/api/system/maintenance": {
+      "post": {
+        "summary": "数据维护（admin）：compact / backup / archive",
+        "tags": ["System"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "action": { "type": "string", "enum": ["compact", "backup", "archive"] },
+                  "days": { "type": "integer" }
+                },
+                "required": ["action"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "维护完成" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "data": { "type": "object" },
+          "error": { "type": "string" }
+        },
+        "required": ["success"]
+      }
+    },
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "aibridge_access_token",
+        "description": "httpOnly cookie 认证；非安全请求需同时提供 X-CSRF-Token header"
+      }
+    }
+  }
+}

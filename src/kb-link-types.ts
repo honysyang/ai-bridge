@@ -15,19 +15,20 @@
 
 export type KBLinkType = 'related' | 'depends_on' | 'references' | 'contains';
 
-export const KB_LINK_TYPE_META: Record<KBLinkType, { label: string; color: string; arrow: boolean; dashed: boolean }> = {
-  related:     { label: '相关',     color: '#64748b', arrow: true,  dashed: false },
-  depends_on:  { label: '依赖',     color: '#ef4444', arrow: true,  dashed: false },
-  references:  { label: '引用',     color: '#3b82f6', arrow: true,  dashed: true  },
-  contains:    { label: '包含',     color: '#8b5cf6', arrow: true,  dashed: false }
-};
+export const KB_LINK_TYPE_META: Record<KBLinkType, { label: string; color: string; arrow: boolean; dashed: boolean }> =
+  {
+    related: { label: '相关', color: '#64748b', arrow: true, dashed: false },
+    depends_on: { label: '依赖', color: '#ef4444', arrow: true, dashed: false },
+    references: { label: '引用', color: '#3b82f6', arrow: true, dashed: true },
+    contains: { label: '包含', color: '#8b5cf6', arrow: true, dashed: false }
+  };
 
 export interface KBLink {
-  id: string;                  // kb-link-<ts>-<n>
-  source_id: string;           // 引用 KBItem.id
-  target_id: string;           // 引用 KBItem.id
-  type: KBLinkType;            // 关系类型
-  label?: string;              // 可选标注（0-32 字符）
+  id: string; // kb-link-<ts>-<n>
+  source_id: string; // 引用 KBItem.id
+  target_id: string; // 引用 KBItem.id
+  type: KBLinkType; // 关系类型
+  label?: string; // 可选标注（0-32 字符）
   created_at: number;
 }
 
@@ -35,7 +36,7 @@ export interface KBLink {
 export interface KBCreateLinkReq {
   source_id: string;
   target_id: string;
-  type?: KBLinkType;           // 默认 'related'
+  type?: KBLinkType; // 默认 'related'
   label?: string;
 }
 

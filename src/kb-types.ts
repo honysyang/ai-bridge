@@ -13,11 +13,11 @@ export type KBEntryType = 'category' | 'item';
 
 /** 分类事件 payload（不变量：name 必填） */
 export interface KBCategory {
-  id: string;                  // kb-cat-<ts>-<n>
+  id: string; // kb-cat-<ts>-<n>
   type: 'category';
-  name: string;                // 1-32 字符
-  icon?: string;               // emoji，默认 📁
-  order: number;               // 同一时间窗内插入顺序（小→前）
+  name: string; // 1-32 字符
+  icon?: string; // emoji，默认 📁
+  order: number; // 同一时间窗内插入顺序（小→前）
   archived?: boolean;
   created_at: number;
   updated_at: number;
@@ -25,12 +25,12 @@ export interface KBCategory {
 
 /** 条目事件 payload */
 export interface KBItem {
-  id: string;                  // kb-item-<ts>-<n>
+  id: string; // kb-item-<ts>-<n>
   type: 'item';
-  category_id: string;         // 引用 KBCategory.id
-  title: string;               // 1-64 字符
-  body: string;                // 1-4000 字符（填入输入框时作为 content）
-  tags: string[];              // 0-8 个 tag
+  category_id: string; // 引用 KBCategory.id
+  title: string; // 1-64 字符
+  body: string; // 1-4000 字符（填入输入框时作为 content）
+  tags: string[]; // 0-8 个 tag
   order: number;
   archived?: boolean;
   created_at: number;

@@ -3,17 +3,12 @@
 // v4.1.0: 只实现 iLink Bot API（基于 @tencent-weixin/openclaw-weixin）。
 
 import { EventEmitter } from 'events';
-import {
-  ClawStatus,
-  WeChatMessage,
-  WeChatContact,
-  ClawEvents,
-} from './types.js';
+import { ClawStatus, WeChatMessage, WeChatContact, ClawEvents } from './types.js';
 
 export abstract class ClawAdapter extends EventEmitter {
   protected status: ClawStatus = {
     state: 'disconnected',
-    adapter_name: 'ilink',
+    adapter_name: 'ilink'
   };
 
   // 生命周期
@@ -62,10 +57,7 @@ export abstract class ClawAdapter extends EventEmitter {
     return super.off(event, listener as any);
   }
 
-  emit<K extends keyof ClawEvents>(
-    event: K,
-    ...args: Parameters<ClawEvents[K]>
-  ): boolean {
+  emit<K extends keyof ClawEvents>(event: K, ...args: Parameters<ClawEvents[K]>): boolean {
     return super.emit(event, ...args);
   }
 }

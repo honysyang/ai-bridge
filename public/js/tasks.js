@@ -7,16 +7,36 @@
 
   const { state, i18n, api, escapeHtml, formatTime, formatRelative, showNotification, setHash } = global.Core;
 
-  async function loadTasks() {
+  // v5.5.6: 任务分页状态
+  state.taskPagination = { limit: 50, offset: 0, total: 0, hasMore: false };
+
+  function showSkeletonTasks() {
+    const container = document.getElementById('task-flow');
+    if (!container) return;
+    container.innerHTML = Array.from({ length: 4 })
+      .map(
+        () => `
+      <div class="skeleton-card">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-text"></div>
+        <div class="skeleton skeleton-text" style="width:60%"></div>
+      </div>`
+      )
+      .join('');
+  }
+
+  async function loadTasks(append = false) {
     if (!state.currentSessionId) {
       state.tasks = [];
       renderTasks();
       return;
     }
+    if (!append) showSkeletonTasks();
     try {
       const params = new URLSearchParams();
       params.set('session_id', state.currentSessionId);
-      params.set('limit', '100');
+      params.set('limit', String(state.taskPagination.limit));
+      params.set('offset', String(append ? state.taskPagination.offset + state.taskPagination.limit : 0));
       if (state.currentFilter && state.currentFilter !== 'all') {
         // v5.1.1: 「处理中」tab 同时匹配 assigned + processing 两种状态
         if (state.currentFilter === 'processing') {
@@ -26,12 +46,21 @@
         }
       }
       const { data, meta } = await api(`/api/tasks?${params}`);
-      state.tasks = data;
+      state.tasks = append ? [...state.tasks, ...data] : data;
+      state.taskPagination.offset = append ? state.taskPagination.offset + state.taskPagination.limit : 0;
+      state.taskPagination.total = meta?.total_count || 0;
+      state.taskPagination.hasMore = meta?.has_more || false;
       renderTasks();
       if (meta?.queue_stats && global.updateQueueStats) global.updateQueueStats(meta.queue_stats);
     } catch (e) {
       console.error('loadTasks:', e);
       showNotification(`❌ 加载任务失败: ${e.message}`, 'error', 4000);
+    }
+  }
+
+  function loadMoreTasks() {
+    if (state.taskPagination.hasMore) {
+      loadTasks(true);
     }
   }
 
@@ -48,15 +77,16 @@
       return;
     }
 
-    container.innerHTML = state.tasks.map(t => {
-      const isSelected = t.id === state.currentTaskId;
-      const source = t.source || 'manual';
-      const sourceLabel = i18n('source', source);
-      const isFollowup = !!(t.context && t.context.parent_task_id);
-      const followupBadge = isFollowup
-        ? `<span class="source-badge source-followup" title="补充任务 · 父任务 ${escapeHtml(t.context.parent_task_id)}">💬 补充</span>`
-        : '';
-      return `
+    container.innerHTML = state.tasks
+      .map((t) => {
+        const isSelected = t.id === state.currentTaskId;
+        const source = t.source || 'manual';
+        const sourceLabel = i18n('source', source);
+        const isFollowup = !!(t.context && t.context.parent_task_id);
+        const followupBadge = isFollowup
+          ? `<span class="source-badge source-followup" title="补充任务 · 父任务 ${escapeHtml(t.context.parent_task_id)}">💬 补充</span>`
+          : '';
+        return `
         <div class="task-card status-${t.status} ${isSelected ? 'selected' : ''}" data-task-id="${t.id}" data-source="${escapeHtml(source)}">
           <div class="task-card-header">
             <div class="task-card-id">${escapeHtml(t.id)}<span class="source-badge source-${escapeHtml(source)}">${escapeHtml(sourceLabel)}</span>${followupBadge}</div>
@@ -70,7 +100,21 @@
             <span>${formatRelative(t.created_at)}</span>
           </div>
         </div>`;
-    }).join('');
+      })
+      .join('');
+
+    // v5.5.6: 任务分页加载更多
+    if (state.taskPagination.hasMore) {
+      container.insertAdjacentHTML(
+        'beforeend',
+        `
+        <button class="btn btn-ghost load-more" id="load-more-tasks" style="width:100%;margin-top:8px;">
+          加载更多 (${state.taskPagination.offset + state.tasks.length} / ${state.taskPagination.total})
+        </button>`
+      );
+      const btn = document.getElementById('load-more-tasks');
+      if (btn) btn.addEventListener('click', loadMoreTasks);
+    }
   }
 
   function selectTask(taskId) {
@@ -82,13 +126,15 @@
 
   async function loadTaskDetail(taskId) {
     const body = document.getElementById('detail-body');
-    if (body) body.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">加载中...</div></div>`;
+    if (body)
+      body.innerHTML = `<div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">加载中...</div></div>`;
 
     try {
       const { data: task } = await api(`/api/tasks/${taskId}`);
       renderDetail(task);
     } catch (e) {
-      if (body) body.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-text">${escapeHtml(e.message)}</div></div>`;
+      if (body)
+        body.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-text">${escapeHtml(e.message)}</div></div>`;
     }
   }
 
@@ -108,7 +154,7 @@
       </div>
     `;
 
-    body.querySelectorAll('.detail-tab').forEach(btn => {
+    body.querySelectorAll('.detail-tab').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.detailTab = btn.dataset.tab;
         renderDetail(task);
@@ -133,9 +179,7 @@
     const msgId = ctx.wechat_msg_id || '-';
     const type = ctx.wechat_type || 'text';
     const room = ctx.wechat_room || '-';
-    const ts = ctx.wechat_timestamp
-      ? new Date(ctx.wechat_timestamp).toLocaleString()
-      : '-';
+    const ts = ctx.wechat_timestamp ? new Date(ctx.wechat_timestamp).toLocaleString() : '-';
     return `
       <div class="wechat-source-section">
         <h4>📱 微信来源</h4>
@@ -171,8 +215,12 @@
       ta.value = text;
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand('copy'); showNotification(`✓ ${label} 已复制`, 'success', 1500); }
-      catch { showNotification(`❌ 复制失败`, 'error'); }
+      try {
+        document.execCommand('copy');
+        showNotification(`✓ ${label} 已复制`, 'success', 1500);
+      } catch {
+        showNotification(`❌ 复制失败`, 'error');
+      }
       ta.remove();
     }
   }
@@ -205,23 +253,33 @@
           <span class="detail-meta-label">会话</span>
           <span class="detail-meta-value" style="font-family: monospace; font-size: 10px;">${escapeHtml(task.session_id || 'sess-default')}</span>
         </div>
-        ${task.project_dir ? `
+        ${
+          task.project_dir
+            ? `
         <div class="detail-meta-item">
           <span class="detail-meta-label">📂 项目目录</span>
           <span class="detail-meta-value" style="font-family: monospace; font-size: 11px;" title="执行目录（agent 应以此为 cwd）">${escapeHtml(task.project_dir)}</span>
-        </div>` : ''}
-        ${task.context && task.context.model_routing ? `
+        </div>`
+            : ''
+        }
+        ${
+          task.context && task.context.model_routing
+            ? `
         <div class="detail-meta-item">
           <span class="detail-meta-label">🤖 模型路由</span>
           <span class="detail-meta-value" style="font-family: monospace; font-size: 11px;" title="source: ${escapeHtml(task.context.model_routing.source || '?')}">
             ${escapeHtml(task.context.model_routing.provider)} / ${escapeHtml(task.context.model_routing.model)}
           </span>
-        </div>` : ''}
+        </div>`
+            : ''
+        }
       </div>
 
       ${task.source === 'wechat' ? renderWechatSourceSection(task) : ''}
 
-      ${task.context && task.context.parent_task_id ? `
+      ${
+        task.context && task.context.parent_task_id
+          ? `
       <div class="followup-section" style="background: linear-gradient(135deg, #f1f5f9, #e2e8f0); border-left-color: #94a3b8; padding: 8px 12px;">
         <div class="followup-title" style="color: #475569;">↩️ 父任务</div>
         <div style="font-size: 12px; color: #334155;">
@@ -229,7 +287,9 @@
           ${task.context.parent_context?.summary ? ' · ' + escapeHtml(task.context.parent_context.summary.slice(0, 60)) : ''}
         </div>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
 
       <div class="detail-section">
         <h3>📌 任务内容</h3>
@@ -238,18 +298,22 @@
 
       ${renderKBRetrievalSection(task)}
 
-      ${result ? `
+      ${
+        result
+          ? `
       <div class="detail-section">
         <h3>✅ 结论</h3>
         <div class="detail-summary">${escapeHtml(result.result?.summary || '无摘要')}</div>
         ${result.result?.details ? `<div class="detail-content" style="margin-top: 8px; border-left-color: var(--success);">${escapeHtml(result.result.details)}</div>` : ''}
       </div>
-      ` : `
+      `
+          : `
       <div class="detail-section">
         <h3>✅ 结论</h3>
         <div class="detail-empty">尚未完成（状态：${task.status}）</div>
       </div>
-      `}
+      `
+      }
 
       <div class="detail-actions">
         ${task.status === 'failed' || task.status === 'completed' ? `<button class="detail-action-btn" data-action="retry">🔄 重试</button>` : ''}
@@ -275,9 +339,17 @@
     if (!ret && !ctx.wechat_kb_hits) {
       return ''; // 没有 RAG 痕迹（旧任务或异常情况）
     }
-    const items = (ret && ret.items) || (ctx.wechat_kb_hits && ctx.wechat_kb_hits.titles
-      ? ctx.wechat_kb_hits.titles.map((t, i) => ({ title: t, score: 0, category_name: '?', body_preview: '', matched_keywords: [] }))
-      : []);
+    const items =
+      (ret && ret.items) ||
+      (ctx.wechat_kb_hits && ctx.wechat_kb_hits.titles
+        ? ctx.wechat_kb_hits.titles.map((t, i) => ({
+            title: t,
+            score: 0,
+            category_name: '?',
+            body_preview: '',
+            matched_keywords: []
+          }))
+        : []);
     const count = (ret && ret.hit_count) || (ctx.wechat_kb_hits && ctx.wechat_kb_hits.count) || 0;
     const source = ret ? 'addTask 自动注入' : 'wechat 预检索';
 
@@ -300,7 +372,10 @@
           <span class="kb-retrieval-meta">${count} 命中 · ${escapeHtml(source)}</span>
         </div>
         <div class="kb-retrieval-items">
-          ${items.slice(0, 3).map((it, i) => `
+          ${items
+            .slice(0, 3)
+            .map(
+              (it, i) => `
             <div class="kb-retrieval-item">
               <div class="kb-retrieval-rank">#${i + 1}</div>
               <div class="kb-retrieval-body">
@@ -308,11 +383,25 @@
                   📄 <strong>${escapeHtml(it.title || '?')}</strong>
                   <span class="kb-retrieval-cat">${escapeHtml(it.category_name || '未分类')}</span>
                 </div>
-                ${it.score ? `<div class="kb-retrieval-score">匹配度 ${it.score} ${it.matched_keywords && it.matched_keywords.length ? ' · 命中关键词: ' + it.matched_keywords.slice(0, 5).map(k => escapeHtml(k)).join(', ') : ''}</div>` : ''}
+                ${
+                  it.score
+                    ? `<div class="kb-retrieval-score">匹配度 ${it.score} ${
+                        it.matched_keywords && it.matched_keywords.length
+                          ? ' · 命中关键词: ' +
+                            it.matched_keywords
+                              .slice(0, 5)
+                              .map((k) => escapeHtml(k))
+                              .join(', ')
+                          : ''
+                      }</div>`
+                    : ''
+                }
                 ${it.body_preview ? `<div class="kb-retrieval-preview">${escapeHtml(it.body_preview)}</div>` : ''}
               </div>
             </div>
-          `).join('')}
+          `
+            )
+            .join('')}
         </div>
       </div>
     `;
@@ -325,7 +414,9 @@
     return `
       <div class="undo-history">
         <div class="undo-history-title">↩️ 撤回历史（${history.length}/5）</div>
-        ${history.map((h, idx) => `
+        ${history
+          .map(
+            (h, idx) => `
           <div class="undo-history-item">
             <span class="undo-status">${escapeHtml(h.prev_status || '?')}</span>
             <div class="undo-meta">
@@ -334,7 +425,9 @@
             </div>
             <button class="undo-restore-btn" data-action="restore" data-history-index="${idx}">恢复</button>
           </div>
-        `).join('')}
+        `
+          )
+          .join('')}
       </div>
     `;
   }
@@ -399,42 +492,62 @@
 
     html += `<details ${cmds.length ? 'open' : ''}><summary>💻 执行的命令 <span class="evidence-count">${cmds.length}</span></summary>`;
     if (cmds.length === 0) html += `<div class="evidence-content"><div class="detail-empty">无</div></div>`;
-    else html += `<div class="evidence-content">${cmds.map(c => `
+    else
+      html += `<div class="evidence-content">${cmds
+        .map(
+          (c) => `
       <div class="evidence-item cmd">
         <div class="label">$ ${escapeHtml(c.cmd)}</div>
         <div class="output">${escapeHtml(c.output_summary || '')}</div>
         <div class="meta">⏰ ${formatTime(c.at)}</div>
-      </div>`).join('')}</div>`;
+      </div>`
+        )
+        .join('')}</div>`;
     html += `</details>`;
 
     html += `<details ${files.length ? 'open' : ''}><summary>📂 读取的文件 <span class="evidence-count">${files.length}</span></summary>`;
     if (files.length === 0) html += `<div class="evidence-content"><div class="detail-empty">无</div></div>`;
-    else html += `<div class="evidence-content">${files.map(f => `
+    else
+      html += `<div class="evidence-content">${files
+        .map(
+          (f) => `
       <div class="evidence-item file">
         <div class="label">📄 ${escapeHtml(f.path)}</div>
         <div class="output">${escapeHtml(f.purpose || '')}</div>
         <div class="meta">⏰ ${formatTime(f.at)}</div>
-      </div>`).join('')}</div>`;
+      </div>`
+        )
+        .join('')}</div>`;
     html += `</details>`;
 
     html += `<details><summary>🔍 搜索 <span class="evidence-count">${searches.length}</span></summary>`;
     if (searches.length === 0) html += `<div class="evidence-content"><div class="detail-empty">无</div></div>`;
-    else html += `<div class="evidence-content">${searches.map(s => `
+    else
+      html += `<div class="evidence-content">${searches
+        .map(
+          (s) => `
       <div class="evidence-item search">
         <div class="label">🔎 ${escapeHtml(s.query)}</div>
         <div class="meta">引擎: ${escapeHtml(s.engine)} · ⏰ ${formatTime(s.at)}</div>
-      </div>`).join('')}</div>`;
+      </div>`
+        )
+        .join('')}</div>`;
     html += `</details>`;
 
     html += `<details><summary>🛠 工具调用 <span class="evidence-count">${tools.length}</span></summary>`;
     if (tools.length === 0) html += `<div class="evidence-content"><div class="detail-empty">无</div></div>`;
-    else html += `<div class="evidence-content">${tools.map(t => `
+    else
+      html += `<div class="evidence-content">${tools
+        .map(
+          (t) => `
       <div class="evidence-item tool">
         <div class="label">🛠 ${escapeHtml(t.tool)}</div>
         <div class="output">args: ${escapeHtml(JSON.stringify(t.args || {}))}</div>
         <div class="output">→ ${escapeHtml(t.result_summary || '')}</div>
         <div class="meta">⏰ ${formatTime(t.at)}</div>
-      </div>`).join('')}</div>`;
+      </div>`
+        )
+        .join('')}</div>`;
     html += `</details>`;
 
     html += '</div>';
@@ -451,22 +564,26 @@
       { ts: task.created_at, label: '任务创建', type: 'create' },
       { ts: task.started_at, label: `分配给 ${task.assigned_to || 'agent'}`, type: 'assign' },
       { ts: task.completed_at, label: `完成（${task.status}）`, type: 'complete' }
-    ].filter(e => e.ts);
+    ].filter((e) => e.ts);
 
     return `
       <div class="timeline">
-        ${events.map(e => `
+        ${events
+          .map(
+            (e) => `
           <div class="timeline-item">
             <div class="timeline-time">${formatTime(e.ts)}</div>
             <div class="timeline-label">${escapeHtml(e.label)}</div>
           </div>
-        `).join('')}
+        `
+          )
+          .join('')}
       </div>
     `;
   }
 
   function bindDetailActions(task) {
-    document.querySelectorAll('#detail-tab-content .detail-action-btn').forEach(btn => {
+    document.querySelectorAll('#detail-tab-content .detail-action-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const action = btn.dataset.action;
         if (action === 'retry') {
@@ -478,7 +595,12 @@
             showNotification(`❌ ${e.message}`, 'error');
           }
         } else if (action === 'undo') {
-          if (!confirm(`撤回此任务？将保留当前结果到历史，可稍后恢复（仅 completed/failed 可撤回）。`)) return;
+          const ok = await global.Core.openConfirm({
+            title: '撤回任务',
+            message: '撤回此任务？将保留当前结果到历史，可稍后恢复（仅 completed/failed 可撤回）。',
+            confirmText: '撤回'
+          });
+          if (!ok) return;
           try {
             const { data, history_size } = await api(`/api/tasks/${task.id}/undo`, { method: 'POST' });
             showNotification(`↩️ 已撤回（保留 ${history_size} 条历史）`, 'success');
@@ -490,7 +612,13 @@
             showNotification(`❌ ${e.message}`, 'error');
           }
         } else if (action === 'delete') {
-          if (!confirm('删除此任务？')) return;
+          const ok = await global.Core.openConfirm({
+            title: '删除任务',
+            message: '删除此任务？此操作不可撤销。',
+            confirmText: '删除',
+            danger: true
+          });
+          if (!ok) return;
           try {
             await api(`/api/tasks/${task.id}`, { method: 'DELETE' });
             showNotification('🗑 已删除', 'success');
@@ -509,7 +637,7 @@
     });
 
     // 撤回历史：每条独立的"恢复"按钮
-    document.querySelectorAll('#detail-tab-content .undo-restore-btn').forEach(btn => {
+    document.querySelectorAll('#detail-tab-content .undo-restore-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const idx = parseInt(btn.dataset.historyIndex, 10);
         try {
@@ -585,7 +713,8 @@
       // 选中派生任务
       if (newTask && newTask.id) {
         state.currentTaskId = newTask.id;
-        if (global.Core && global.Core.setHash) global.Core.setHash(`#session/${newTask.session_id || state.currentSessionId}/task/${newTask.id}`);
+        if (global.Core && global.Core.setHash)
+          global.Core.setHash(`#session/${newTask.session_id || state.currentSessionId}/task/${newTask.id}`);
         await loadTaskDetail(newTask.id);
       }
     } catch (e) {
@@ -599,15 +728,13 @@
   }
 
   function enableCompose(enabled) {
-    ['compose-input', 'compose-type', 'compose-priority', 'btn-compose-send'].forEach(id => {
+    ['compose-input', 'compose-type', 'compose-priority', 'btn-compose-send'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = !enabled;
     });
     const input = document.getElementById('compose-input');
     if (input) {
-      input.placeholder = enabled
-        ? '输入消息或任务... (Enter 发送，Shift+Enter 换行)'
-        : '请先在左侧选择或新建会话';
+      input.placeholder = enabled ? '输入消息或任务... (Enter 发送，Shift+Enter 换行)' : '请先在左侧选择或新建会话';
     }
   }
 

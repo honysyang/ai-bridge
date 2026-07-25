@@ -5,7 +5,8 @@
 (function (global) {
   'use strict';
 
-  const { state, i18n, api, escapeHtml, formatRelative, showNotification, openDrawer, closeDrawer, switchTab } = global.Core;
+  const { state, i18n, api, escapeHtml, formatRelative, showNotification, openDrawer, closeDrawer, switchTab } =
+    global.Core;
 
   async function initWF() {
     bindWFEvents();
@@ -30,7 +31,9 @@
       document.getElementById('wf-drawer-save')?.addEventListener('click', saveWFFromDrawer);
       document.getElementById('wf-drawer-delete')?.addEventListener('click', deleteWFFromDrawer);
       document.getElementById('wf-add-step')?.addEventListener('click', () => addWFStepUI());
-      drawer.querySelectorAll('[data-close="wf-drawer"]').forEach(b => b.addEventListener('click', () => closeDrawer('wf-drawer')));
+      drawer
+        .querySelectorAll('[data-close="wf-drawer"]')
+        .forEach((b) => b.addEventListener('click', () => closeDrawer('wf-drawer')));
     }
   }
 
@@ -47,21 +50,40 @@
   }
 
   async function seedWFDemo() {
-    if (!confirm('将追加 9 个示例工作流（股票分析、天气推送、销售月报、财务对账、客情回访、告警响应、代码重构、周报、客服回复）。\n已存在的工作流会自动跳过。\n继续？')) return;
+    const ok = await global.Core.openConfirm({
+      title: '加载示例工作流',
+      message:
+        '将追加 9 个示例工作流（股票分析、天气推送、销售月报、财务对账、客情回访、告警响应、代码重构、周报、客服回复）。\n已存在的工作流会自动跳过。\n继续？',
+      confirmText: '继续'
+    });
+    if (!ok) return;
     const btn = document.getElementById('btn-wf-seed-demo');
     const btn2 = document.getElementById('btn-wf-seed-demo-2');
-    const old1 = btn?.innerHTML, old2 = btn2?.innerHTML;
+    const old1 = btn?.innerHTML,
+      old2 = btn2?.innerHTML;
     try {
-      if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 加载中…'; }
-      if (btn2) { btn2.disabled = true; btn2.innerHTML = '⏳ 加载中…'; }
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ 加载中…';
+      }
+      if (btn2) {
+        btn2.disabled = true;
+        btn2.innerHTML = '⏳ 加载中…';
+      }
       const { data, message } = await api('/api/wf/seed-demo', { method: 'POST' });
       showNotification(`✓ ${message}`, 'success', 4000);
       await loadWorkflows();
     } catch (e) {
       showNotification(`❌ ${e.message}`, 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = old1 || '🎁 演示数据'; }
-      if (btn2) { btn2.disabled = false; btn2.innerHTML = old2 || '🎁 一键加载演示数据'; }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = old1 || '🎁 演示数据';
+      }
+      if (btn2) {
+        btn2.disabled = false;
+        btn2.innerHTML = old2 || '🎁 一键加载演示数据';
+      }
     }
   }
 
@@ -71,8 +93,8 @@
     if (!side) return;
 
     const q = (document.getElementById('wf-search')?.value || '').toLowerCase();
-    const list = state.workflows.filter(w =>
-      !q || w.name.toLowerCase().includes(q) || (w.description || '').toLowerCase().includes(q)
+    const list = state.workflows.filter(
+      (w) => !q || w.name.toLowerCase().includes(q) || (w.description || '').toLowerCase().includes(q)
     );
 
     if (!list.length) {
@@ -93,7 +115,9 @@
       return;
     }
 
-    side.innerHTML = list.map(w => `
+    side.innerHTML = list
+      .map(
+        (w) => `
       <div class="wf-item ${state.currentWorkflowId === w.id ? 'active' : ''}" data-wf-id="${w.id}">
         <span class="wf-item-icon">${escapeHtml(w.icon || '⚙️')}</span>
         <div class="wf-item-info">
@@ -101,13 +125,15 @@
           <div class="wf-item-meta">${(w.steps || []).length} 步</div>
         </div>
       </div>
-    `).join('');
+    `
+      )
+      .join('');
 
-    side.querySelectorAll('.wf-item').forEach(el => {
+    side.querySelectorAll('.wf-item').forEach((el) => {
       el.addEventListener('click', () => selectWorkflow(el.dataset.wfId));
     });
 
-    if (state.currentWorkflowId && state.workflows.find(w => w.id === state.currentWorkflowId)) {
+    if (state.currentWorkflowId && state.workflows.find((w) => w.id === state.currentWorkflowId)) {
       renderWFDetail(state.currentWorkflowId);
     } else if (list.length > 0) {
       selectWorkflow(list[0].id);
@@ -116,7 +142,7 @@
 
   function selectWorkflow(id) {
     state.currentWorkflowId = id;
-    document.querySelectorAll('.wf-item').forEach(el => {
+    document.querySelectorAll('.wf-item').forEach((el) => {
       el.classList.toggle('active', el.dataset.wfId === id);
     });
     renderWFDetail(id);
@@ -125,17 +151,18 @@
   function renderWFDetail(id) {
     const main = document.getElementById('wf-main');
     if (!main) return;
-    const wf = state.workflows.find(w => w.id === id);
+    const wf = state.workflows.find((w) => w.id === id);
     if (!wf) {
       main.innerHTML = `<div class="wf-empty"><div class="empty-icon">⚙️</div><div class="empty-text">未找到工作流</div></div>`;
       return;
     }
 
-    const stepsHtml = (wf.steps || []).map((s, i) => {
-      const deps = (s.depends_on || []).length
-        ? `<span class="wf-step-deps">← 依赖 ${s.depends_on.length} 步</span>`
-        : '';
-      return `
+    const stepsHtml = (wf.steps || [])
+      .map((s, i) => {
+        const deps = (s.depends_on || []).length
+          ? `<span class="wf-step-deps">← 依赖 ${s.depends_on.length} 步</span>`
+          : '';
+        return `
         <div class="wf-step-card" data-step-id="${s.id}">
           <div class="wf-step-num">${i + 1}</div>
           <div class="wf-step-body">
@@ -147,7 +174,8 @@
             </div>
           </div>
         </div>`;
-    }).join('');
+      })
+      .join('');
 
     main.innerHTML = `
       <div class="wf-detail">
@@ -182,7 +210,12 @@
       showNotification('❌ 请先在聊天面板选择/创建一个会话', 'error');
       return;
     }
-    if (!confirm('执行此工作流将创建一批任务，确定继续？')) return;
+    const ok = await global.Core.openConfirm({
+      title: '执行工作流',
+      message: '执行此工作流将创建一批任务，确定继续？',
+      confirmText: '执行'
+    });
+    if (!ok) return;
     try {
       const { data } = await api(`/api/wf/${id}/execute`, {
         method: 'POST',
@@ -199,7 +232,7 @@
   function openWFEditor(id) {
     const drawer = document.getElementById('wf-drawer');
     if (!drawer) return;
-    const wf = id ? state.workflows.find(w => w.id === id) : null;
+    const wf = id ? state.workflows.find((w) => w.id === id) : null;
     document.getElementById('wf-drawer-title').textContent = wf ? '✏️ 编辑工作流' : '⚙️ 新建工作流';
     document.getElementById('wf-drawer-name-input').value = wf?.name || '';
     document.getElementById('wf-drawer-icon-input').value = wf?.icon || '⚙️';
@@ -208,8 +241,10 @@
     const stepsList = document.getElementById('wf-steps-list');
     if (stepsList) {
       stepsList.innerHTML = '';
-      const steps = wf?.steps || [{ id: `step-${Date.now()}`, name: '步骤 1', content: '', task_type: 'chat', priority: 'normal' }];
-      steps.forEach(s => addWFStepUI(s));
+      const steps = wf?.steps || [
+        { id: `step-${Date.now()}`, name: '步骤 1', content: '', task_type: 'chat', priority: 'normal' }
+      ];
+      steps.forEach((s) => addWFStepUI(s));
     }
 
     drawer.dataset.wfId = id || '';
@@ -261,13 +296,15 @@
     const stepEls = document.querySelectorAll('#wf-steps-list .wf-step-edit');
     if (!stepEls.length) return showNotification('❌ 至少 1 个步骤', 'error');
 
-    const steps = Array.from(stepEls).map((el, i) => ({
-      id: el.dataset.stepId || `step-${i}-${Date.now()}`,
-      name: el.querySelector('.wf-step-name-input').value.trim() || `步骤 ${i + 1}`,
-      content: el.querySelector('.wf-step-content-input').value.trim(),
-      task_type: el.querySelector('.wf-step-type-input').value,
-      priority: el.querySelector('.wf-step-priority-input').value
-    })).filter(s => s.content);
+    const steps = Array.from(stepEls)
+      .map((el, i) => ({
+        id: el.dataset.stepId || `step-${i}-${Date.now()}`,
+        name: el.querySelector('.wf-step-name-input').value.trim() || `步骤 ${i + 1}`,
+        content: el.querySelector('.wf-step-content-input').value.trim(),
+        task_type: el.querySelector('.wf-step-type-input').value,
+        priority: el.querySelector('.wf-step-priority-input').value
+      }))
+      .filter((s) => s.content);
 
     if (!steps.length) return showNotification('❌ 至少 1 个步骤有内容', 'error');
 
@@ -290,7 +327,13 @@
     const drawer = document.getElementById('wf-drawer');
     const id = drawer.dataset.wfId;
     if (!id) return;
-    if (!confirm('确认删除此工作流？')) return;
+    const ok = await global.Core.openConfirm({
+      title: '删除工作流',
+      message: '确认删除此工作流？',
+      confirmText: '删除',
+      danger: true
+    });
+    if (!ok) return;
     try {
       await api(`/api/wf/${id}`, { method: 'DELETE' });
       showNotification('✓ 已删除', 'success');

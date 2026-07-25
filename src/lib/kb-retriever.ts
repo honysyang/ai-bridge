@@ -23,20 +23,20 @@ import { KBItem, KBCategory } from '../kb-types.js';
 export interface KBRetrievedItem {
   id: string;
   category_id: string;
-  category_name: string;       // 分类名（方便直接展示）
+  category_name: string; // 分类名（方便直接展示）
   title: string;
-  body_preview: string;        // body 前 200 字（避免 prompt 过长）
-  body: string;                // 完整 body
+  body_preview: string; // body 前 200 字（避免 prompt 过长）
+  body: string; // 完整 body
   tags: string[];
   score: number;
-  matched_keywords: string[];  // 命中的关键词（用于前端高亮）
+  matched_keywords: string[]; // 命中的关键词（用于前端高亮）
 }
 
 export interface RetrievalOptions {
-  topK?: number;               // 返回条数（默认 3）
-  minScore?: number;           // 最低分（默认 1）
-  maxBodyChars?: number;       // 单条 body 截断（默认 200）
-  includeArchived?: boolean;   // 包含已归档（默认 false）
+  topK?: number; // 返回条数（默认 3）
+  minScore?: number; // 最低分（默认 1）
+  maxBodyChars?: number; // 单条 body 截断（默认 200）
+  includeArchived?: boolean; // 包含已归档（默认 false）
 }
 
 const DEFAULT_OPTS: Required<RetrievalOptions> = {
@@ -62,7 +62,7 @@ function tokenize(text: string): string[] {
   // 2. 中英文分词
   // 英文：按空格和标点切
   const enMatches = cleaned.match(/[a-z0-9]+/gi);
-  if (enMatches) enMatches.forEach(m => m.length >= 2 && tokens.add(m));
+  if (enMatches) enMatches.forEach((m) => m.length >= 2 && tokens.add(m));
 
   // 中文：2-4 字滑窗
   const cnPart = cleaned.replace(/[a-z0-9\s\p{P}]/gu, '');
@@ -93,7 +93,7 @@ export function searchKB(query: string, opts: RetrievalOptions = {}): KBRetrieve
 
     const titleLower = item.title.toLowerCase();
     const bodyLower = item.body.toLowerCase();
-    const tagsLower = item.tags.map(t => t.toLowerCase());
+    const tagsLower = item.tags.map((t) => t.toLowerCase());
 
     let score = 0;
     const matched = new Set<string>();
@@ -130,9 +130,7 @@ export function searchKB(query: string, opts: RetrievalOptions = {}): KBRetrieve
       category_id: item.category_id,
       category_name: cat?.name || '未分类',
       title: item.title,
-      body_preview: item.body.length > o.maxBodyChars
-        ? item.body.substring(0, o.maxBodyChars) + '…'
-        : item.body,
+      body_preview: item.body.length > o.maxBodyChars ? item.body.substring(0, o.maxBodyChars) + '…' : item.body,
       body: item.body,
       tags: item.tags,
       score,
@@ -165,7 +163,10 @@ export function formatKBContextForPrompt(items: KBRetrievedItem[]): string {
  * 一站式：检索 + 格式化
  * 用法：const ctx = retrieveAndFormat(query); → 注入 task.context.kb_context
  */
-export function retrieveAndFormat(query: string, opts: RetrievalOptions = {}): {
+export function retrieveAndFormat(
+  query: string,
+  opts: RetrievalOptions = {}
+): {
   context: string;
   items: KBRetrievedItem[];
   hit_count: number;

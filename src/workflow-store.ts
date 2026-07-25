@@ -10,10 +10,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { DATA_DIR } from './lib/paths.js';
 import { EventEmitter } from 'events';
 import { Workflow, WorkflowStep, WorkflowExecution } from './workflow-types.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const WF_FILE = path.join(DATA_DIR, 'wf.jsonl');
 
 export type WFOp =
@@ -48,7 +48,10 @@ export class WorkflowStore extends EventEmitter {
       return { workflows: this.workflows.size, seeded: true, corrupted: 0 };
     }
 
-    const lines = fs.readFileSync(WF_FILE, 'utf-8').split('\n').filter(l => l.trim());
+    const lines = fs
+      .readFileSync(WF_FILE, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim());
     let corrupted = 0;
     for (const line of lines) {
       try {
@@ -92,7 +95,7 @@ export class WorkflowStore extends EventEmitter {
 
   list(): Workflow[] {
     return Array.from(this.workflows.values())
-      .filter(w => !w.archived)
+      .filter((w) => !w.archived)
       .sort((a, b) => a.created_at - b.created_at);
   }
 
@@ -125,7 +128,10 @@ export class WorkflowStore extends EventEmitter {
     return wf;
   }
 
-  update(id: string, patch: { name?: string; icon?: string; description?: string; steps?: WorkflowStep[] }): Workflow | null {
+  update(
+    id: string,
+    patch: { name?: string; icon?: string; description?: string; steps?: WorkflowStep[] }
+  ): Workflow | null {
     const cur = this.workflows.get(id);
     if (!cur) return null;
     const ts = Date.now();
@@ -170,73 +176,266 @@ export class WorkflowStore extends EventEmitter {
       for (const w of this.workflows.values()) if (w.name === name) return true;
       return false;
     };
-    const add = (
-      name: string, icon: string, description: string, steps: WorkflowStep[]
-    ) => { if (!has(name)) this.create(name, icon, description, steps); };
+    const add = (name: string, icon: string, description: string, steps: WorkflowStep[]) => {
+      if (!has(name)) this.create(name, icon, description, steps);
+    };
 
     // ===== 1. 股票分析报告 =====
     add('股票分析报告', '📊', '查茅台股价 + 飞天价格 + 生成简报', [
-      { id: 's1', name: '查茅台股价', content: '查询贵州茅台（600519）当前股价、当日涨跌幅、成交量', task_type: 'query_info', priority: 'normal' },
-      { id: 's2', name: '查飞天茅台酒价', content: '查询飞天茅台 500ml 53度 i 茅台零售价、京东百亿补贴价', task_type: 'query_info', priority: 'normal' },
-      { id: 's3', name: '生成市场简报', content: '基于上面两步结果生成 200 字以内的市场简报 + 投资建议', task_type: 'generate_content', priority: 'normal', depends_on: ['s1', 's2'] }
+      {
+        id: 's1',
+        name: '查茅台股价',
+        content: '查询贵州茅台（600519）当前股价、当日涨跌幅、成交量',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '查飞天茅台酒价',
+        content: '查询飞天茅台 500ml 53度 i 茅台零售价、京东百亿补贴价',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's3',
+        name: '生成市场简报',
+        content: '基于上面两步结果生成 200 字以内的市场简报 + 投资建议',
+        task_type: 'generate_content',
+        priority: 'normal',
+        depends_on: ['s1', 's2']
+      }
     ]);
 
     // ===== 2. 每日天气推送 =====
     add('每日天气推送', '🌤️', '查天气 + 生成微信推送文案', [
-      { id: 's1', name: '查北京天气', content: '查询北京今日天气（实况 + 最高最低 + 降水概率 + 风力）', task_type: 'query_info', priority: 'normal' },
-      { id: 's2', name: '生成推送文案', content: '把天气信息整理成 50 字以内的微信推送文案 + 穿衣出行建议', task_type: 'generate_content', priority: 'normal', depends_on: ['s1'] }
+      {
+        id: 's1',
+        name: '查北京天气',
+        content: '查询北京今日天气（实况 + 最高最低 + 降水概率 + 风力）',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '生成推送文案',
+        content: '把天气信息整理成 50 字以内的微信推送文案 + 穿衣出行建议',
+        task_type: 'generate_content',
+        priority: 'normal',
+        depends_on: ['s1']
+      }
     ]);
 
     // ===== 3. 销售月报生成 =====
     add('销售月报生成', '💰', '从原始数据到结构化月报', [
-      { id: 's1', name: '拉取销售数据', content: '从数据库 / 平台 API 拉取本月订单数据', task_type: 'query_info', priority: 'normal' },
-      { id: 's2', name: '计算 KPI', content: '总销售额、环比/同比、客单价、复购率、毛利率', task_type: 'analyze_data', priority: 'normal', depends_on: ['s1'] },
-      { id: 's3', name: 'TOP 排行', content: 'TOP 5 商品 / TOP 5 客户 / 各品类占比', task_type: 'analyze_data', priority: 'normal', depends_on: ['s1'] },
-      { id: 's4', name: '生成月报', content: '汇总上述结果生成 markdown 月报 + 异常点说明 + 下月建议', task_type: 'generate_content', priority: 'high', depends_on: ['s2', 's3'] }
+      {
+        id: 's1',
+        name: '拉取销售数据',
+        content: '从数据库 / 平台 API 拉取本月订单数据',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '计算 KPI',
+        content: '总销售额、环比/同比、客单价、复购率、毛利率',
+        task_type: 'analyze_data',
+        priority: 'normal',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: 'TOP 排行',
+        content: 'TOP 5 商品 / TOP 5 客户 / 各品类占比',
+        task_type: 'analyze_data',
+        priority: 'normal',
+        depends_on: ['s1']
+      },
+      {
+        id: 's4',
+        name: '生成月报',
+        content: '汇总上述结果生成 markdown 月报 + 异常点说明 + 下月建议',
+        task_type: 'generate_content',
+        priority: 'high',
+        depends_on: ['s2', 's3']
+      }
     ]);
 
     // ===== 4. 财务对账 SOP =====
     add('财务对账 SOP', '💼', '每日账单核对流程', [
-      { id: 's1', name: '下载平台账单', content: '从天猫/京东/拼多多/抖店下载昨日账单 CSV', task_type: 'query_info', priority: 'normal' },
-      { id: 's2', name: '与系统订单核对', content: '对账：缺单、重单、金额不一、退款冲销', task_type: 'analyze_data', priority: 'high', depends_on: ['s1'] },
-      { id: 's3', name: '提交财务审核', content: '把差异清单 + 调整建议打包发财务主管', task_type: 'chat', priority: 'high', depends_on: ['s2'] }
+      {
+        id: 's1',
+        name: '下载平台账单',
+        content: '从天猫/京东/拼多多/抖店下载昨日账单 CSV',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '与系统订单核对',
+        content: '对账：缺单、重单、金额不一、退款冲销',
+        task_type: 'analyze_data',
+        priority: 'high',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: '提交财务审核',
+        content: '把差异清单 + 调整建议打包发财务主管',
+        task_type: 'chat',
+        priority: 'high',
+        depends_on: ['s2']
+      }
     ]);
 
     // ===== 5. 客户回访 SOP =====
     add('客户回访 SOP', '🤝', '分级客户的回访节奏', [
-      { id: 's1', name: '筛 A/B 级客户', content: '从 CRM 拉取近 90 天 GMV ≥1w 的 A/B 级客户名单', task_type: 'query_info', priority: 'normal' },
-      { id: 's2', name: '生成个性化话术', content: '基于客户画像（行业/历史采购/痛点）生成个性化回访话术', task_type: 'generate_content', priority: 'normal', depends_on: ['s1'] },
-      { id: 's3', name: '推送企微任务', content: '通过企业微信把任务推送给对应销售', task_type: 'chat', priority: 'normal', depends_on: ['s2'] }
+      {
+        id: 's1',
+        name: '筛 A/B 级客户',
+        content: '从 CRM 拉取近 90 天 GMV ≥1w 的 A/B 级客户名单',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '生成个性化话术',
+        content: '基于客户画像（行业/历史采购/痛点）生成个性化回访话术',
+        task_type: 'generate_content',
+        priority: 'normal',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: '推送企微任务',
+        content: '通过企业微信把任务推送给对应销售',
+        task_type: 'chat',
+        priority: 'normal',
+        depends_on: ['s2']
+      }
     ]);
 
     // ===== 6. 告警应急响应 =====
     add('告警应急响应', '🚨', '生产告警的标准处置流程', [
-      { id: 's1', name: '确认告警', content: '查看告警上下文（时间/服务/影响用户数），确认非误报', task_type: 'query_info', priority: 'urgent' },
-      { id: 's2', name: '止血（rollback/限流）', content: '若影响面大，先回滚/限流/切流量', task_type: 'multi_step', priority: 'urgent', depends_on: ['s1'] },
-      { id: 's3', name: '根因定位', content: '查日志/链路/指标，定位根因（3 个假设）', task_type: 'analyze_data', priority: 'high', depends_on: ['s2'] },
-      { id: 's4', name: '写事故复盘', content: '5W1H + 改进项 + 责任人 + 截止时间，存档', task_type: 'generate_content', priority: 'normal', depends_on: ['s3'] }
+      {
+        id: 's1',
+        name: '确认告警',
+        content: '查看告警上下文（时间/服务/影响用户数），确认非误报',
+        task_type: 'query_info',
+        priority: 'urgent'
+      },
+      {
+        id: 's2',
+        name: '止血（rollback/限流）',
+        content: '若影响面大，先回滚/限流/切流量',
+        task_type: 'multi_step',
+        priority: 'urgent',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: '根因定位',
+        content: '查日志/链路/指标，定位根因（3 个假设）',
+        task_type: 'analyze_data',
+        priority: 'high',
+        depends_on: ['s2']
+      },
+      {
+        id: 's4',
+        name: '写事故复盘',
+        content: '5W1H + 改进项 + 责任人 + 截止时间，存档',
+        task_type: 'generate_content',
+        priority: 'normal',
+        depends_on: ['s3']
+      }
     ]);
 
     // ===== 7. 代码重构助手 =====
     add('代码重构助手', '🔧', '诊断 → 实施 → 验证 三步式', [
-      { id: 's1', name: '诊断工程化问题', content: '扫描当前项目（src/ + public/）统计：console 数量、as any 数量、测试覆盖率、CI 配置、tsconfig 严格度', task_type: 'analyze_data', priority: 'normal' },
-      { id: 's2', name: '按 ROI 排序建议', content: '把诊断结果按 ROI 排序：P0（必做）/ P1（本月）/ P2（季度）/ P3（长期），每项含具体动作+验收标准', task_type: 'generate_content', priority: 'normal', depends_on: ['s1'] },
-      { id: 's3', name: '验证：tsc + 重启 + smoke', content: '修改后运行 `npx tsc --noEmit` + 重启服务 + 端到端 smoke test', task_type: 'multi_step', priority: 'normal', depends_on: ['s2'] }
+      {
+        id: 's1',
+        name: '诊断工程化问题',
+        content: '扫描当前项目（src/ + public/）统计：console 数量、as any 数量、测试覆盖率、CI 配置、tsconfig 严格度',
+        task_type: 'analyze_data',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '按 ROI 排序建议',
+        content: '把诊断结果按 ROI 排序：P0（必做）/ P1（本月）/ P2（季度）/ P3（长期），每项含具体动作+验收标准',
+        task_type: 'generate_content',
+        priority: 'normal',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: '验证：tsc + 重启 + smoke',
+        content: '修改后运行 `npx tsc --noEmit` + 重启服务 + 端到端 smoke test',
+        task_type: 'multi_step',
+        priority: 'normal',
+        depends_on: ['s2']
+      }
     ]);
 
     // ===== 8. 周报生成 =====
     add('周报生成', '📝', '本周工作 → 结构化周报', [
-      { id: 's1', name: '汇总本周任务', content: '从任务系统拉取本周本人完成任务（含聊天/工作流/手动）', task_type: 'query_info', priority: 'normal' },
-      { id: 's2', name: '分类整理', content: '按"完成/进行中/阻塞/计划"四象限整理', task_type: 'analyze_data', priority: 'normal', depends_on: ['s1'] },
-      { id: 's3', name: '生成周报', content: '输出 markdown 周报：本周完成（≤5 条 bullet）、下周计划、风险求助', task_type: 'generate_content', priority: 'normal', depends_on: ['s2'] }
+      {
+        id: 's1',
+        name: '汇总本周任务',
+        content: '从任务系统拉取本周本人完成任务（含聊天/工作流/手动）',
+        task_type: 'query_info',
+        priority: 'normal'
+      },
+      {
+        id: 's2',
+        name: '分类整理',
+        content: '按"完成/进行中/阻塞/计划"四象限整理',
+        task_type: 'analyze_data',
+        priority: 'normal',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: '生成周报',
+        content: '输出 markdown 周报：本周完成（≤5 条 bullet）、下周计划、风险求助',
+        task_type: 'generate_content',
+        priority: 'normal',
+        depends_on: ['s2']
+      }
     ]);
 
     // ===== 9. 微信客服自动回复 =====
     add('微信客服自动回复', '💬', '群消息智能分流', [
-      { id: 's1', name: '识别消息类型', content: '从微信群消息中识别：咨询/投诉/闲聊/订单查询', task_type: 'analyze_data', priority: 'high' },
-      { id: 's2', name: '查询知识库', content: '在 KB 中搜索匹配的 FAQ 条目（top-3）', task_type: 'query_info', priority: 'normal', depends_on: ['s1'] },
-      { id: 's3', name: '生成回复', content: '基于 FAQ + 客户上下文生成 100 字以内回复', task_type: 'generate_content', priority: 'high', depends_on: ['s1', 's2'] },
-      { id: 's4', name: '人工兜底', content: '若置信度 <0.6 推送给人工客服', task_type: 'chat', priority: 'normal', depends_on: ['s3'] }
+      {
+        id: 's1',
+        name: '识别消息类型',
+        content: '从微信群消息中识别：咨询/投诉/闲聊/订单查询',
+        task_type: 'analyze_data',
+        priority: 'high'
+      },
+      {
+        id: 's2',
+        name: '查询知识库',
+        content: '在 KB 中搜索匹配的 FAQ 条目（top-3）',
+        task_type: 'query_info',
+        priority: 'normal',
+        depends_on: ['s1']
+      },
+      {
+        id: 's3',
+        name: '生成回复',
+        content: '基于 FAQ + 客户上下文生成 100 字以内回复',
+        task_type: 'generate_content',
+        priority: 'high',
+        depends_on: ['s1', 's2']
+      },
+      {
+        id: 's4',
+        name: '人工兜底',
+        content: '若置信度 <0.6 推送给人工客服',
+        task_type: 'chat',
+        priority: 'normal',
+        depends_on: ['s3']
+      }
     ]);
 
     return { added: this.workflows.size - before };
@@ -259,10 +458,12 @@ export class WorkflowStore extends EventEmitter {
 
   private appendOp(op: WFOp): void {
     const line = JSON.stringify(op) + '\n';
-    this.writeQueue = this.writeQueue.then(() => this.doWrite(line)).catch((err) => {
-      this.writeErrors++;
-      console.error('[WorkflowStore] write failed:', err);
-    });
+    this.writeQueue = this.writeQueue
+      .then(() => this.doWrite(line))
+      .catch((err) => {
+        this.writeErrors++;
+        console.error('[WorkflowStore] write failed:', err);
+      });
   }
 
   private async doWrite(line: string): Promise<void> {

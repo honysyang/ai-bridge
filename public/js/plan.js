@@ -63,9 +63,9 @@
   function getISOWeekNumber(d) {
     const date = new Date(d);
     date.setHours(0, 0, 0, 0);
-    date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+    date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7));
     const week1 = new Date(date.getFullYear(), 0, 4);
-    return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+    return 1 + Math.round(((date - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
   }
 
   function getNextWeekRange() {
@@ -97,13 +97,29 @@
     state.plans = loadPlansFromStorage();
 
     const searchInput = document.getElementById('plan-search');
-    if (searchInput) searchInput.addEventListener('input', (e) => { state.planFilter.search = e.target.value; renderPlans(); });
+    if (searchInput)
+      searchInput.addEventListener('input', (e) => {
+        state.planFilter.search = e.target.value;
+        renderPlans();
+      });
     const typeFilter = document.getElementById('plan-type-filter');
-    if (typeFilter) typeFilter.addEventListener('change', (e) => { state.planFilter.type = e.target.value; renderPlans(); });
+    if (typeFilter)
+      typeFilter.addEventListener('change', (e) => {
+        state.planFilter.type = e.target.value;
+        renderPlans();
+      });
     const statusFilter = document.getElementById('plan-status-filter');
-    if (statusFilter) statusFilter.addEventListener('change', (e) => { state.planFilter.status = e.target.value; renderPlans(); });
+    if (statusFilter)
+      statusFilter.addEventListener('change', (e) => {
+        state.planFilter.status = e.target.value;
+        renderPlans();
+      });
     const weekFilter = document.getElementById('plan-week-filter');
-    if (weekFilter) weekFilter.addEventListener('change', (e) => { state.planFilter.week = e.target.value; renderPlans(); });
+    if (weekFilter)
+      weekFilter.addEventListener('change', (e) => {
+        state.planFilter.week = e.target.value;
+        renderPlans();
+      });
 
     const btnNew = document.getElementById('btn-plan-new');
     if (btnNew) btnNew.addEventListener('click', () => openPlanDrawer(null));
@@ -125,25 +141,27 @@
 
   function getFilteredPlans() {
     const f = state.planFilter;
-    return (state.plans || []).filter((p) => {
-      if (f.type !== 'all' && p.type !== f.type) return false;
-      if (f.status !== 'all' && p.status !== f.status) return false;
-      if (f.week === 'current' && !isCurrentWeek(p.date)) return false;
-      if (f.week === 'next' && !isNextWeek(p.date)) return false;
-      if (f.search) {
-        const q = f.search.toLowerCase();
-        const hay = `${p.title} ${p.details || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    }).sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      const pr = { high: 0, normal: 1, low: 2 };
-      const da = pr[a.priority] ?? 1;
-      const db = pr[b.priority] ?? 1;
-      if (da !== db) return da - db;
-      return a.created_at - b.created_at;
-    });
+    return (state.plans || [])
+      .filter((p) => {
+        if (f.type !== 'all' && p.type !== f.type) return false;
+        if (f.status !== 'all' && p.status !== f.status) return false;
+        if (f.week === 'current' && !isCurrentWeek(p.date)) return false;
+        if (f.week === 'next' && !isNextWeek(p.date)) return false;
+        if (f.search) {
+          const q = f.search.toLowerCase();
+          const hay = `${p.title} ${p.details || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        const pr = { high: 0, normal: 1, low: 2 };
+        const da = pr[a.priority] ?? 1;
+        const db = pr[b.priority] ?? 1;
+        if (da !== db) return da - db;
+        return a.created_at - b.created_at;
+      });
   }
 
   function renderPlans() {
@@ -180,12 +198,15 @@
         const isActive = p.id === state.currentPlanId;
         const hasRemind = !!p.remind_at;
         const isOverdue = hasRemind && !p.notified_at && p.remind_at < Date.now();
-        const isUpcoming = hasRemind && !p.notified_at && p.remind_at >= Date.now() && p.remind_at - Date.now() < 24*3600*1000;
+        const isUpcoming =
+          hasRemind && !p.notified_at && p.remind_at >= Date.now() && p.remind_at - Date.now() < 24 * 3600 * 1000;
         const remindBadge = isOverdue
           ? '<span class="badge badge-overdue">🚨 已到期</span>'
-          : (isUpcoming
+          : isUpcoming
             ? '<span class="badge badge-upcoming">⏰ 即将到期</span>'
-            : (hasRemind ? '<span class="badge badge-remind">⏰ 已设提醒</span>' : ''));
+            : hasRemind
+              ? '<span class="badge badge-remind">⏰ 已设提醒</span>'
+              : '';
         sideHtml += `
           <div class="plan-item ${isActive ? 'active' : ''} ${isOverdue ? 'overdue' : ''}" data-plan-id="${escapeHtml(p.id)}">
             <div class="plan-item-row">
@@ -211,7 +232,10 @@
 
     if (state.currentPlanId) {
       const p = state.plans.find((x) => x.id === state.currentPlanId);
-      if (p) { renderPlanDetail(p); return; }
+      if (p) {
+        renderPlanDetail(p);
+        return;
+      }
     }
     mainEl.innerHTML = `
       <div class="plan-empty">
@@ -258,16 +282,22 @@
     const statusBtn = document.getElementById('plan-detail-status-toggle');
     if (statusBtn) statusBtn.addEventListener('click', () => togglePlanStatus(p.id));
     const delBtn = document.getElementById('plan-detail-delete');
-    if (delBtn) delBtn.addEventListener('click', () => {
-      if (confirm('确认删除此计划？')) {
+    if (delBtn)
+      delBtn.addEventListener('click', async () => {
+        const ok = await global.Core.openConfirm({
+          title: '删除计划',
+          message: '确认删除此计划？',
+          confirmText: '删除',
+          danger: true
+        });
+        if (!ok) return;
         state.plans = state.plans.filter((x) => x.id !== p.id);
         savePlansToStorage(state.plans);
         state.currentPlanId = null;
         renderPlans();
         if (global.Main && global.Main.updateTabCounts) global.Main.updateTabCounts();
         showNotification('✓ 已删除', 'success');
-      }
-    });
+      });
   }
 
   function togglePlanStatus(id) {
@@ -293,14 +323,16 @@
     document.getElementById('plan-drawer-date-input').value = p ? p.date : today;
     document.getElementById('plan-drawer-status-select').value = p ? p.status : 'pending';
     document.getElementById('plan-drawer-priority-select').value = p ? p.priority : 'normal';
-    document.getElementById('plan-drawer-details-input').value = p ? (p.details || '') : '';
-    document.getElementById('plan-drawer-remind-input').value = p && p.remind_at
-      ? new Date(p.remind_at).toISOString().slice(0, 16)
-      : '';
-    document.getElementById('plan-drawer-remind-inapp').checked = !p || !p.remind_channels || p.remind_channels.includes('inapp');
-    document.getElementById('plan-drawer-remind-wechat').checked = p && p.remind_channels && p.remind_channels.includes('wechat');
+    document.getElementById('plan-drawer-details-input').value = p ? p.details || '' : '';
+    document.getElementById('plan-drawer-remind-input').value =
+      p && p.remind_at ? new Date(p.remind_at).toISOString().slice(0, 16) : '';
+    document.getElementById('plan-drawer-remind-inapp').checked =
+      !p || !p.remind_channels || p.remind_channels.includes('inapp');
+    document.getElementById('plan-drawer-remind-wechat').checked =
+      p && p.remind_channels && p.remind_channels.includes('wechat');
     document.getElementById('plan-drawer-meta').textContent = p
-      ? `创建于 ${new Date(p.created_at).toLocaleString('zh-CN')}` + (p.notified_at ? ` · 已提醒于 ${new Date(p.notified_at).toLocaleString('zh-CN')}` : '')
+      ? `创建于 ${new Date(p.created_at).toLocaleString('zh-CN')}` +
+        (p.notified_at ? ` · 已提醒于 ${new Date(p.notified_at).toLocaleString('zh-CN')}` : '')
       : '';
     document.getElementById('plan-drawer-delete').style.display = p ? '' : 'none';
     document.getElementById('plan-drawer-title-input').focus();
@@ -345,7 +377,12 @@
     } else {
       state.plans.push({
         id: generatePlanId(),
-        title, type, date, status, priority, details,
+        title,
+        type,
+        date,
+        status,
+        priority,
+        details,
         remind_at,
         remind_channels: remind_channels.length > 0 ? remind_channels : undefined,
         notified_at: null,
@@ -364,12 +401,18 @@
     }
   }
 
-  function deletePlanFromDrawer() {
+  async function deletePlanFromDrawer() {
     const drawer = document.getElementById('plan-drawer');
     if (!drawer) return;
     const id = drawer.dataset.planId;
     if (!id) return;
-    if (!confirm('确认删除此计划？')) return;
+    const ok = await global.Core.openConfirm({
+      title: '删除计划',
+      message: '确认删除此计划？',
+      confirmText: '删除',
+      danger: true
+    });
+    if (!ok) return;
     state.plans = state.plans.filter((x) => x.id !== id);
     savePlansToStorage(state.plans);
     closeDrawer('plan-drawer');
@@ -379,9 +422,14 @@
     showNotification('✓ 已删除', 'success');
   }
 
-  function seedPlanDemo() {
+  async function seedPlanDemo() {
     if (state.plans && state.plans.length > 0) {
-      if (!confirm(`已有 ${state.plans.length} 条计划，继续将追加 8 条示例。是否继续？`)) return;
+      const ok = await global.Core.openConfirm({
+        title: '加载示例计划',
+        message: `已有 ${state.plans.length} 条计划，继续将追加 8 条示例。是否继续？`,
+        confirmText: '继续'
+      });
+      if (!ok) return;
     }
 
     const cur = getISOWeekRange();
@@ -394,14 +442,94 @@
     };
 
     const seedPlans = [
-      { id: generatePlanId(), type: 'week', date: cur.start, title: '本周重点：完成知识库重构 & 修复 3 个 P1 bug', details: '周计划：\n• 推进知识库 2.0 架构\n• 修复 3 个 P1 缺陷\n• 周三 14:00 团队同步\n• 周五 16:00 周报', status: 'in_progress', priority: 'high', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 0), title: '代码审查：PR #158 (知识库 store 重构)', details: '重点看：\n1. JSONL append-only\n2. transition() 状态机\n3. 错误处理', status: 'done', priority: 'high', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 1), title: '修复工单 #421：iLink 投递失败', details: '复现：连续发 3 条 → 合并/丢弃。\n临时：per-wxid 串行 worker。', status: 'in_progress', priority: 'high', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 2), title: '团队周中同步会议', details: '议程：\n1. 本周进度\n2. P1 缺陷\n3. 下周计划', status: 'pending', priority: 'normal', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 3), title: '修复工单 #423：cytoscape 内联样式', details: '原因：cytoscape 3.x 不支持 elements[] 内联 style。\n方案：移到 cy.style()。', status: 'pending', priority: 'normal', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'day', date: dayOffset(cur.start, 4), title: '周报 + 下周计划', details: '周报：\n1. 本周完成\n2. 进行中\n3. 风险\n4. 下周计划', status: 'pending', priority: 'normal', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'week', date: nxt.start, title: '下周重点：发布 v5.1 + 启动 v6.0 规划', details: '周计划：\n• v5.1 发布\n• 启动 v6.0 规划\n• 周二 10:00 产品评审', status: 'pending', priority: 'normal', created_at: now, updated_at: now },
-      { id: generatePlanId(), type: 'day', date: dayOffset(nxt.start, 0), title: 'v5.1 发布检查清单', details: '1. 演示数据完整\n2. 文档更新\n3. 单元测试 > 60%\n4. 性能压测', status: 'pending', priority: 'high', created_at: now, updated_at: now }
+      {
+        id: generatePlanId(),
+        type: 'week',
+        date: cur.start,
+        title: '本周重点：完成知识库重构 & 修复 3 个 P1 bug',
+        details: '周计划：\n• 推进知识库 2.0 架构\n• 修复 3 个 P1 缺陷\n• 周三 14:00 团队同步\n• 周五 16:00 周报',
+        status: 'in_progress',
+        priority: 'high',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'day',
+        date: dayOffset(cur.start, 0),
+        title: '代码审查：PR #158 (知识库 store 重构)',
+        details: '重点看：\n1. JSONL append-only\n2. transition() 状态机\n3. 错误处理',
+        status: 'done',
+        priority: 'high',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'day',
+        date: dayOffset(cur.start, 1),
+        title: '修复工单 #421：iLink 投递失败',
+        details: '复现：连续发 3 条 → 合并/丢弃。\n临时：per-wxid 串行 worker。',
+        status: 'in_progress',
+        priority: 'high',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'day',
+        date: dayOffset(cur.start, 2),
+        title: '团队周中同步会议',
+        details: '议程：\n1. 本周进度\n2. P1 缺陷\n3. 下周计划',
+        status: 'pending',
+        priority: 'normal',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'day',
+        date: dayOffset(cur.start, 3),
+        title: '修复工单 #423：cytoscape 内联样式',
+        details: '原因：cytoscape 3.x 不支持 elements[] 内联 style。\n方案：移到 cy.style()。',
+        status: 'pending',
+        priority: 'normal',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'day',
+        date: dayOffset(cur.start, 4),
+        title: '周报 + 下周计划',
+        details: '周报：\n1. 本周完成\n2. 进行中\n3. 风险\n4. 下周计划',
+        status: 'pending',
+        priority: 'normal',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'week',
+        date: nxt.start,
+        title: '下周重点：发布 v5.1 + 启动 v6.0 规划',
+        details: '周计划：\n• v5.1 发布\n• 启动 v6.0 规划\n• 周二 10:00 产品评审',
+        status: 'pending',
+        priority: 'normal',
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: generatePlanId(),
+        type: 'day',
+        date: dayOffset(nxt.start, 0),
+        title: 'v5.1 发布检查清单',
+        details: '1. 演示数据完整\n2. 文档更新\n3. 单元测试 > 60%\n4. 性能压测',
+        status: 'pending',
+        priority: 'high',
+        created_at: now,
+        updated_at: now
+      }
     ];
 
     state.plans = (state.plans || []).concat(seedPlans);
@@ -424,11 +552,19 @@
       const end = new Date(cur.end);
       end.setDate(end.getDate() - 7);
       const iso = (d) => d.toISOString().slice(0, 10);
-      return { start: iso(start), end: iso(end), label: `上周 ${start.getMonth() + 1}/${start.getDate()}-${end.getMonth() + 1}/${end.getDate()}` };
+      return {
+        start: iso(start),
+        end: iso(end),
+        label: `上周 ${start.getMonth() + 1}/${start.getDate()}-${end.getMonth() + 1}/${end.getDate()}`
+      };
     }
     if (which === 'next') {
       const nxt = getNextWeekRange();
-      return { start: nxt.start, end: nxt.end, label: `下周 ${new Date(nxt.start).getMonth() + 1}/${new Date(nxt.start).getDate()}-${new Date(nxt.end).getMonth() + 1}/${new Date(nxt.end).getDate()}` };
+      return {
+        start: nxt.start,
+        end: nxt.end,
+        label: `下周 ${new Date(nxt.start).getMonth() + 1}/${new Date(nxt.start).getDate()}-${new Date(nxt.end).getMonth() + 1}/${new Date(nxt.end).getDate()}`
+      };
     }
     const cur = getISOWeekRange();
     return { start: cur.start, end: cur.end, label: `本周 ${cur.label.split(' ').slice(1).join(' ')}` };
@@ -460,10 +596,10 @@
       return inRange(p);
     };
     const weekPlans = allPlans.filter(inWeek);
-    const donePlans = weekPlans.filter(p => p.status === 'done');
-    const inProgressPlans = weekPlans.filter(p => p.status === 'in_progress');
-    const pendingPlans = weekPlans.filter(p => p.status === 'pending');
-    const cancelledPlans = weekPlans.filter(p => p.status === 'cancelled');
+    const donePlans = weekPlans.filter((p) => p.status === 'done');
+    const inProgressPlans = weekPlans.filter((p) => p.status === 'in_progress');
+    const pendingPlans = weekPlans.filter((p) => p.status === 'pending');
+    const cancelledPlans = weekPlans.filter((p) => p.status === 'cancelled');
 
     let completedTasks = [];
     let taskStats = { pending: 0, processing: 0, completed: 0, failed: 0, total: 0 };
@@ -474,7 +610,7 @@
       if (json.success) {
         const all = json.data || [];
         taskStats = json.meta?.queue_stats || taskStats;
-        completedTasks = all.filter(t => t.status === 'completed' || t.status === 'failed');
+        completedTasks = all.filter((t) => t.status === 'completed' || t.status === 'failed');
       }
     } catch (e) {
       console.warn('[weekly-report] 获取任务失败:', e);
@@ -488,15 +624,15 @@
         if (json.success) {
           const sinceMs = new Date(range.start).getTime();
           const items = json.data?.items || [];
-          kbNew = items.filter(it => (it.created_at || 0) >= sinceMs).length;
+          kbNew = items.filter((it) => (it.created_at || 0) >= sinceMs).length;
         }
-      } catch (e) { /* 静默失败 */ }
+      } catch (e) {
+        /* 静默失败 */
+      }
     }
 
     if (sections.summary) {
-      const completionRate = weekPlans.length > 0
-        ? Math.round((donePlans.length / weekPlans.length) * 100)
-        : 0;
+      const completionRate = weekPlans.length > 0 ? Math.round((donePlans.length / weekPlans.length) * 100) : 0;
       lines.push('## 📊 数据总览');
       lines.push('');
       lines.push(`| 指标 | 数值 |`);
@@ -576,9 +712,7 @@
 
     if (sections.tips) {
       const tips = [];
-      const completionRate = weekPlans.length > 0
-        ? Math.round((donePlans.length / weekPlans.length) * 100)
-        : 0;
+      const completionRate = weekPlans.length > 0 ? Math.round((donePlans.length / weekPlans.length) * 100) : 0;
       if (weekPlans.length > 0 && completionRate < 50) {
         tips.push(`完成率 ${completionRate}%，建议拆解大任务或调整优先级`);
       }
@@ -692,12 +826,8 @@
   async function checkPlanReminders() {
     const now = Date.now();
     const plans = state.plans || [];
-    const due = plans.filter(p =>
-      p.remind_at &&
-      p.remind_at <= now &&
-      !p.notified_at &&
-      p.status !== 'done' &&
-      p.status !== 'cancelled'
+    const due = plans.filter(
+      (p) => p.remind_at && p.remind_at <= now && !p.notified_at && p.status !== 'done' && p.status !== 'cancelled'
     );
     if (due.length === 0) return;
     console.log(`[plan-reminder] 发现 ${due.length} 个到期提醒`);
@@ -719,7 +849,7 @@
         if ('Notification' in window && Notification.permission === 'granted') {
           new Notification('📅 计划提醒', { body: plan.title, tag: `plan-${plan.id}` });
         } else if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission().then(p => {
+          Notification.requestPermission().then((p) => {
             if (p === 'granted') {
               new Notification('📅 计划提醒', { body: plan.title, tag: `plan-${plan.id}` });
             }

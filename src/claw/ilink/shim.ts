@@ -16,8 +16,9 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { DATA_DIR, SECRETS_FILE } from '../../lib/paths.js';
 
-const LOG_DIR = path.join(process.cwd(), 'data', 'logs');
+const LOG_DIR = path.join(DATA_DIR, 'logs');
 const SUBSYSTEM = 'claw/ilink';
 
 function ensureLogDir(): void {
@@ -43,7 +44,7 @@ function writeLine(level: string, message: string, accountId?: string): void {
       level,
       logger: loggerName,
       host: os.hostname() || 'unknown',
-      message: prefixedMessage,
+      message: prefixedMessage
     });
     fs.appendFileSync(resolveLogPath(), `${entry}\n`, 'utf-8');
   } catch {
@@ -71,7 +72,7 @@ function createLogger(accountId?: string): IlinkLogger {
     getLogFilePath: () => resolveLogPath(),
     close: () => {
       // no-op
-    },
+    }
   };
 }
 
@@ -80,8 +81,6 @@ export const logger: IlinkLogger = createLogger();
 // =====================================================================
 // Accounts shim — 从 ~/.config/agent-canvas/secrets.env 读取 iLink 配置
 // =====================================================================
-
-const SECRETS_FILE = path.join(os.homedir(), '.config', 'agent-canvas', 'secrets.env');
 
 function loadSecretsEnv(): Record<string, string> {
   const result: Record<string, string> = {};
@@ -94,7 +93,10 @@ function loadSecretsEnv(): Record<string, string> {
       const eq = trimmed.indexOf('=');
       if (eq < 0) continue;
       const key = trimmed.slice(0, eq).trim();
-      const value = trimmed.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
+      const value = trimmed
+        .slice(eq + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       result[key] = value;
     }
   } catch {

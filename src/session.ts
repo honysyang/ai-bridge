@@ -75,7 +75,7 @@ export class SessionManager {
   /**
    * 确保默认会话存在。启动时和首次访问时调用。
    */
-  ensureDefaultSession(): Session {
+  async ensureDefaultSession(): Promise<Session> {
     const existing = storage.getSession(DEFAULT_SESSION_ID);
     if (existing) {
       this.defaultEnsured = true;
@@ -93,7 +93,7 @@ export class SessionManager {
       status: 'active',
       meta: { is_default: true }
     };
-    storage.appendSession(defaultSession);
+    await storage.appendSession(defaultSession);
     this.defaultEnsured = true;
     return defaultSession;
   }
@@ -104,7 +104,7 @@ export class SessionManager {
 
   // ======== CRUD ========
 
-  createSession(input: CreateSessionInput): Session {
+  async createSession(input: CreateSessionInput): Promise<Session> {
     if (!input.name || typeof input.name !== 'string' || !input.name.trim()) {
       throw new Error('会话名称不能为空');
     }
@@ -122,7 +122,7 @@ export class SessionManager {
       status: 'active',
       meta: input.meta
     };
-    storage.appendSession(session);
+    await storage.appendSession(session);
     if (projectDir) {
       log.info(`会话 ${session.id} 绑定项目目录: ${projectDir}`);
     }
@@ -136,7 +136,7 @@ export class SessionManager {
   /**
    * 获取会话（不存在则返回默认会话）
    */
-  getSessionOrDefault(id?: string): Session {
+  async getSessionOrDefault(id?: string): Promise<Session> {
     if (!id) return this.ensureDefaultSession();
     const session = storage.getSession(id);
     if (session) return session;
@@ -144,26 +144,25 @@ export class SessionManager {
     return this.ensureDefaultSession();
   }
 
-  listSessions(opts: {
-    status?: SessionStatus;
-    q?: string; // 搜索关键词（匹配 name/description）
-  } = {}): Session[] {
+  listSessions(
+    opts: {
+      status?: SessionStatus;
+      q?: string; // 搜索关键词（匹配 name/description）
+    } = {}
+  ): Session[] {
     let arr = storage.getAllSessions();
 
     if (opts.status) {
-      arr = arr.filter(s => s.status === opts.status);
+      arr = arr.filter((s) => s.status === opts.status);
     }
     if (opts.q) {
       const q = opts.q.toLowerCase();
-      arr = arr.filter(s =>
-        s.name.toLowerCase().includes(q) ||
-        (s.description?.toLowerCase().includes(q) ?? false)
-      );
+      arr = arr.filter((s) => s.name.toLowerCase().includes(q) || (s.description?.toLowerCase().includes(q) ?? false));
     }
 
     // 刷新 task_count（基于当前 task 列表）
     const taskCounts = this.computeTaskCounts();
-    arr = arr.map(s => ({
+    arr = arr.map((s) => ({
       ...s,
       task_count: taskCounts.get(s.id) ?? 0,
       last_task_summary: this.getLastTaskSummary(s.id)
@@ -173,7 +172,7 @@ export class SessionManager {
     return arr.sort((a, b) => b.updated_at - a.updated_at);
   }
 
-  updateSession(id: string, patch: UpdateSessionInput): Session | null {
+  async updateSession(id: string, patch: UpdateSessionInput): Promise<Session | null> {
     if (id === DEFAULT_SESSION_ID && patch.status === 'archived') {
       throw new Error('默认会话不能归档');
     }
@@ -197,12 +196,12 @@ export class SessionManager {
         cleanPatch.project_dir = validateProjectDir(patch.project_dir as string);
       }
     }
-    const ok = storage.updateSession(id, cleanPatch);
+    const ok = await storage.updateSession(id, cleanPatch);
     if (!ok) return null;
     return storage.getSession(id) || null;
   }
 
-  deleteSession(id: string): { ok: boolean; reassigned_tasks: number } {
+  async deleteSession(id: string): Promise<{ ok: boolean; reassigned_tasks: number }> {
     if (id === DEFAULT_SESSION_ID) {
       throw new Error('默认会话不能删除');
     }
@@ -214,12 +213,12 @@ export class SessionManager {
     let reassigned = 0;
     for (const task of allTasks) {
       if ((task as any).session_id === id) {
-        storage.updateTask(task.id, { session_id: DEFAULT_SESSION_ID } as any);
+        await storage.updateTask(task.id, { session_id: DEFAULT_SESSION_ID } as any);
         reassigned++;
       }
     }
 
-    storage.deleteSession(id);
+    await storage.deleteSession(id);
     return { ok: true, reassigned_tasks: reassigned };
   }
 
@@ -258,9 +257,9 @@ export class SessionManager {
   /**
    * 刷新会话的 updated_at（任务变更时调用）
    */
-  touchSession(sessionId: string): void {
+  async touchSession(sessionId: string): Promise<void> {
     if (!sessionId) return;
-    storage.updateSession(sessionId, { updated_at: Date.now() });
+    await storage.updateSession(sessionId, { updated_at: Date.now() });
   }
 }
 

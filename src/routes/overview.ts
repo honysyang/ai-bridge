@@ -16,6 +16,7 @@ import { clawManager } from '../claw/index.js';
 import { clawConfig } from '../claw/config.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { DATA_DIR } from '../lib/paths.js';
 
 export const overviewRouter = Router();
 
@@ -41,17 +42,16 @@ overviewRouter.get('/stats', (_req, res) => {
 
     // 3. 工作流
     const wfList: any = workflowStore.list();
-    const wfArr: any[] = Array.isArray(wfList) ? wfList : (wfList.workflows || []);
+    const wfArr: any[] = Array.isArray(wfList) ? wfList : wfList.workflows || [];
     const wfTotalSteps = wfArr.reduce((sum: number, w: any) => sum + (w.steps?.length || 0), 0);
 
     // 4. 会话
     const sessions = sessionManager.listSessions();
-    const activeSessions = sessions.filter(s => s.status === 'active').length;
-    const archivedSessions = sessions.filter(s => s.status === 'archived').length;
+    const activeSessions = sessions.filter((s) => s.status === 'active').length;
+    const archivedSessions = sessions.filter((s) => s.status === 'archived').length;
 
     // 5. 存储
-    const dataDir = path.join(process.cwd(), 'data');
-    const storageStats = calcStorageStats(dataDir);
+    const storageStats = calcStorageStats(DATA_DIR);
 
     // 6. 趋势
     const trend = calcTrend(allTasks, 7);
@@ -76,7 +76,7 @@ overviewRouter.get('/stats', (_req, res) => {
         state: clawStatus.state || 'idle',
         wxid: clawStatus.wxid || null
       },
-      data_dir: dataDir
+      data_dir: DATA_DIR
     };
 
     res.json({
@@ -108,7 +108,7 @@ overviewRouter.get('/stats', (_req, res) => {
         trend,
         source_dist: sourceDist,
         recent_tasks: allTasks
-          .filter(t => t.created_at)
+          .filter((t) => t.created_at)
           .sort((a: any, b: any) => {
             const ta = a.completed_at || a.started_at || a.created_at || 0;
             const tb = b.completed_at || b.started_at || b.created_at || 0;
@@ -117,7 +117,7 @@ overviewRouter.get('/stats', (_req, res) => {
           .slice(0, 8)
           .map((t: any) => ({
             id: t.id,
-            content: typeof t.data?.content === 'string' ? t.data.content.slice(0, 60) : (t.title || t.type || ''),
+            content: typeof t.data?.content === 'string' ? t.data.content.slice(0, 60) : t.title || t.type || '',
             status: t.status,
             source: t.source,
             ts: t.completed_at || t.started_at || t.created_at || 0
@@ -133,15 +133,17 @@ overviewRouter.get('/stats', (_req, res) => {
 function calcStorageStats(dataDir: string) {
   const result = { total_bytes: 0, files: [] as Array<{ name: string; bytes: number; lines: number }> };
   if (!fs.existsSync(dataDir)) return result;
-  const files = fs.readdirSync(dataDir).filter(f => f.endsWith('.jsonl') && !f.startsWith('.'));
+  const files = fs.readdirSync(dataDir).filter((f) => f.endsWith('.jsonl') && !f.startsWith('.'));
   for (const f of files) {
     const fp = path.join(dataDir, f);
     const stat = fs.statSync(fp);
     let lines = 0;
     try {
       const content = fs.readFileSync(fp, 'utf8');
-      lines = content ? content.split('\n').filter(l => l.trim()).length : 0;
-    } catch {}
+      lines = content ? content.split('\n').filter((l) => l.trim()).length : 0;
+    } catch {
+      /* ignore */
+    }
     result.files.push({ name: f, bytes: stat.size, lines });
     result.total_bytes += stat.size;
   }
@@ -157,7 +159,7 @@ function calcTrend(tasks: any[], days: number): DayBucket[] {
     const key = d.toISOString().slice(0, 10);
     buckets.push({ date: key, count: 0, success: 0 });
   }
-  const bucketMap = new Map(buckets.map(b => [b.date, b]));
+  const bucketMap = new Map(buckets.map((b) => [b.date, b]));
   for (const t of tasks) {
     if (!t.completed_at) continue;
     const key = new Date(t.completed_at).toISOString().slice(0, 10);

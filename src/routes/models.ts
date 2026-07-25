@@ -18,116 +18,137 @@ import { asyncHandler } from '../middleware/error.js';
 export const modelRouter = Router();
 
 // 目录（前端首选接口，符合 project_memory 「Model configuration panel must fetch data from /api/models endpoint」）
-modelRouter.get('/', asyncHandler((_req, res) => {
-  res.json({ success: true, data: modelsConfig.catalog() });
-}));
+modelRouter.get(
+  '/',
+  asyncHandler((_req, res) => {
+    res.json({ success: true, data: modelsConfig.catalog() });
+  })
+);
 
 // 当前用户配置
-modelRouter.get('/config', asyncHandler((_req, res) => {
-  res.json({ success: true, data: modelsConfig.get() });
-}));
+modelRouter.get(
+  '/config',
+  asyncHandler((_req, res) => {
+    res.json({ success: true, data: modelsConfig.get() });
+  })
+);
 
 // 局部更新
-modelRouter.patch('/config', asyncHandler((req, res) => {
-  const before = modelsConfig.get();
-  const updated = modelsConfig.update(req.body || {});
-  // 详细日志：哪个字段变了
-  const changes: string[] = [];
-  if (before.default_provider !== updated.default_provider) changes.push(`provider ${before.default_provider}→${updated.default_provider}`);
-  if (before.default_model !== updated.default_model) changes.push(`model ${before.default_model}→${updated.default_model}`);
-  if (JSON.stringify(before.task_routing) !== JSON.stringify(updated.task_routing)) changes.push('task_routing');
-  if (JSON.stringify(before.enabled_providers) !== JSON.stringify(updated.enabled_providers)) changes.push('enabled_providers');
-  if (JSON.stringify(before.custom_providers) !== JSON.stringify(updated.custom_providers)) changes.push('custom_providers');
-  if (before.kb_provider !== updated.kb_provider || before.kb_model !== updated.kb_model) changes.push('kb_model');
-  taskQueue.addLog('info', 'system', `[models] 配置已更新${changes.length ? ': ' + changes.join(', ') : ''}`);
-  res.json({ success: true, data: updated, before });
-}));
+modelRouter.patch(
+  '/config',
+  asyncHandler((req, res) => {
+    const before = modelsConfig.get();
+    const patch = req.body || {};
+    // v5.5.6: 自定义 provider api_key 若是遮罩则保持原值
+    if (Array.isArray(patch.custom_providers)) {
+      patch.custom_providers = patch.custom_providers.map((p: any) => modelsConfig.normalizeCustomProviderInput(p));
+    }
+    const updated = modelsConfig.update(patch);
+    // 详细日志：哪个字段变了
+    const changes: string[] = [];
+    if (before.default_provider !== updated.default_provider)
+      changes.push(`provider ${before.default_provider}→${updated.default_provider}`);
+    if (before.default_model !== updated.default_model)
+      changes.push(`model ${before.default_model}→${updated.default_model}`);
+    if (JSON.stringify(before.task_routing) !== JSON.stringify(updated.task_routing)) changes.push('task_routing');
+    if (JSON.stringify(before.enabled_providers) !== JSON.stringify(updated.enabled_providers))
+      changes.push('enabled_providers');
+    if (JSON.stringify(before.custom_providers) !== JSON.stringify(updated.custom_providers))
+      changes.push('custom_providers');
+    if (before.kb_provider !== updated.kb_provider || before.kb_model !== updated.kb_model) changes.push('kb_model');
+    taskQueue.addLog('info', 'system', `[models] 配置已更新${changes.length ? ': ' + changes.join(', ') : ''}`);
+    res.json({ success: true, data: updated, before });
+  })
+);
 
 // 重置为默认
-modelRouter.post('/config/reset', asyncHandler((_req, res) => {
-  const fresh = modelsConfig.update({
-    default_provider: 'deepseek',
-    default_model: 'deepseek-chat',
-    enabled_providers: ['deepseek', 'mock'],
-    provider_overrides: {},
-    task_routing: {
-      multi_step: { provider: 'deepseek', model: 'deepseek-reasoner' },
-      analyze_data: { provider: 'deepseek', model: 'deepseek-reasoner' },
-      generate_content: { provider: 'deepseek', model: 'deepseek-chat' }
-    },
-    routing_strategy: 'fixed',
-    custom_providers: []
-  } as any);
-  taskQueue.addLog('info', 'system', '[models] 已重置为默认配置');
-  res.json({ success: true, data: fresh });
-}));
+modelRouter.post(
+  '/config/reset',
+  asyncHandler((_req, res) => {
+    const fresh = modelsConfig.update({
+      default_provider: 'deepseek',
+      default_model: 'deepseek-chat',
+      enabled_providers: ['deepseek', 'mock'],
+      provider_overrides: {},
+      task_routing: {
+        multi_step: { provider: 'deepseek', model: 'deepseek-reasoner' },
+        analyze_data: { provider: 'deepseek', model: 'deepseek-reasoner' },
+        generate_content: { provider: 'deepseek', model: 'deepseek-chat' }
+      },
+      routing_strategy: 'fixed',
+      custom_providers: []
+    } as any);
+    taskQueue.addLog('info', 'system', '[models] 已重置为默认配置');
+    res.json({ success: true, data: fresh });
+  })
+);
 
 // v5.5.4: 解析知识库模型（必须放在 /resolve/:type 之前，避免被当作 task_type）
-modelRouter.get('/resolve/kb', asyncHandler((_req, res) => {
-  const result = modelsConfig.resolveKB();
-  if (!result) {
-    return res.json({ success: true, data: null });
-  }
-  const p = modelsConfig.allProviders().find(p => p.id === result.provider);
-  res.json({
-    success: true,
-    data: {
-      ...result,
-      provider_name: p?.name || result.provider,
-      model_name: p?.models.find(m => m.id === result.model)?.name || result.model
+modelRouter.get(
+  '/resolve/kb',
+  asyncHandler((_req, res) => {
+    const result = modelsConfig.resolveKB();
+    if (!result) {
+      return res.json({ success: true, data: null });
     }
-  });
-}));
-
-// v5.4.2: 解析 task_type 实际使用的 provider/model
-modelRouter.get('/resolve/:type', asyncHandler((req, res) => {
-  const taskType = req.params.type;
-  try {
-    const result = modelsConfig.resolve(taskType as any);
-    const provider = modelsConfig.allProviders().find(p => p.id === result.provider);
+    const p = modelsConfig.allProviders().find((p) => p.id === result.provider);
     res.json({
       success: true,
       data: {
-        task_type: taskType,
         ...result,
-        provider_name: provider?.name || result.provider,
-        model_name: provider?.models.find(m => m.id === result.model)?.name || result.model
+        provider_name: p?.name || result.provider,
+        model_name: p?.models.find((m) => m.id === result.model)?.name || result.model
       }
     });
-  } catch (e: any) {
-    res.status(400).json({ success: false, error: e.message });
-  }
-}));
+  })
+);
+
+// v5.4.2: 解析 task_type 实际使用的 provider/model
+modelRouter.get(
+  '/resolve/:type',
+  asyncHandler((req, res) => {
+    const taskType = req.params.type;
+    try {
+      const result = modelsConfig.resolve(taskType as any);
+      const provider = modelsConfig.allProviders().find((p) => p.id === result.provider);
+      res.json({
+        success: true,
+        data: {
+          task_type: taskType,
+          ...result,
+          provider_name: provider?.name || result.provider,
+          model_name: provider?.models.find((m) => m.id === result.model)?.name || result.model
+        }
+      });
+    } catch (e: any) {
+      res.status(400).json({ success: false, error: e.message });
+    }
+  })
+);
 
 // v5.4.2: 批量解析所有 task_type
-modelRouter.get('/resolve', asyncHandler((_req, res) => {
-  const types = ['chat', 'reply_message', 'query_info', 'analyze_data', 'execute_command', 'generate_content', 'multi_step'];
-  const out = types.map(t => {
-    const r = modelsConfig.resolve(t as any);
-    const p = modelsConfig.allProviders().find(p => p.id === r.provider);
-    return {
-      task_type: t,
-      ...r,
-      provider_name: p?.name || r.provider,
-      model_name: p?.models.find(m => m.id === r.model)?.name || r.model
-    };
-  });
-  res.json({ success: true, data: out });
-}));
-
-// v5.5.4: 解析知识库模型
-modelRouter.get('/resolve/kb', asyncHandler((_req, res) => {
-  const result = modelsConfig.resolveKB();
-  if (!result) {
-    return res.json({ success: true, data: null });
-  }
-  const p = modelsConfig.allProviders().find(p => p.id === result.provider);
-  res.json({
-    success: true,
-    data: {
-      ...result,
-      provider_name: p?.name || result.provider,
-      model_name: p?.models.find(m => m.id === result.model)?.name || result.model
-    }
-  });
-}));
+modelRouter.get(
+  '/resolve',
+  asyncHandler((_req, res) => {
+    const types = [
+      'chat',
+      'reply_message',
+      'query_info',
+      'analyze_data',
+      'execute_command',
+      'generate_content',
+      'multi_step'
+    ];
+    const out = types.map((t) => {
+      const r = modelsConfig.resolve(t as any);
+      const p = modelsConfig.allProviders().find((p) => p.id === r.provider);
+      return {
+        task_type: t,
+        ...r,
+        provider_name: p?.name || r.provider,
+        model_name: p?.models.find((m) => m.id === r.model)?.name || r.model
+      };
+    });
+    res.json({ success: true, data: out });
+  })
+);

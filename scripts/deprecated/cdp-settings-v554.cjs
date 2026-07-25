@@ -126,6 +126,29 @@ function getJSON(path) {
       awaitPromise: true
     });
     console.log('Search filter:', rSearch.result.value);
+
+    // 切到概览页截图
+    const rOverview = await send('Runtime.evaluate', {
+      expression: `(async function() {
+        window.Main.switchTab('overview');
+        await new Promise(r => setTimeout(r, 3000));
+        const toolbar = document.querySelector('.overview-toolbar');
+        const container = document.querySelector('.overview-container');
+        return JSON.stringify({
+          hasToolbar: !!toolbar,
+          hasContainer: !!container,
+          statCount: document.querySelectorAll('.stat-card').length,
+          chartCount: document.querySelectorAll('.chart-card').length
+        });
+      })()`,
+      returnByValue: true,
+      awaitPromise: true
+    });
+    console.log('Overview:', rOverview.result.value);
+    const overviewResult = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    const overviewOut = `${OUT_DIR}/section-overview.png`;
+    fs.writeFileSync(overviewOut, Buffer.from(overviewResult.data, 'base64'));
+    console.log(`  saved: ${overviewOut} (${fs.statSync(overviewOut).size} bytes)`);
   } finally {
     try { ws && ws.close(); } catch {}
     try { process.kill(chrome.pid, 'SIGKILL'); } catch {}

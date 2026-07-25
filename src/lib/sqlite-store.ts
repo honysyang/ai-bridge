@@ -24,8 +24,8 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Task, Session, LogEntry } from '../types.js';
+import { DATA_DIR } from './paths.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'ai-bridge.db');
 
 const SCHEMA = `
@@ -173,13 +173,17 @@ export class SqliteStore {
         INSERT OR REPLACE INTO tasks (id, session_id, type, priority, source, status, data_json, context_json, project_dir, result_json, assigned_to, created_at, started_at, completed_at)
         VALUES (@id, @session_id, @type, @priority, @source, @status, @data_json, @context_json, @project_dir, @result_json, @assigned_to, @created_at, @started_at, @completed_at)
       `),
-      updateTask: this.db.prepare(`UPDATE tasks SET status = @status, result_json = @result_json, started_at = @started_at, completed_at = @completed_at, assigned_to = @assigned_to WHERE id = @id`),
+      updateTask: this.db.prepare(
+        `UPDATE tasks SET status = @status, result_json = @result_json, started_at = @started_at, completed_at = @completed_at, assigned_to = @assigned_to WHERE id = @id`
+      ),
       deleteTask: this.db.prepare(`DELETE FROM tasks WHERE id = ?`),
       insertSession: this.db.prepare(`
         INSERT OR REPLACE INTO sessions (id, name, description, status, project_dir, created_at, updated_at, task_count, last_task_summary, meta_json)
         VALUES (@id, @name, @description, @status, @project_dir, @created_at, @updated_at, @task_count, @last_task_summary, @meta_json)
       `),
-      updateSession: this.db.prepare(`UPDATE sessions SET name = @name, description = @description, status = @status, project_dir = @project_dir, updated_at = @updated_at, last_task_summary = @last_task_summary, meta_json = @meta_json WHERE id = @id`),
+      updateSession: this.db.prepare(
+        `UPDATE sessions SET name = @name, description = @description, status = @status, project_dir = @project_dir, updated_at = @updated_at, last_task_summary = @last_task_summary, meta_json = @meta_json WHERE id = @id`
+      ),
       deleteSession: this.db.prepare(`DELETE FROM sessions WHERE id = ?`),
       insertLog: this.db.prepare(`
         INSERT OR REPLACE INTO logs (id, level, source, message, created_at, meta_json)
@@ -252,7 +256,10 @@ export class SqliteStore {
     }
   }
 
-  updateTaskStatus(id: string, fields: { status?: string; result?: any; started_at?: number; completed_at?: number; assigned_to?: string }): void {
+  updateTaskStatus(
+    id: string,
+    fields: { status?: string; result?: any; started_at?: number; completed_at?: number; assigned_to?: string }
+  ): void {
     try {
       this.stmts.updateTask.run({
         id,
@@ -295,7 +302,18 @@ export class SqliteStore {
     }
   }
 
-  updateSessionMeta(id: string, fields: { name?: string; description?: string; status?: string; project_dir?: string; updated_at?: number; last_task_summary?: string; meta?: any }): void {
+  updateSessionMeta(
+    id: string,
+    fields: {
+      name?: string;
+      description?: string;
+      status?: string;
+      project_dir?: string;
+      updated_at?: number;
+      last_task_summary?: string;
+      meta?: any;
+    }
+  ): void {
     try {
       this.stmts.updateSession.run({
         id,
@@ -340,9 +358,19 @@ export class SqliteStore {
   /**
    * 任务统计（替代 getCountByStatus 的 O(N) 扫描）
    */
-  getTaskStats(): { pending: number; assigned: number; processing: number; completed: number; failed: number; total: number } {
+  getTaskStats(): {
+    pending: number;
+    assigned: number;
+    processing: number;
+    completed: number;
+    failed: number;
+    total: number;
+  } {
     try {
-      const rows = this.db.prepare(`SELECT status, COUNT(*) as n FROM tasks GROUP BY status`).all() as { status: string; n: number }[];
+      const rows = this.db.prepare(`SELECT status, COUNT(*) as n FROM tasks GROUP BY status`).all() as {
+        status: string;
+        n: number;
+      }[];
       const counts = { pending: 0, assigned: 0, processing: 0, completed: 0, failed: 0, total: 0 };
       for (const r of rows) {
         counts.total += r.n;
@@ -357,18 +385,27 @@ export class SqliteStore {
   /**
    * 最近任务（按过滤器，支持 status, source, session_id, type, 多状态）
    */
-  getRecentTasks(limit: number, filter?: { status?: string | string[]; type?: string; source?: string; session_id?: string }): Task[] {
+  getRecentTasks(
+    limit: number,
+    filter?: { status?: string | string[]; type?: string; source?: string; session_id?: string; offset?: number }
+  ): Task[] {
     try {
       const where: string[] = [];
-      const params: any = { limit };
+      const params: any = { limit, offset: filter?.offset || 0 };
       if (filter?.status) {
-        const statuses = Array.isArray(filter.status) ? filter.status : String(filter.status).split(',').map(s => s.trim());
+        const statuses = Array.isArray(filter.status)
+          ? filter.status
+          : String(filter.status)
+              .split(',')
+              .map((s) => s.trim());
         if (statuses.length === 1) {
           where.push('status = @status');
           params.status = statuses[0];
         } else if (statuses.length > 1) {
           where.push(`status IN (${statuses.map((_, i) => `@status${i}`).join(',')})`);
-          statuses.forEach((s, i) => { params[`status${i}`] = s; });
+          statuses.forEach((s, i) => {
+            params[`status${i}`] = s;
+          });
         }
       }
       if (filter?.type) {
@@ -387,10 +424,10 @@ export class SqliteStore {
         SELECT * FROM tasks
         ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
         ORDER BY created_at DESC
-        LIMIT @limit
+        LIMIT @limit OFFSET @offset
       `;
       const rows = this.db.prepare(sql).all(params) as any[];
-      return rows.map(r => this.hydrateTask(r));
+      return rows.map((r) => this.hydrateTask(r));
     } catch (e: any) {
       console.error('[sqlite] getRecentTasks failed:', e.message);
       return [];
@@ -415,7 +452,9 @@ export class SqliteStore {
   getTaskTrend(days: number = 7): { date: string; count: number; success: number }[] {
     try {
       const since = Date.now() - days * 86400_000;
-      const rows = this.db.prepare(`
+      const rows = this.db
+        .prepare(
+          `
         SELECT
           strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') as date,
           COUNT(*) as count,
@@ -424,10 +463,12 @@ export class SqliteStore {
         WHERE created_at >= ?
         GROUP BY date
         ORDER BY date ASC
-      `).all(since) as { date: string; count: number; success: number }[];
+      `
+        )
+        .all(since) as { date: string; count: number; success: number }[];
 
       // 补齐缺失的日期
-      const map = new Map(rows.map(r => [r.date, r]));
+      const map = new Map(rows.map((r) => [r.date, r]));
       const out: { date: string; count: number; success: number }[] = [];
       for (let i = days - 1; i >= 0; i--) {
         const d = new Date(Date.now() - i * 86400_000);
@@ -446,9 +487,13 @@ export class SqliteStore {
    */
   getSourceDist(): Record<string, number> {
     try {
-      const rows = this.db.prepare(`
+      const rows = this.db
+        .prepare(
+          `
         SELECT source, COUNT(*) as n FROM tasks GROUP BY source
-      `).all() as { source: string; n: number }[];
+      `
+        )
+        .all() as { source: string; n: number }[];
       const out: Record<string, number> = {};
       for (const r of rows) out[r.source] = r.n;
       return out;
@@ -462,14 +507,18 @@ export class SqliteStore {
    */
   getSuccessStats(): { total: number; completed: number; failed: number; success_rate: number } {
     try {
-      const row = this.db.prepare(`
+      const row = this.db
+        .prepare(
+          `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
         FROM tasks
         WHERE status IN ('completed', 'failed')
-      `).get() as any;
+      `
+        )
+        .get() as any;
       const total = row?.completed + row?.failed || 0;
       return {
         total: row?.total || 0,
@@ -487,13 +536,17 @@ export class SqliteStore {
    */
   getSessionStats(): { total: number; active: number; archived: number } {
     try {
-      const row = this.db.prepare(`
+      const row = this.db
+        .prepare(
+          `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'archived' THEN 1 ELSE 0 END) as archived
         FROM sessions
-      `).get() as any;
+      `
+        )
+        .get() as any;
       return { total: row?.total || 0, active: row?.active || 0, archived: row?.archived || 0 };
     } catch {
       return { total: 0, active: 0, archived: 0 };
@@ -523,7 +576,7 @@ export class SqliteStore {
       `;
       params.limit = opts.limit || 100;
       const rows = this.db.prepare(sql).all(params) as any[];
-      return rows.map(r => this.hydrateSession(r));
+      return rows.map((r) => this.hydrateSession(r));
     } catch {
       return [];
     }
@@ -576,9 +629,13 @@ export class SqliteStore {
 
   setMeta(key: string, value: string): void {
     try {
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         INSERT OR REPLACE INTO _meta (key, value, updated_at) VALUES (?, ?, ?)
-      `).run(key, value, Date.now());
+      `
+        )
+        .run(key, value, Date.now());
     } catch {
       // ignore
     }
@@ -663,7 +720,11 @@ export class SqliteStore {
   }
 
   close() {
-    try { this.db.close(); } catch { /* ignore */ }
+    try {
+      this.db.close();
+    } catch {
+      /* ignore */
+    }
   }
 }
 

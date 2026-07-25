@@ -10,13 +10,13 @@ export const UploadMediaType = {
   IMAGE: 1,
   VIDEO: 2,
   FILE: 3,
-  VOICE: 4,
+  VOICE: 4
 } as const;
 
 export const MessageType = {
   NONE: 0,
   USER: 1,
-  BOT: 2,
+  BOT: 2
 } as const;
 
 export const MessageItemType = {
@@ -27,19 +27,19 @@ export const MessageItemType = {
   FILE: 4,
   VIDEO: 5,
   TOOL_CALL_START: 11,
-  TOOL_CALL_RESULT: 12,
+  TOOL_CALL_RESULT: 12
 } as const;
 
 export const MessageState = {
   NEW: 0,
   GENERATING: 1,
-  FINISH: 2,
+  FINISH: 2
 } as const;
 
 /** Typing status: 1 = typing (default), 2 = cancel typing. */
 export const TypingStatus = {
   TYPING: 1,
-  CANCEL: 2,
+  CANCEL: 2
 } as const;
 
 export interface BaseInfo {

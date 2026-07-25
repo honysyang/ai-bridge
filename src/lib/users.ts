@@ -25,10 +25,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { childLogger } from './logger.js';
+import { DATA_DIR, SECRETS_DIR } from './paths.js';
 
 const log = childLogger({ module: 'users' });
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.jsonl');
 
 export type UserRole = 'admin' | 'operator' | 'viewer';
@@ -153,25 +153,29 @@ class UserManager {
 
   findById(id: string): User | null {
     this.ensureLoaded();
-    return this.cache.find(u => u.id === id) || null;
+    return this.cache.find((u) => u.id === id) || null;
   }
 
   findByUsername(username: string): User | null {
     this.ensureLoaded();
-    return this.cache.find(u => u.username === username) || null;
+    return this.cache.find((u) => u.username === username) || null;
   }
 
   findByWechatWxid(wxid: string): User | null {
     this.ensureLoaded();
     if (!wxid) return null;
-    return this.cache.find(u => u.wechat_wxid === wxid) || null;
+    return this.cache.find((u) => u.wechat_wxid === wxid) || null;
   }
 
   /**
    * 重写整个 users.jsonl 文件（用于更新/删除后持久化）
    */
   private rewriteAll() {
-    fs.writeFileSync(USERS_FILE, this.cache.map(u => JSON.stringify(u)).join('\n') + (this.cache.length ? '\n' : ''), { mode: 0o600 });
+    fs.writeFileSync(
+      USERS_FILE,
+      this.cache.map((u) => JSON.stringify(u)).join('\n') + (this.cache.length ? '\n' : ''),
+      { mode: 0o600 }
+    );
   }
 
   /**
@@ -234,7 +238,7 @@ class UserManager {
     this.ensureLoaded();
     const u = this.findById(id);
     if (!u) throw new Error('用户不存在');
-    this.cache = this.cache.filter(user => user.id !== id);
+    this.cache = this.cache.filter((user) => user.id !== id);
     this.rewriteAll();
     log.info(`删除用户 ${u.username} (${u.id})`);
   }
@@ -242,7 +246,13 @@ class UserManager {
   /**
    * 创建用户
    */
-  create(opts: { username: string; password: string; role?: UserRole; display_name?: string; wechat_wxid?: string }): User {
+  create(opts: {
+    username: string;
+    password: string;
+    role?: UserRole;
+    display_name?: string;
+    wechat_wxid?: string;
+  }): User {
     this.ensureLoaded();
     if (!opts.username || !opts.password) throw new Error('用户名和密码不能为空');
     if (this.findByUsername(opts.username)) throw new Error('用户名已存在');
@@ -275,7 +285,8 @@ class UserManager {
     if (existing) return existing;
 
     // 用 wxid 的 @ 之前部分作为 username，自动去重
-    const baseName = (wxid.split('@')[0] || `wx_${Date.now()}`).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24) || `wx_${Date.now()}`;
+    const baseName =
+      (wxid.split('@')[0] || `wx_${Date.now()}`).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 24) || `wx_${Date.now()}`;
     let username = baseName;
     let n = 1;
     while (this.findByUsername(username)) {
@@ -325,11 +336,10 @@ class UserManager {
 
     // 写入 secrets.env
     try {
-      const secretsDir = path.join(process.env.HOME || '/root', '.config', 'agent-canvas');
-      if (!fs.existsSync(secretsDir)) {
-        fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+      if (!fs.existsSync(SECRETS_DIR)) {
+        fs.mkdirSync(SECRETS_DIR, { recursive: true, mode: 0o700 });
       }
-      const secretsFile = path.join(secretsDir, 'secrets.env');
+      const secretsFile = path.join(SECRETS_DIR, 'secrets.env');
       const line = `\n# 默认管理员（首次启动自动创建，${new Date().toISOString()}）\nAIBRIDGE_ADMIN_PASSWORD=${password}\n`;
       fs.appendFileSync(secretsFile, line, { mode: 0o600 });
       log.info(`默认管理员密码已写入 ${secretsFile}（chmod 600）`);

@@ -12,28 +12,29 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { DATA_DIR } from './paths.js';
 
 export interface SystemSettings {
   ui: {
-    theme: 'light' | 'dark' | 'auto';
+    theme: 'indigo';
     density: 'comfortable' | 'compact';
     animations: boolean;
     language: 'zh-CN' | 'en-US';
   };
   logs: {
     level: 'debug' | 'info' | 'warn' | 'error';
-    retention_days: number;       // 日志保留天数（0 = 永久）
-    console_output: boolean;      // 是否同时输出到 stdout
+    retention_days: number; // 日志保留天数（0 = 永久）
+    console_output: boolean; // 是否同时输出到 stdout
   };
   tasks: {
     default_priority: 'low' | 'normal' | 'high' | 'urgent';
     auto_retry_on_failure: boolean;
     max_retries: number;
-    archive_after_days: number;   // 已完成任务归档天数
+    archive_after_days: number; // 已完成任务归档天数
   };
   data: {
     auto_cleanup: boolean;
-    backup_on_write: boolean;     // 每次写入前备份（影响性能）
+    backup_on_write: boolean; // 每次写入前备份（影响性能）
   };
   bridge: {
     heartbeat_interval_sec: number;
@@ -43,7 +44,7 @@ export interface SystemSettings {
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   ui: {
-    theme: 'auto',
+    theme: 'indigo',
     density: 'comfortable',
     animations: true,
     language: 'zh-CN'
@@ -69,7 +70,6 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   }
 };
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const SETTINGS_FILE = path.join(DATA_DIR, 'system-settings.json');
 
 class SystemSettingsManager {
@@ -109,7 +109,14 @@ class SystemSettingsManager {
     for (const key of Object.keys(source)) {
       const sv = source[key];
       const tv = target[key];
-      if (sv != null && typeof sv === 'object' && !Array.isArray(sv) && tv != null && typeof tv === 'object' && !Array.isArray(tv)) {
+      if (
+        sv != null &&
+        typeof sv === 'object' &&
+        !Array.isArray(sv) &&
+        tv != null &&
+        typeof tv === 'object' &&
+        !Array.isArray(tv)
+      ) {
         target[key] = this.mergeDeep(tv, sv);
       } else {
         target[key] = sv;

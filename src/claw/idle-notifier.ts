@@ -24,8 +24,8 @@ import { Task } from '../types.js';
 interface ActiveWxid {
   wxid: string;
   sessionId: string;
-  lastTaskAt: number;        // 该 wxid 最后一条 task 完成时间（ms）
-  lastMessageAt: number;     // 该 wxid 最后一条入站消息时间（ms）
+  lastTaskAt: number; // 该 wxid 最后一条 task 完成时间（ms）
+  lastMessageAt: number; // 该 wxid 最后一条入站消息时间（ms）
 }
 
 export interface IdleStatus {
@@ -48,7 +48,7 @@ export interface IdleStatus {
 
 export class IdleNotifier {
   private timer?: NodeJS.Timeout;
-  private lastSentAt: Map<string, number> = new Map();   // wxid → last sent ts
+  private lastSentAt: Map<string, number> = new Map(); // wxid → last sent ts
   private lastTickAt: number = 0;
   private lastSent: { wxid?: string; at: number; status?: 'success' | 'failed' | 'skipped'; error?: string } = {
     at: 0
@@ -123,7 +123,7 @@ export class IdleNotifier {
     const intervalMs = Math.max(1, cfg.idle_check_interval_min || 5) * 60 * 1000;
     this.timer = setTimeout(() => {
       this.tick()
-        .catch(err => {
+        .catch((err) => {
           this.lastSent.error = err.message;
           taskQueue.addLog('error', 'bridge', `[idle] tick 失败: ${err.message}`);
         })
@@ -180,24 +180,38 @@ export class IdleNotifier {
     const cooldownMs = (cfg.idle_cooldown_min ?? 30) * 60 * 1000;
     const types = cfg.idle_message_types || ['daily_summary'];
 
-    taskQueue.addLog('debug', 'bridge', `[idle] tick: actives=${actives.length}, minQuietMs=${minQuietMs}, cooldownMs=${cooldownMs}, types=${types.join(',')}`);
+    taskQueue.addLog(
+      'debug',
+      'bridge',
+      `[idle] tick: actives=${actives.length}, minQuietMs=${minQuietMs}, cooldownMs=${cooldownMs}, types=${types.join(',')}`
+    );
 
     for (const a of actives) {
       const lastActivity = Math.max(a.lastTaskAt || 0, a.lastMessageAt || 0);
       const quietFor = now - lastActivity;
-      taskQueue.addLog('debug', 'bridge',
-        `[idle] 检查 ${a.wxid.slice(0, 12)}… quietFor=${Math.round(quietFor/1000)}s lastTaskAt=${a.lastTaskAt} lastMessageAt=${a.lastMessageAt}`
+      taskQueue.addLog(
+        'debug',
+        'bridge',
+        `[idle] 检查 ${a.wxid.slice(0, 12)}… quietFor=${Math.round(quietFor / 1000)}s lastTaskAt=${a.lastTaskAt} lastMessageAt=${a.lastMessageAt}`
       );
       if (quietFor < minQuietMs) {
         skipped++;
-        taskQueue.addLog('debug', 'bridge', `[idle] 跳过 ${a.wxid.slice(0, 12)}… 静默时间不够 (${Math.round(quietFor/1000)}s < ${Math.round(minQuietMs/1000)}s)`);
+        taskQueue.addLog(
+          'debug',
+          'bridge',
+          `[idle] 跳过 ${a.wxid.slice(0, 12)}… 静默时间不够 (${Math.round(quietFor / 1000)}s < ${Math.round(minQuietMs / 1000)}s)`
+        );
         continue;
       }
 
       const lastSent = this.lastSentAt.get(a.wxid) || 0;
       if (now - lastSent < cooldownMs) {
         skipped++;
-        taskQueue.addLog('debug', 'bridge', `[idle] 跳过 ${a.wxid.slice(0, 12)}… 冷却中 (${Math.round((now-lastSent)/1000)}s < ${Math.round(cooldownMs/1000)}s)`);
+        taskQueue.addLog(
+          'debug',
+          'bridge',
+          `[idle] 跳过 ${a.wxid.slice(0, 12)}… 冷却中 (${Math.round((now - lastSent) / 1000)}s < ${Math.round(cooldownMs / 1000)}s)`
+        );
         continue;
       }
 
@@ -215,9 +229,16 @@ export class IdleNotifier {
         this.lastSentAt.set(a.wxid, now);
         this.lastSent = { wxid: a.wxid, at: now, status: 'success' };
         sent++;
-        taskQueue.addLog('success', 'task',
+        taskQueue.addLog(
+          'success',
+          'task',
           `微信空闲提醒: → ${a.wxid} (静默 ${Math.round(quietFor / 60000)} 分钟, msgLen=${text.length})`,
-          { wechat_wxid: a.wxid, kind: 'idle_reminder', quiet_for_min: Math.round(quietFor / 60000), text_len: text.length }
+          {
+            wechat_wxid: a.wxid,
+            kind: 'idle_reminder',
+            quiet_for_min: Math.round(quietFor / 60000),
+            text_len: text.length
+          }
         );
       } else {
         this.lastSent = { wxid: a.wxid, at: now, status: 'failed', error: 'send_failed' };
@@ -243,7 +264,7 @@ export class IdleNotifier {
     }
 
     // 工作时间
-    if (work.start >= work.end) return false;  // 非法配置
+    if (work.start >= work.end) return false; // 非法配置
     if (hour < work.start || hour >= work.end) return false;
     return true;
   }
@@ -261,8 +282,8 @@ export class IdleNotifier {
       // 找该 session 最后一条 task 完成时间
       const recent = taskQueue.getRecentTasks(5, { session_id: s.id });
       const lastCompleted = recent
-        .filter(t => t.completed_at)
-        .map(t => t.completed_at!)
+        .filter((t) => t.completed_at)
+        .map((t) => t.completed_at!)
         .reduce((a, b) => Math.max(a, b), 0);
 
       // 入站消息时间（从 session meta 或 update_at 推断）
@@ -313,17 +334,17 @@ export class IdleNotifier {
       today.setHours(0, 0, 0, 0);
       const todayStart = today.getTime();
 
-      const todayTasks = allTasks.filter(t => (t.created_at || 0) >= todayStart);
-      const completed = todayTasks.filter(t => t.status === 'completed').length;
-      const failed = todayTasks.filter(t => t.status === 'failed').length;
-      const inflight = todayTasks.filter(t => t.status === 'pending' || t.status === 'processing').length;
+      const todayTasks = allTasks.filter((t) => (t.created_at || 0) >= todayStart);
+      const completed = todayTasks.filter((t) => t.status === 'completed').length;
+      const failed = todayTasks.filter((t) => t.status === 'failed').length;
+      const inflight = todayTasks.filter((t) => t.status === 'pending' || t.status === 'processing').length;
 
       const totalDone = completed + failed;
       const successRate = totalDone > 0 ? Math.round((completed / totalDone) * 100) : null;
 
       // 当前运行总数
       const allTotal = allTasks.length;
-      const allDone = allTasks.filter(t => t.status === 'completed').length;
+      const allDone = allTasks.filter((t) => t.status === 'completed').length;
       const allRate = allTotal > 0 ? Math.round((allDone / allTotal) * 100) : 0;
 
       const lines = [
@@ -344,8 +365,9 @@ export class IdleNotifier {
    */
   private composeTaskSummary(sessionId: string): string {
     try {
-      const tasks = taskQueue.getRecentTasks(10, { session_id: sessionId })
-        .filter(t => t.completed_at)
+      const tasks = taskQueue
+        .getRecentTasks(10, { session_id: sessionId })
+        .filter((t) => t.completed_at)
         .sort((a, b) => (b.completed_at || 0) - (a.completed_at || 0))
         .slice(0, 10) as Task[];
 
@@ -356,7 +378,7 @@ export class IdleNotifier {
         const t = tasks[i];
         const q = (t.data?.content || '').slice(0, 22);
         const dots = t.data?.content && t.data.content.length > 22 ? '…' : '';
-        const icon = t.result?.status === 'success' ? '✅' : (t.result?.status === 'failed' ? '❌' : '⏳');
+        const icon = t.result?.status === 'success' ? '✅' : t.result?.status === 'failed' ? '❌' : '⏳';
         const a = (t.result?.result?.summary || '(无回复)').slice(0, 30);
         const aDots = (t.result?.result?.summary || '').length > 30 ? '…' : '';
         lines.push(`${i + 1}. ${icon} 「${q}${dots}」→ ${a}${aDots}`);
@@ -374,19 +396,23 @@ export class IdleNotifier {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const msgId = await this.adapter.sendText(wxid, text);
-        taskQueue.addLog('debug', 'task',
-          `[idle] 发送成功: ${wxid} (msgId=${msgId}, attempt=${attempt})`,
-          { wechat_wxid: wxid, kind: 'idle_reminder', msg_id: msgId, attempt }
-        );
+        taskQueue.addLog('debug', 'task', `[idle] 发送成功: ${wxid} (msgId=${msgId}, attempt=${attempt})`, {
+          wechat_wxid: wxid,
+          kind: 'idle_reminder',
+          msg_id: msgId,
+          attempt
+        });
         return true;
       } catch (err: any) {
-        taskQueue.addLog('warn', 'bridge',
+        taskQueue.addLog(
+          'warn',
+          'bridge',
           `[idle] 发送失败: ${wxid} (attempt=${attempt}/${maxAttempts}): ${err.message}`,
           { wechat_wxid: wxid, kind: 'idle_reminder', attempt, error: err.message }
         );
         if (attempt < maxAttempts) {
           // 指数退避 1s, 2s
-          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
         }
       }
     }
@@ -430,4 +456,4 @@ export class IdleNotifier {
   }
 }
 
-export const idleNotifier: IdleNotifier | null = null;  // 占位，实际由 ClawManager 实例化
+export const idleNotifier: IdleNotifier | null = null; // 占位，实际由 ClawManager 实例化

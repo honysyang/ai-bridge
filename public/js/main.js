@@ -15,17 +15,17 @@
     workflow: 'panel-workflow',
     plan: 'panel-plan',
     overview: 'panel-overview',
-    settings: 'panel-settings'    // v5.3.0
+    settings: 'panel-settings' // v5.3.0
   };
 
   // TAB_INIT: 返回 init 函数的引用，兼容挂在 global.X.init 上的模块
   const TAB_INIT = {
-    chat: () => null,                                  // 始终初始化（init 流程已加载）
+    chat: () => null, // 始终初始化（init 流程已加载）
     kb: () => window.initKB,
     workflow: () => window.initWF,
     plan: () => window.initPlan,
     overview: () => window.initOverview,
-    settings: () => (global.Settings && global.Settings.init) || window.initSettings  // v5.3.0
+    settings: () => (global.Settings && global.Settings.init) || window.initSettings // v5.3.0
   };
 
   function switchTab(tabName, opts = {}) {
@@ -37,7 +37,7 @@
     const previous = state.currentTab;
     state.currentTab = tabName;
 
-    document.querySelectorAll('.tab-menu .tab-btn').forEach(btn => {
+    document.querySelectorAll('.tab-menu .tab-btn').forEach((btn) => {
       const isActive = btn.dataset.tab === tabName;
       btn.classList.toggle('active', isActive);
       btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
@@ -92,26 +92,42 @@
     const chatCount = document.getElementById('tab-count-chat');
     if (chatCount) {
       const n = (state.tasks || []).length;
-      if (n > 0) { chatCount.textContent = n; chatCount.hidden = false; }
-      else { chatCount.hidden = true; }
+      if (n > 0) {
+        chatCount.textContent = n;
+        chatCount.hidden = false;
+      } else {
+        chatCount.hidden = true;
+      }
     }
     const kbCount = document.getElementById('tab-count-kb');
     if (kbCount) {
       const n = (state.kbItems || []).length;
-      if (n > 0) { kbCount.textContent = n; kbCount.hidden = false; }
-      else { kbCount.hidden = true; }
+      if (n > 0) {
+        kbCount.textContent = n;
+        kbCount.hidden = false;
+      } else {
+        kbCount.hidden = true;
+      }
     }
     const wfCount = document.getElementById('tab-count-wf');
     if (wfCount) {
       const n = (state.workflows || []).length;
-      if (n > 0) { wfCount.textContent = n; wfCount.hidden = false; }
-      else { wfCount.hidden = true; }
+      if (n > 0) {
+        wfCount.textContent = n;
+        wfCount.hidden = false;
+      } else {
+        wfCount.hidden = true;
+      }
     }
     const planCount = document.getElementById('tab-count-plan');
     if (planCount) {
       const n = (state.plans || []).length;
-      if (n > 0) { planCount.textContent = n; planCount.hidden = false; }
-      else { planCount.hidden = true; }
+      if (n > 0) {
+        planCount.textContent = n;
+        planCount.hidden = false;
+      } else {
+        planCount.hidden = true;
+      }
     }
   }
 
@@ -127,7 +143,8 @@
 
   function updateQueueStats(stats) {
     const el = document.getElementById('queue-stats');
-    if (el) el.textContent = `队列: ${stats.pending || 0}待 / ${stats.processing || 0}处 / ${stats.completed || 0}完 / ${stats.failed || 0}败`;
+    if (el)
+      el.textContent = `队列: ${stats.pending || 0}待 / ${stats.processing || 0}处 / ${stats.completed || 0}完 / ${stats.failed || 0}败`;
   }
 
   async function loadStatsDrawer() {
@@ -190,8 +207,22 @@
   }
 
   async function wipeData() {
-    if (!confirm('⚠️ 危险操作！\n清空所有任务/日志/会话数据，且不可恢复。\n\n确认清空？')) return;
-    if (!confirm('再次确认：真的要清空所有数据吗？')) return;
+    const ok1 = await global.Core.openConfirm({
+      title: '⚠️ 危险操作',
+      message: '清空所有任务/日志/会话数据，且不可恢复。\n\n确认清空？',
+      confirmText: '确认清空',
+      cancelText: '取消',
+      danger: true
+    });
+    if (!ok1) return;
+    const ok2 = await global.Core.openConfirm({
+      title: '再次确认',
+      message: '真的要清空所有数据吗？此操作不可撤销。',
+      confirmText: '确定清空',
+      cancelText: '取消',
+      danger: true
+    });
+    if (!ok2) return;
     try {
       await api('/api/storage/wipe', { method: 'POST' });
       showNotification('🗑 已清空', 'warning', 5000);
@@ -224,12 +255,16 @@
         body.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">暂无日志</div></div>`;
         return;
       }
-      body.innerHTML = `<div class="log-list">${data.map(l => `
+      body.innerHTML = `<div class="log-list">${data
+        .map(
+          (l) => `
         <div class="log-item ${l.level}">
           <span class="log-time">${formatTime(l.created_at)}</span>
           <span class="log-text"><strong>${escapeHtml(l.source)}</strong>: ${escapeHtml(l.message)}</span>
         </div>
-      `).join('')}</div>`;
+      `
+        )
+        .join('')}</div>`;
     } catch (e) {
       body.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><div class="empty-text">${escapeHtml(e.message)}</div></div>`;
     }
@@ -285,8 +320,16 @@
   }
 
   function handleWSMessage(msg) {
-    if (msg.type === 'task_added' || msg.type === 'task_assigned' || msg.type === 'task_completed' || msg.type === 'task_deleted') {
-      if (state.currentSessionId && (msg.data?.session_id === state.currentSessionId || msg.data?.task_id === state.currentTaskId)) {
+    if (
+      msg.type === 'task_added' ||
+      msg.type === 'task_assigned' ||
+      msg.type === 'task_completed' ||
+      msg.type === 'task_deleted'
+    ) {
+      if (
+        state.currentSessionId &&
+        (msg.data?.session_id === state.currentSessionId || msg.data?.task_id === state.currentTaskId)
+      ) {
         if (global.Tasks) global.Tasks.loadTasks();
       }
       if (global.Sessions) global.Sessions.loadSessions();
@@ -314,7 +357,11 @@
       if (msg.data?.session_id === state.currentSessionId || !state.currentSessionId) {
         if (global.Tasks) global.Tasks.loadTasks();
       }
-      showNotification(`💬 微信消息: ${msg.data?.from_user || ''} - ${(msg.data?.content || '').slice(0, 20)}`, 'info', 4000);
+      showNotification(
+        `💬 微信消息: ${msg.data?.from_user || ''} - ${(msg.data?.content || '').slice(0, 20)}`,
+        'info',
+        4000
+      );
     }
     if (msg.type === 'claw_error') {
       showNotification(`⚠️ Claw 错误: ${msg.data?.message || ''}`, 'error', 5000);
@@ -356,7 +403,7 @@
     if (overlay) overlay.classList.remove('open');
   }
   function closeAllDrawers() {
-    document.querySelectorAll('.drawer.open').forEach(d => d.classList.remove('open'));
+    document.querySelectorAll('.drawer.open').forEach((d) => d.classList.remove('open'));
     const overlay = document.getElementById('drawer-overlay');
     if (overlay) overlay.classList.remove('open');
   }
@@ -368,13 +415,18 @@
       <div class="modal">
         <div class="modal-header">${escapeHtml(title)}</div>
         <div class="modal-body">
-          ${fields.map(f => `
+          ${fields
+            .map(
+              (f) => `
             <label>${escapeHtml(f.label)}${f.required ? ' *' : ''}</label>
-            ${f.type === 'textarea'
-              ? `<textarea name="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`
-              : `<input type="text" name="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}" ${f.required ? 'required' : ''}>`
+            ${
+              f.type === 'textarea'
+                ? `<textarea name="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(f.value || '')}</textarea>`
+                : `<input type="text" name="${f.name}" placeholder="${escapeHtml(f.placeholder || '')}" value="${escapeHtml(f.value || '')}" ${f.required ? 'required' : ''}>`
             }
-          `).join('')}
+          `
+            )
+            .join('')}
         </div>
         <div class="modal-footer">
           <button class="modal-btn" data-action="cancel">取消</button>
@@ -391,11 +443,11 @@
     overlay.querySelector('[data-action="cancel"]').addEventListener('click', close);
     overlay.querySelector('[data-action="confirm"]').addEventListener('click', async () => {
       const data = {};
-      fields.forEach(f => {
+      fields.forEach((f) => {
         const el = overlay.querySelector(`[name="${f.name}"]`);
         data[f.name] = el ? el.value.trim() : '';
       });
-      if (fields.some(f => f.required && !data[f.name])) {
+      if (fields.some((f) => f.required && !data[f.name])) {
         showNotification('⚠️ 请填写必填项', 'warning');
         return;
       }
@@ -442,7 +494,7 @@
   }
 
   function bindSplitters() {
-    document.querySelectorAll('.splitter-vertical').forEach(splitter => {
+    document.querySelectorAll('.splitter-vertical').forEach((splitter) => {
       splitter.addEventListener('mousedown', (e) => {
         e.preventDefault();
         dragging = splitter;
@@ -490,7 +542,7 @@
       loadStatsDrawer();
     });
 
-    document.querySelectorAll('[data-close]').forEach(btn => {
+    document.querySelectorAll('[data-close]').forEach((btn) => {
       btn.addEventListener('click', () => closeDrawer(btn.dataset.close));
     });
     document.getElementById('drawer-overlay').addEventListener('click', closeAllDrawers);
@@ -529,9 +581,9 @@
       const card = e.target.closest('[data-task-id]');
       if (card && global.Tasks) global.Tasks.selectTask(card.dataset.taskId);
     });
-    document.querySelectorAll('#task-filter-tabs .tab').forEach(tab => {
+    document.querySelectorAll('#task-filter-tabs .tab').forEach((tab) => {
       tab.addEventListener('click', () => {
-        document.querySelectorAll('#task-filter-tabs .tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('#task-filter-tabs .tab').forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
         state.currentFilter = tab.dataset.filter;
         if (global.Tasks) global.Tasks.loadTasks();
@@ -547,7 +599,13 @@
           <div class="empty-text">已关闭详情</div>
           <div class="empty-hint">点击任务卡片可重新打开</div>
         </div>`;
-      history.pushState('', document.title, window.location.pathname + window.location.search + (state.currentSessionId ? `#session/${state.currentSessionId}` : ''));
+      history.pushState(
+        '',
+        document.title,
+        window.location.pathname +
+          window.location.search +
+          (state.currentSessionId ? `#session/${state.currentSessionId}` : '')
+      );
     });
 
     document.getElementById('btn-compose-send').addEventListener('click', () => {
@@ -572,7 +630,7 @@
     document.getElementById('wechat-status').addEventListener('click', () => {
       if (global.Claw) global.Claw.openWechatModal();
     });
-    document.querySelectorAll('#wechat-modal [data-close-modal]').forEach(el => {
+    document.querySelectorAll('#wechat-modal [data-close-modal]').forEach((el) => {
       el.addEventListener('click', () => {
         if (global.Claw) global.Claw.closeWechatModal();
       });
@@ -580,21 +638,80 @@
 
     // v5.4.0: 登出按钮
     const logoutBtn = document.getElementById('btn-logout');
-    if (logoutBtn) logoutBtn.addEventListener('click', () => {
-      if (confirm('确认登出？')) global.Core.logout();
-    });
+    if (logoutBtn)
+      logoutBtn.addEventListener('click', async () => {
+        if (
+          await global.Core.openConfirm({ title: '确认登出', message: '登出后将需要重新登录。', confirmText: '登出' })
+        )
+          global.Core.logout();
+      });
+
+    // v5.5.7: 语言切换
+    const langBtn = document.getElementById('btn-lang');
+    if (langBtn)
+      langBtn.addEventListener('click', () => {
+        const next = global.Core.currentLang === 'zh-CN' ? 'en-US' : 'zh-CN';
+        global.Core.setLanguage(next);
+        showNotification(`Language switched to ${next === 'en-US' ? 'English' : '中文'}`, 'info');
+        setTimeout(() => location.reload(), 300);
+      });
+
+    // v5.5.6: 移动端菜单
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const tabMenu = document.getElementById('tab-menu');
+    if (mobileMenuToggle && tabMenu) {
+      mobileMenuToggle.addEventListener('click', () => {
+        tabMenu.classList.toggle('show');
+      });
+      tabMenu.addEventListener('click', (e) => {
+        if (e.target.closest('.tab-btn')) {
+          tabMenu.classList.remove('show');
+        }
+      });
+    }
 
     window.addEventListener('hashchange', handleHashRoute);
 
     bindSplitters();
 
-    document.querySelectorAll('.tab-menu .tab-btn').forEach(btn => {
+    document.querySelectorAll('.tab-menu .tab-btn').forEach((btn) => {
       btn.addEventListener('click', () => switchTab(btn.dataset.tab));
     });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeAllDrawers();
     });
+  }
+
+  // v5.5.6: 会话过期检查与续签提示
+  let sessionCheckTimer = null;
+  async function checkSessionExpiry() {
+    try {
+      const resp = await api('/api/auth/me');
+      const u = resp && resp.data;
+      if (!u || !u.session || !u.session.expires_at) return;
+      const expiresAt = u.session.expires_at;
+      const threshold = u.session.refresh_threshold_ms || 24 * 3600 * 1000;
+      const remaining = expiresAt - Date.now();
+      if (remaining > 0 && remaining < threshold) {
+        // 避免重复提示
+        if (sessionStorage.getItem('aibridge_refresh_prompt')) return;
+        sessionStorage.setItem('aibridge_refresh_prompt', '1');
+        if (
+          await global.Core.openConfirm({
+            title: '会话即将过期',
+            message: `会话将在 ${Math.ceil(remaining / 60000)} 分钟后过期，是否立即续签？`,
+            confirmText: '立即续签'
+          })
+        ) {
+          await api('/api/auth/refresh', { method: 'POST' });
+          showNotification('会话已续签', 'success');
+          sessionStorage.removeItem('aibridge_refresh_prompt');
+        }
+      }
+    } catch (e) {
+      // 401 时 api 会自动跳转登录页
+    }
   }
 
   // ======== Init ========
@@ -612,9 +729,11 @@
     if (global.Plan) global.Plan.initPlan();
     if (global.Plan) global.Plan.initReportDrawer();
     if (global.Plan) global.Plan.startPlanReminderScheduler();
-    if (global.Overview) global.Overview.init();   // v5.2.1
-    loadUserBadge();      // v5.4.0
-    loadAppVersion();     // v5.5.1 动态版本号
+    if (global.Overview) global.Overview.init(); // v5.2.1
+    loadUserBadge(); // v5.4.0
+    loadAppVersion(); // v5.5.1 动态版本号
+    checkSessionExpiry(); // v5.5.6 立即检查一次
+    sessionCheckTimer = setInterval(checkSessionExpiry, 60 * 1000); // v5.5.6 每分钟检查
     bindEvents();
     applyColumnWidths();
     const hashTab = (location.hash.match(/^#tab\/(\w+)/) || [])[1];

@@ -18,15 +18,15 @@ import * as path from 'path';
 import * as os from 'os';
 
 export interface FsSuggestCandidate {
-  name: string;        // basename
-  path: string;        // 完整路径
+  name: string; // basename
+  path: string; // 完整路径
   isDir: boolean;
-  marker?: string;     // 项目标记（识别为代码项目时）
+  marker?: string; // 项目标记（识别为代码项目时）
 }
 
 export interface FsSuggestResult {
   prefix: string;
-  base: string;        // 父目录（补全的根）
+  base: string; // 父目录（补全的根）
   baseExists: boolean; // 父目录是否存在
   candidates: FsSuggestCandidate[];
 }
@@ -37,9 +37,19 @@ const MAX_SCAN_DEPTH = 1;
 
 /** 项目标记文件（与 project-presets 共用） */
 const PROJECT_MARKERS = [
-  '.git', 'package.json', 'pyproject.toml', 'setup.py', 'go.mod',
-  'Cargo.toml', 'pom.xml', 'build.gradle', 'build.gradle.kts',
-  'composer.json', 'Gemfile', 'mix.exs', 'project.godot'
+  '.git',
+  'package.json',
+  'pyproject.toml',
+  'setup.py',
+  'go.mod',
+  'Cargo.toml',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'composer.json',
+  'Gemfile',
+  'mix.exs',
+  'project.godot'
 ];
 
 /** 常见 dev 根目录（仅在 prefix 为空或 / 时提示） */
@@ -56,9 +66,21 @@ const COMMON_ROOTS = [
 
 /** 敏感目录黑名单（不返回这些目录下的子目录） */
 const SENSITIVE_DIRS = new Set([
-  '.ssh', '.gnupg', '.gpg', '.aws', '.azure', '.gcloud',
-  '.kube', '.docker', '.config/gh', '.npmrc', '.pypirc',
-  'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'
+  '.ssh',
+  '.gnupg',
+  '.gpg',
+  '.aws',
+  '.azure',
+  '.gcloud',
+  '.kube',
+  '.docker',
+  '.config/gh',
+  '.npmrc',
+  '.pypirc',
+  'id_rsa',
+  'id_dsa',
+  'id_ecdsa',
+  'id_ed25519'
 ]);
 
 /** 检测目录是否含项目标记 */
@@ -66,7 +88,9 @@ function detectMarker(dir: string): string | undefined {
   for (const m of PROJECT_MARKERS) {
     try {
       if (fs.existsSync(path.join(dir, m))) return m;
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
   return undefined;
 }
@@ -131,7 +155,9 @@ export function suggestPath(prefix: string): FsSuggestResult {
             isDir: true
           });
         }
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
     return {
       prefix: safePrefix,
@@ -161,7 +187,9 @@ export function suggestPath(prefix: string): FsSuggestResult {
   let baseExists = false;
   try {
     baseExists = fs.existsSync(base) && fs.statSync(base).isDirectory();
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   if (!baseExists) {
     return { prefix: safePrefix, base, baseExists: false, candidates: [] };
@@ -170,9 +198,7 @@ export function suggestPath(prefix: string): FsSuggestResult {
   // 列出 base 子目录，过滤以 query 开头的（大小写不敏感）
   const all = listSubdirs(base, MAX_CANDIDATES * 4);
   const lcQuery = query.toLowerCase();
-  const filtered = query
-    ? all.filter(c => c.name.toLowerCase().startsWith(lcQuery))
-    : all;
+  const filtered = query ? all.filter((c) => c.name.toLowerCase().startsWith(lcQuery)) : all;
   return {
     prefix: safePrefix,
     base,

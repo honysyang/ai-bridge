@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { getAppVersion } from './lib/version.js';
+import { SECRETS_FILE } from './lib/paths.js';
 
 import { healthRouter, storageRouter } from './routes/health.js';
 import { sessionRouter } from './routes/sessions.js';
@@ -33,6 +34,10 @@ import { requireAuth } from './middleware/auth.js';
 import { childLogger, logRequest } from './lib/logger.js';
 import { users } from './lib/users.js';
 import { runMigration, shouldMigrate } from './lib/sqlite-migrate.js';
+import { checkStartupConfig, logConfigCheck } from './lib/config-check.js';
+import { systemSettings } from './lib/settings.js';
+import { publicRateLimiter, authRateLimiter } from './lib/rate-limit-api.js';
+import { metrics } from './lib/metrics.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,16 +47,24 @@ const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws' });
 
-// v5.4.0: 信任 X-Forwarded-For 头（反代场景）
-app.set('trust proxy', true);
+// v5.5.6: 仅信任配置的代理，避免 X-Forwarded-For 伪造绕过本地认证
+// 默认值：loopback / linklocal / uniquelocal（即 127.0.0.1、169.254.x.x、10.x.x.x、172.16-31.x.x、192.168.x.x）
+// 公网部署时请显式设置 AIBRIDGE_TRUSTED_PROXIES 为你的反向代理 IP
+const TRUSTED_PROXIES = (process.env.AIBRIDGE_TRUSTED_PROXIES || 'loopback,linklocal,uniquelocal')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.set('trust proxy', TRUSTED_PROXIES);
 
 const clients = new Set<WebSocket>();
 app.set('wsClients', clients); // 暴露给 router 用（/health 读 WS 客户端数）
 
 // ======== 基础中间件 ========
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 限制请求体大小，防止过大 JSON 导致 DoS / 内存耗尽
+const BODY_LIMIT = process.env.AIBRIDGE_BODY_LIMIT || '10mb';
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
 
 // 调试：捕获所有 404 资源请求，方便排查前端加载问题
 app.use((req, res, next) => {
@@ -67,9 +80,15 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
+    const duration = Date.now() - start;
+    const route = req.route?.path || req.path;
+    const status = res.statusCode;
+    // Prometheus 指标
+    metrics.inc('http_requests_total', { method: req.method, route, status: String(status) });
+    metrics.observe('http_request_duration_seconds', { method: req.method, route }, duration / 1000);
     // 跳过心跳/健康检查的高频噪音
     if (req.path === '/api/heartbeat' || req.path === '/api/task/poll' || req.path === '/health') return;
-    logRequest(req.method, req.path, res.statusCode, Date.now() - start);
+    logRequest(req.method, req.path, status, duration);
   });
   next();
 });
@@ -86,7 +105,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || DEFAULT_ALLOWED_ORIGINS.join(','))
   .split(',')
-  .map(s => s.trim())
+  .map((s) => s.trim())
   .filter(Boolean);
 
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -96,8 +115,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     res.header('Vary', 'Origin');
     res.header('Access-Control-Allow-Credentials', 'true');
   } else if (!origin) {
-    // 同源请求（无 Origin header）放行
-    res.header('Access-Control-Allow-Origin', '*');
+    // 无 Origin 的请求通常是同源或非浏览器客户端，不设置 ACAO，由浏览器默认同源策略保护
+    // 如果需要支持无 Origin 的 API 调用，请显式加入 ALLOWED_ORIGINS
   }
   // 显式禁止的跨域 origin 不设置 ACAO header，由浏览器拦截
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
@@ -140,7 +159,12 @@ app.use(express.static(PUBLIC_DIR));
 app.get('/favicon.ico', (_req, res) => {
   res.set('Content-Type', 'image/png');
   res.set('Cache-Control', 'public, max-age=86400');
-  res.send(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=', 'base64'));
+  res.send(
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAen63NgAAAAASUVORK5CYII=',
+      'base64'
+    )
+  );
 });
 
 // ======== WebSocket ========
@@ -163,17 +187,29 @@ wss.on('connection', (ws) => {
 
 function broadcast(type: string, data: any) {
   const msg = JSON.stringify({ type, data });
-  clients.forEach(client => {
+  clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(msg);
     }
   });
 }
 
-taskQueue.on('task_added', (task) => broadcast('task_added', task));
-taskQueue.on('task_completed', (result) => broadcast('task_completed', result));
+taskQueue.on('task_added', (task) => {
+  broadcast('task_added', task);
+  metrics.inc('task_queue_operations_total', { operation: 'added' });
+});
+taskQueue.on('task_completed', (result) => {
+  broadcast('task_completed', result);
+  metrics.inc('task_queue_operations_total', { operation: 'completed' });
+});
+taskQueue.on('task_failed', (result) => {
+  metrics.inc('task_queue_operations_total', { operation: 'failed' });
+});
 taskQueue.on('log_added', (entry) => broadcast('log_added', entry));
-taskQueue.on('task_deleted', (task) => broadcast('task_deleted', { id: task.id }));
+taskQueue.on('task_deleted', (task) => {
+  broadcast('task_deleted', { id: task.id });
+  metrics.inc('task_queue_operations_total', { operation: 'deleted' });
+});
 
 // ======== Claw WebSocket Events ========
 //
@@ -187,11 +223,17 @@ export function attachClawListeners(adapter: any) {
   adapter.on('error', (err: Error) => broadcast('claw_error', { message: err.message }));
 }
 
+// Prometheus 指标端点
+app.get('/metrics', (_req, res) => {
+  res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(metrics.render());
+});
+
 // ======== 路由挂载（拆分子模块，详见 src/routes/*）========
 
 // v5.4.0: 业务 API 默认要求登录（本地访问 + 公开端点自动放行）
 // 必须放在 /api 路由挂载之前，否则后续 router 会先响应
-app.use('/api', requireAuth);
+app.use('/api', publicRateLimiter.middleware.bind(publicRateLimiter), requireAuth);
 
 // 健康 + 存储
 app.use('/health', healthRouter);
@@ -202,7 +244,7 @@ app.use('/api/heartbeat', heartbeatRouter);
 
 // 业务模块
 app.use('/api/sessions', sessionRouter);
-app.use('/api/fs', fsRouter);  // v5.4.5: 路径补全
+app.use('/api/fs', fsRouter); // v5.4.5: 路径补全
 app.use('/api/tasks', taskRouter);
 // /api/task/* (Trae Agent 长轮询、提交结果) 复用 taskRouter
 app.use('/api/task', taskRouter);
@@ -216,12 +258,36 @@ app.use('/api/overview', overviewRouter);
 app.use('/api/models', modelRouter);
 app.use('/api/system', systemRouter);
 // 认证路由（登录/登出/me 等）—— 内部部分端点（如 /api/auth/login）公开，其他要求登录
-app.use('/api/auth', authRouter);
+app.use('/api/auth', authRateLimiter.middleware.bind(authRateLimiter), authRouter);
 // 旧 weixin 路径兼容（前端不再使用）
 app.use('/api', legacyWeixinRouter);
 
 // 全局 stats（保留兼容老前端）
 app.get('/api/stats', (_req, res) => {
+  res.json({ success: true, data: taskQueue.getStats() });
+});
+
+// v5.5.6: API 版本化 —— /api/v1/* 与 /api/* 共享同一套路由
+// 未来破坏性变更可在 v1 路由内部做兼容，或新增 /api/v2/*
+app.use('/api/v1', requireAuth);
+app.use('/api/v1/storage', storageRouter);
+app.use('/api/v1/heartbeat', heartbeatRouter);
+app.use('/api/v1/sessions', sessionRouter);
+app.use('/api/v1/fs', fsRouter);
+app.use('/api/v1/tasks', taskRouter);
+app.use('/api/v1/task', taskRouter);
+app.use('/api/v1/context', contextRouter);
+app.use('/api/v1/logs', logRouter);
+app.use('/api/v1/kb', kbRouter);
+app.use('/api/v1/wf', workflowRouter);
+app.use('/api/v1/chat', chatRouter);
+app.use('/api/v1/claw', clawRouter);
+app.use('/api/v1/overview', overviewRouter);
+app.use('/api/v1/models', modelRouter);
+app.use('/api/v1/system', systemRouter);
+app.use('/api/v1/auth', authRateLimiter.middleware.bind(authRateLimiter), authRouter);
+app.use('/api/v1', legacyWeixinRouter);
+app.get('/api/v1/stats', (_req, res) => {
   res.json({ success: true, data: taskQueue.getStats() });
 });
 
@@ -238,22 +304,28 @@ app.use(errorHandler);
 
 // ======== Start ========
 
-export function startServer(port: number = 4567) {
+export async function startServer(port: number = 4567) {
+  // 启动前配置校验
+  const checkResult = checkStartupConfig();
+  logConfigCheck(checkResult);
+  if (!checkResult.ok) {
+    throw new Error('启动配置校验失败，请检查日志并修正环境变量');
+  }
+
   // 启动时从磁盘恢复数据
   const loadResult = storage.loadAll();
   // loadAll 之后激活 TaskQueue 的 ID 计数器（基于现有最大 ID 续编）
   taskQueue.initCounters();
   // loadAll 之后确保默认会话存在
-  sessionManager.ensureDefaultSession();
+  await sessionManager.ensureDefaultSession();
   // 确保默认管理员存在（首次启动写入 secrets.env）
   const adminInit = users.ensureDefaultAdmin();
   if (adminInit.created) {
     log.warn(`═══════════════════════════════════════════`);
     log.warn(`  ⚠️  默认管理员已创建`);
     log.warn(`  username: ${adminInit.username}`);
-    log.warn(`  password: ${adminInit.password}`);
-    log.warn(`  密码已写入 ~/.config/agent-canvas/secrets.env (chmod 600)`);
-    log.warn(`  本地访问自动放行；远程访问请用此密码登录`);
+    log.warn(`  password: <已写入 ${SECRETS_FILE}>`);
+    log.warn(`  请登录后尽快修改默认密码`);
     log.warn(`═══════════════════════════════════════════`);
   }
   // 加载知识库（如无 kb.jsonl 则写入示例数据）
@@ -288,7 +360,9 @@ export function startServer(port: number = 4567) {
     log.info('检测到 SQLite 为空且 JSONL 有数据，开始自动迁移...');
     try {
       const migResult = runMigration();
-      log.info(`SQLite 迁移完成: 任务 ${migResult.tasks}, 会话 ${migResult.sessions}, 日志 ${migResult.logs}, KB ${migResult.kb_items}, 工作流 ${migResult.workflows}, 用户 ${migResult.users} (${migResult.duration_ms}ms)`);
+      log.info(
+        `SQLite 迁移完成: 任务 ${migResult.tasks}, 会话 ${migResult.sessions}, 日志 ${migResult.logs}, KB ${migResult.kb_items}, 工作流 ${migResult.workflows}, 用户 ${migResult.users} (${migResult.duration_ms}ms)`
+      );
       if (migResult.errors.length > 0) {
         log.warn(`迁移部分失败: ${migResult.errors.join('; ')}`);
       }
@@ -305,11 +379,22 @@ export function startServer(port: number = 4567) {
     }
   });
 
+  // v5.5.6: 定时数据维护（自动备份 + 归档）
+  startMaintenanceScheduler();
+  // v5.5.6: 定时刷新 Prometheus 指标
+  setInterval(() => {
+    const stats = taskQueue.getStats();
+    metrics.set('task_queue_total', { status: 'pending' }, stats.pending);
+    metrics.set('task_queue_total', { status: 'processing' }, stats.processing);
+    metrics.set('task_queue_total', { status: 'completed' }, stats.completed);
+    metrics.set('task_queue_total', { status: 'failed' }, stats.failed);
+  }, 60 * 1000);
+
   server.listen(port, () => {
     taskQueue.addLog('success', 'bridge', `服务启动，端口 ${port}`);
     const cfg = clawConfig.get();
     log.info('═══════════════════════════════════════════');
-    log.info('  AI 智能体桥接器 v5.2.0 已启动（winston 日志已接入）');
+    log.info(`  AI 智能体桥接器 v${getAppVersion()} 已启动（winston 日志已接入）`);
     log.info('═══════════════════════════════════════════');
     log.info('  Web面板:   http://localhost:' + port);
     log.info('  HTTP API:  http://localhost:' + port + '/api');
@@ -317,11 +402,103 @@ export function startServer(port: number = 4567) {
     log.info('  日志目录:  logs/ai-bridge-YYYY-MM-DD.log');
     log.info('  级别:      ' + (process.env.LOG_LEVEL || 'info') + ' (LOG_LEVEL 环境变量可调)');
     log.info('═══════════════════════════════════════════');
-    log.info(`数据恢复: 任务 ${loadResult.tasks} | 日志 ${loadResult.logs} | 会话 ${loadResult.sessions}` +
-      (loadResult.corrupted > 0 ? ` | ⚠️ 损坏 ${loadResult.corrupted}` : ''));
+    log.info(
+      `数据恢复: 任务 ${loadResult.tasks} | 日志 ${loadResult.logs} | 会话 ${loadResult.sessions}` +
+        (loadResult.corrupted > 0 ? ` | ⚠️ 损坏 ${loadResult.corrupted}` : '')
+    );
     log.info(`Claw: ${cfg.enabled ? '✅ 启用' : '❌ 禁用'} | auto_reply=${cfg.auto_reply}`);
     log.info(`CORS 白名单: ${ALLOWED_ORIGINS.join(', ')}`);
   });
+}
+
+/**
+ * 定时数据维护：
+ *   - 每天 04:00 自动备份
+ *   - 每天 04:30 自动归档已完成任务
+ *   - 每周日 05:00 自动 compact
+ */
+function startMaintenanceScheduler(): void {
+  const MS_PER_MIN = 60 * 1000;
+  const now = new Date();
+  const nextRun = (targetHour: number, targetMin: number) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), targetHour, targetMin, 0, 0);
+    if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+    return d.getTime() - now.getTime();
+  };
+
+  setTimeout(
+    () => {
+      storage
+        .backup()
+        .then((r) => {
+          storage.cleanupBackups(10);
+          taskQueue.addLog('success', 'system', `[schedule] 自动备份完成: ${r.files.length} 个文件`);
+        })
+        .catch((e) => taskQueue.addLog('error', 'system', `[schedule] 自动备份失败: ${e.message}`));
+      setInterval(
+        () => {
+          storage
+            .backup()
+            .then((r) => {
+              storage.cleanupBackups(10);
+              taskQueue.addLog('success', 'system', `[schedule] 自动备份完成: ${r.files.length} 个文件`);
+            })
+            .catch((e) => taskQueue.addLog('error', 'system', `[schedule] 自动备份失败: ${e.message}`));
+        },
+        24 * 60 * MS_PER_MIN
+      );
+    },
+    nextRun(4, 0)
+  );
+
+  setTimeout(
+    () => {
+      const days = systemSettings.get().tasks.archive_after_days || 7;
+      storage
+        .archiveCompletedTasks(days)
+        .then((r) => {
+          if (r.archived > 0) taskQueue.addLog('success', 'system', `[schedule] 自动归档完成: ${r.archived} 个任务`);
+        })
+        .catch((e) => taskQueue.addLog('error', 'system', `[schedule] 自动归档失败: ${e.message}`));
+      setInterval(
+        () => {
+          const d = systemSettings.get().tasks.archive_after_days || 7;
+          storage
+            .archiveCompletedTasks(d)
+            .then((r) => {
+              if (r.archived > 0)
+                taskQueue.addLog('success', 'system', `[schedule] 自动归档完成: ${r.archived} 个任务`);
+            })
+            .catch((e) => taskQueue.addLog('error', 'system', `[schedule] 自动归档失败: ${e.message}`));
+        },
+        24 * 60 * MS_PER_MIN
+      );
+    },
+    nextRun(4, 30)
+  );
+
+  setTimeout(
+    () => {
+      storage
+        .compact()
+        .then((r) => {
+          taskQueue.addLog('success', 'system', `[schedule] 自动压缩完成: 任务 ${r.tasks}, 会话 ${r.sessions}`);
+        })
+        .catch((e) => taskQueue.addLog('error', 'system', `[schedule] 自动压缩失败: ${e.message}`));
+      setInterval(
+        () => {
+          storage
+            .compact()
+            .then((r) => {
+              taskQueue.addLog('success', 'system', `[schedule] 自动压缩完成: 任务 ${r.tasks}, 会话 ${r.sessions}`);
+            })
+            .catch((e) => taskQueue.addLog('error', 'system', `[schedule] 自动压缩失败: ${e.message}`));
+        },
+        7 * 24 * 60 * MS_PER_MIN
+      );
+    },
+    nextRun(5, 0)
+  );
 }
 
 // ======== KB 关联示例数据 ========
@@ -335,7 +512,7 @@ function seedKBLinksIfEmpty(): void {
   if (items.length < 2) return;
 
   // 按 title 找示例条目
-  const find = (kw: string) => items.find(i => i.title.includes(kw));
+  const find = (kw: string) => items.find((i) => i.title.includes(kw));
   const maotai = find('茅台');
   const price = find('查茅台价格');
   const weather = find('查北京天气');

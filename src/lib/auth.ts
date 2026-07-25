@@ -20,15 +20,16 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { childLogger } from './logger.js';
 import { users, type User, type UserRole } from './users.js';
+import { SECRETS_FILE } from './paths.js';
 
 const log = childLogger({ module: 'auth' });
 
-const DEFAULT_TTL_SEC = 7 * 24 * 3600;       // 7 天
-const REFRESH_THRESHOLD_SEC = 24 * 3600;     // 剩余 < 1 天时允许续签
+const DEFAULT_TTL_SEC = 7 * 24 * 3600; // 7 天
+const REFRESH_THRESHOLD_SEC = 24 * 3600; // 剩余 < 1 天时允许续签
 
 let SECRET: Buffer | null = null;
 
-function loadOrCreateSecret(): Buffer {
+export function loadOrCreateSecret(): Buffer {
   if (SECRET) return SECRET;
 
   // 1) 优先从环境变量读
@@ -41,9 +42,8 @@ function loadOrCreateSecret(): Buffer {
 
   // 2) 从 secrets.env 文件读
   try {
-    const secretsFile = path.join(process.env.HOME || '/root', '.config', 'agent-canvas', 'secrets.env');
-    if (fs.existsSync(secretsFile)) {
-      const content = fs.readFileSync(secretsFile, 'utf-8');
+    if (fs.existsSync(SECRETS_FILE)) {
+      const content = fs.readFileSync(SECRETS_FILE, 'utf-8');
       const m = /^AIBRIDGE_JWT_SECRET=(.+)$/m.exec(content);
       if (m && m[1].trim().length >= 32) {
         SECRET = Buffer.from(m[1].trim(), 'utf-8');
@@ -58,13 +58,12 @@ function loadOrCreateSecret(): Buffer {
   // 3) 自动生成并写入 secrets.env
   const newSecret = crypto.randomBytes(48).toString('base64url');
   try {
-    const secretsDir = path.join(process.env.HOME || '/root', '.config', 'agent-canvas');
+    const secretsDir = path.dirname(SECRETS_FILE);
     if (!fs.existsSync(secretsDir)) {
       fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
     }
-    const secretsFile = path.join(secretsDir, 'secrets.env');
     const line = `\n# JWT 签名密钥（自动生成，${new Date().toISOString()}）\nAIBRIDGE_JWT_SECRET=${newSecret}\n`;
-    fs.appendFileSync(secretsFile, line, { mode: 0o600 });
+    fs.appendFileSync(SECRETS_FILE, line, { mode: 0o600 });
     log.info(`JWT 密钥已生成并写入 secrets.env（chmod 600）`);
   } catch (e: any) {
     log.warn(`无法写入 secrets.env: ${e.message}，密钥仅存在于内存（重启后失效）`);
@@ -82,19 +81,15 @@ function b64urlDecode(s: string): Buffer {
 }
 
 function sign(payload: string): string {
-  return b64url(
-    crypto.createHmac('sha256', loadOrCreateSecret())
-      .update(payload)
-      .digest()
-  );
+  return b64url(crypto.createHmac('sha256', loadOrCreateSecret()).update(payload).digest());
 }
 
 export interface AuthPayload {
-  sub: string;          // user id
+  sub: string; // user id
   username: string;
   role: string;
-  iat: number;          // issued at (sec)
-  exp: number;          // expires at (sec)
+  iat: number; // issued at (sec)
+  exp: number; // expires at (sec)
 }
 
 export interface AuthResult {
@@ -102,7 +97,10 @@ export interface AuthResult {
   payload: AuthPayload;
 }
 
-export function signToken(user: User, ttlSec = DEFAULT_TTL_SEC): { token: string; expiresAt: number; payload: AuthPayload } {
+export function signToken(
+  user: User,
+  ttlSec = DEFAULT_TTL_SEC
+): { token: string; expiresAt: number; payload: AuthPayload } {
   const now = Math.floor(Date.now() / 1000);
   const payload: AuthPayload = {
     sub: user.id,

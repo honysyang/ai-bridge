@@ -27,136 +27,200 @@ import { asyncHandler } from '../middleware/error.js';
 export const kbRouter = Router();
 
 // ======== 列表（categories + items + links）=======
-kbRouter.get('/', asyncHandler((_req, res) => {
-  const data = kbStore.list();
-  const links = kbLinkStore.list();
-  res.json({ success: true, data: { ...data, links: links.links } });
-}));
+// v5.5.6: 支持 items 分页 / 搜索 / 分类过滤
+kbRouter.get(
+  '/',
+  asyncHandler((req, res) => {
+    const data = kbStore.list();
+    const links = kbLinkStore.list();
+
+    let items = data.items;
+    const q = ((req.query.search as string) || '').trim().toLowerCase();
+    const catId = (req.query.category_id as string) || '';
+    if (catId) {
+      items = items.filter((i) => i.category_id === catId);
+    }
+    if (q) {
+      items = items.filter(
+        (i) =>
+          (i.title || '').toLowerCase().includes(q) ||
+          (i.body || '').toLowerCase().includes(q) ||
+          (i.tags || []).some((t) => (t || '').toLowerCase().includes(q))
+      );
+    }
+
+    const total = items.length;
+    const limit = Math.max(1, Math.min(500, parseInt(req.query.limit as string, 10) || 100));
+    const offset = Math.max(0, parseInt(req.query.offset as string, 10) || 0);
+    const paginatedItems = items.slice(offset, offset + limit);
+
+    res.json({
+      success: true,
+      data: { categories: data.categories, items: paginatedItems, links: links.links },
+      meta: { total_count: total, limit, offset, has_more: offset + paginatedItems.length < total }
+    });
+  })
+);
 
 // ======== 演示数据追加 =====
-kbRouter.post('/seed-demo', asyncHandler((_req, res) => {
-  const result = kbStore.seedDemo();
-  const all = kbStore.list();
-  const linksResult = kbLinkStore.seedDemo(all.items);
-  taskQueue.addLog(
-    'info',
-    'kb',
-    `KB 演示追加: ${result.categories_added} 分类 / ${result.items_added} 条目 / ${linksResult.links_added} 关联`
-  );
-  res.json({
-    success: true,
-    data: {
-      categories_added: result.categories_added,
-      items_added: result.items_added,
-      links_added: linksResult.links_added,
-      links_skipped: linksResult.links_skipped
-    },
-    message: `新增 ${result.categories_added} 分类 / ${result.items_added} 条目 / ${linksResult.links_added} 关联`
-  });
-}));
+kbRouter.post(
+  '/seed-demo',
+  asyncHandler((_req, res) => {
+    const result = kbStore.seedDemo();
+    const all = kbStore.list();
+    const linksResult = kbLinkStore.seedDemo(all.items);
+    taskQueue.addLog(
+      'info',
+      'kb',
+      `KB 演示追加: ${result.categories_added} 分类 / ${result.items_added} 条目 / ${linksResult.links_added} 关联`
+    );
+    res.json({
+      success: true,
+      data: {
+        categories_added: result.categories_added,
+        items_added: result.items_added,
+        links_added: linksResult.links_added,
+        links_skipped: linksResult.links_skipped
+      },
+      message: `新增 ${result.categories_added} 分类 / ${result.items_added} 条目 / ${linksResult.links_added} 关联`
+    });
+  })
+);
 
 // ======== 分类 CRUD =====
-kbRouter.post('/categories', asyncHandler((req, res) => {
-  const { name, icon } = req.body || {};
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    return res.status(400).json({ success: false, error: 'name 必填且非空' });
-  }
-  const cat = kbStore.createCategory(name, icon);
-  taskQueue.addLog('info', 'kb', `KB 分类创建: ${cat.id} (${cat.name})`, { kb_id: cat.id });
-  res.json({ success: true, data: cat });
-}));
+kbRouter.post(
+  '/categories',
+  asyncHandler((req, res) => {
+    const { name, icon } = req.body || {};
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ success: false, error: 'name 必填且非空' });
+    }
+    const cat = kbStore.createCategory(name, icon);
+    taskQueue.addLog('info', 'kb', `KB 分类创建: ${cat.id} (${cat.name})`, { kb_id: cat.id });
+    res.json({ success: true, data: cat });
+  })
+);
 
-kbRouter.patch('/categories/:id', asyncHandler((req, res) => {
-  const updated = kbStore.updateCategory(req.params.id, req.body || {});
-  if (!updated) {
-    return res.status(404).json({ success: false, error: '分类不存在' });
-  }
-  res.json({ success: true, data: updated });
-}));
+kbRouter.patch(
+  '/categories/:id',
+  asyncHandler((req, res) => {
+    const updated = kbStore.updateCategory(req.params.id, req.body || {});
+    if (!updated) {
+      return res.status(404).json({ success: false, error: '分类不存在' });
+    }
+    res.json({ success: true, data: updated });
+  })
+);
 
-kbRouter.delete('/categories/:id', asyncHandler((req, res) => {
-  const ok = kbStore.deleteCategory(req.params.id);
-  if (!ok) {
-    return res.status(404).json({ success: false, error: '分类不存在' });
-  }
-  taskQueue.addLog('warn', 'kb', `KB 分类删除: ${req.params.id}`, { kb_id: req.params.id });
-  res.json({ success: true, data: { id: req.params.id } });
-}));
+kbRouter.delete(
+  '/categories/:id',
+  asyncHandler((req, res) => {
+    const ok = kbStore.deleteCategory(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ success: false, error: '分类不存在' });
+    }
+    taskQueue.addLog('warn', 'kb', `KB 分类删除: ${req.params.id}`, { kb_id: req.params.id });
+    res.json({ success: true, data: { id: req.params.id } });
+  })
+);
 
 // ======== 条目 CRUD =====
-kbRouter.post('/items', asyncHandler((req, res) => {
-  const { category_id, title, body, tags } = req.body || {};
-  if (!title || typeof title !== 'string' || !body || typeof body !== 'string') {
-    return res.status(400).json({ success: false, error: 'title / body 必填且非空' });
-  }
-  const item = kbStore.createItem(category_id || '__orphan__', title, body, tags);
-  if (!item) {
-    return res.status(400).json({ success: false, error: 'category_id 不存在' });
-  }
-  taskQueue.addLog('info', 'kb', `KB 条目创建: ${item.id} (${item.title})`, { kb_id: item.id });
-  res.json({ success: true, data: item });
-}));
+kbRouter.post(
+  '/items',
+  asyncHandler((req, res) => {
+    const { category_id, title, body, tags } = req.body || {};
+    if (!title || typeof title !== 'string' || !body || typeof body !== 'string') {
+      return res.status(400).json({ success: false, error: 'title / body 必填且非空' });
+    }
+    const item = kbStore.createItem(category_id || '__orphan__', title, body, tags);
+    if (!item) {
+      return res.status(400).json({ success: false, error: 'category_id 不存在' });
+    }
+    taskQueue.addLog('info', 'kb', `KB 条目创建: ${item.id} (${item.title})`, { kb_id: item.id });
+    res.json({ success: true, data: item });
+  })
+);
 
-kbRouter.patch('/items/:id', asyncHandler((req, res) => {
-  const updated = kbStore.updateItem(req.params.id, req.body || {});
-  if (!updated) {
-    return res.status(404).json({ success: false, error: '条目不存在' });
-  }
-  res.json({ success: true, data: updated });
-}));
+kbRouter.patch(
+  '/items/:id',
+  asyncHandler((req, res) => {
+    const updated = kbStore.updateItem(req.params.id, req.body || {});
+    if (!updated) {
+      return res.status(404).json({ success: false, error: '条目不存在' });
+    }
+    res.json({ success: true, data: updated });
+  })
+);
 
-kbRouter.delete('/items/:id', asyncHandler((req, res) => {
-  const id = req.params.id;
-  const ok = kbStore.deleteItem(id);
-  if (!ok) {
-    return res.status(404).json({ success: false, error: '条目不存在' });
-  }
-  const cascaded = kbLinkStore.cascadeDeleteForItem(id);
-  taskQueue.addLog('warn', 'kb', `KB 条目删除: ${id}`, { kb_id: id, cascaded_links: cascaded });
-  res.json({ success: true, data: { id, cascaded_links: cascaded } });
-}));
+kbRouter.delete(
+  '/items/:id',
+  asyncHandler((req, res) => {
+    const id = req.params.id;
+    const ok = kbStore.deleteItem(id);
+    if (!ok) {
+      return res.status(404).json({ success: false, error: '条目不存在' });
+    }
+    const cascaded = kbLinkStore.cascadeDeleteForItem(id);
+    taskQueue.addLog('warn', 'kb', `KB 条目删除: ${id}`, { kb_id: id, cascaded_links: cascaded });
+    res.json({ success: true, data: { id, cascaded_links: cascaded } });
+  })
+);
 
 // ======== 关联（知识图谱）=======
-kbRouter.get('/links', asyncHandler((req, res) => {
-  const itemId = req.query.item_id as string | undefined;
-  const data = itemId ? { links: kbLinkStore.getForItem(itemId) } : kbLinkStore.list();
-  res.json({ success: true, data: { ...data, total: data.links.length } });
-}));
+kbRouter.get(
+  '/links',
+  asyncHandler((req, res) => {
+    const itemId = req.query.item_id as string | undefined;
+    const data = itemId ? { links: kbLinkStore.getForItem(itemId) } : kbLinkStore.list();
+    res.json({ success: true, data: { ...data, total: data.links.length } });
+  })
+);
 
-kbRouter.post('/links/seed-demo', asyncHandler((_req, res) => {
-  const all = kbStore.list();
-  const result = kbLinkStore.seedDemo(all.items);
-  taskQueue.addLog('info', 'kb', `KB 关联演示: 新增 ${result.links_added} 条，跳过 ${result.links_skipped} 条`);
-  res.json({ success: true, data: result, message: `新增 ${result.links_added} 条关联` });
-}));
+kbRouter.post(
+  '/links/seed-demo',
+  asyncHandler((_req, res) => {
+    const all = kbStore.list();
+    const result = kbLinkStore.seedDemo(all.items);
+    taskQueue.addLog('info', 'kb', `KB 关联演示: 新增 ${result.links_added} 条，跳过 ${result.links_skipped} 条`);
+    res.json({ success: true, data: result, message: `新增 ${result.links_added} 条关联` });
+  })
+);
 
-kbRouter.post('/links', asyncHandler((req, res) => {
-  const { source_id, target_id, type, label } = req.body || {};
-  if (!source_id || !target_id) {
-    return res.status(400).json({ success: false, error: 'source_id 和 target_id 必填' });
-  }
-  if (!kbStore.getItem(source_id)) {
-    return res.status(400).json({ success: false, error: `源条目不存在: ${source_id}` });
-  }
-  if (!kbStore.getItem(target_id)) {
-    return res.status(400).json({ success: false, error: `目标条目不存在: ${target_id}` });
-  }
-  const result = kbLinkStore.create(source_id, target_id, type || 'related', label);
-  if ('error' in result) {
-    return res.status(400).json({ success: false, error: result.error });
-  }
-  taskQueue.addLog('info', 'kb', `KB 关联创建: ${result.source_id} → ${result.target_id} (${result.type})`, { link_id: result.id });
-  res.json({ success: true, data: result });
-}));
+kbRouter.post(
+  '/links',
+  asyncHandler((req, res) => {
+    const { source_id, target_id, type, label } = req.body || {};
+    if (!source_id || !target_id) {
+      return res.status(400).json({ success: false, error: 'source_id 和 target_id 必填' });
+    }
+    if (!kbStore.getItem(source_id)) {
+      return res.status(400).json({ success: false, error: `源条目不存在: ${source_id}` });
+    }
+    if (!kbStore.getItem(target_id)) {
+      return res.status(400).json({ success: false, error: `目标条目不存在: ${target_id}` });
+    }
+    const result = kbLinkStore.create(source_id, target_id, type || 'related', label);
+    if ('error' in result) {
+      return res.status(400).json({ success: false, error: result.error });
+    }
+    taskQueue.addLog('info', 'kb', `KB 关联创建: ${result.source_id} → ${result.target_id} (${result.type})`, {
+      link_id: result.id
+    });
+    res.json({ success: true, data: result });
+  })
+);
 
-kbRouter.delete('/links/:id', asyncHandler((req, res) => {
-  const ok = kbLinkStore.delete(req.params.id);
-  if (!ok) {
-    return res.status(404).json({ success: false, error: '关联不存在' });
-  }
-  taskQueue.addLog('warn', 'kb', `KB 关联删除: ${req.params.id}`);
-  res.json({ success: true, data: { id: req.params.id } });
-}));
+kbRouter.delete(
+  '/links/:id',
+  asyncHandler((req, res) => {
+    const ok = kbLinkStore.delete(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ success: false, error: '关联不存在' });
+    }
+    taskQueue.addLog('warn', 'kb', `KB 关联删除: ${req.params.id}`);
+    res.json({ success: true, data: { id: req.params.id } });
+  })
+);
 
 // ======== v5.5.2: RAG 检索 ========
 //
@@ -167,48 +231,51 @@ kbRouter.delete('/links/:id', asyncHandler((req, res) => {
 //   format='both'            → items + context 都返回
 //
 // 注意：必须在 :id 静态路径之后注册（但本路由只有 /search 一个子路径）
-kbRouter.post('/search', asyncHandler((req, res) => {
-  const {
-    query,
-    topK = 3,
-    minScore = 1,
-    maxBodyChars = 200,
-    includeArchived = false,
-    format = 'both'
-  } = req.body || {};
+kbRouter.post(
+  '/search',
+  asyncHandler((req, res) => {
+    const {
+      query,
+      topK = 3,
+      minScore = 1,
+      maxBodyChars = 200,
+      includeArchived = false,
+      format = 'both'
+    } = req.body || {};
 
-  if (!query || typeof query !== 'string' || !query.trim()) {
-    return res.status(400).json({ success: false, error: 'query 必填且非空' });
-  }
-  const opts = {
-    topK: Math.min(Math.max(parseInt(String(topK)) || 3, 1), 20),
-    minScore: Math.max(parseInt(String(minScore)) || 1, 0),
-    maxBodyChars: Math.min(Math.max(parseInt(String(maxBodyChars)) || 200, 50), 2000),
-    includeArchived: !!includeArchived
-  };
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return res.status(400).json({ success: false, error: 'query 必填且非空' });
+    }
+    const opts = {
+      topK: Math.min(Math.max(parseInt(String(topK)) || 3, 1), 20),
+      minScore: Math.max(parseInt(String(minScore)) || 1, 0),
+      maxBodyChars: Math.min(Math.max(parseInt(String(maxBodyChars)) || 200, 50), 2000),
+      includeArchived: !!includeArchived
+    };
 
-  const items = searchKB(query.trim(), opts);
-  const context = formatKBContextForPrompt(items);
+    const items = searchKB(query.trim(), opts);
+    const context = formatKBContextForPrompt(items);
 
-  const data: any = {
-    query: query.trim(),
-    hit_count: items.length,
-    options: opts
-  };
-  if (format === 'items' || format === 'both') {
-    data.items = items.map(it => ({
-      id: it.id,
-      category_id: it.category_id,
-      category_name: it.category_name,
-      title: it.title,
-      body_preview: it.body_preview,
-      tags: it.tags,
-      score: it.score,
-      matched_keywords: it.matched_keywords
-    }));
-  }
-  if (format === 'context' || format === 'both') {
-    data.context = context;
-  }
-  res.json({ success: true, data });
-}));
+    const data: any = {
+      query: query.trim(),
+      hit_count: items.length,
+      options: opts
+    };
+    if (format === 'items' || format === 'both') {
+      data.items = items.map((it) => ({
+        id: it.id,
+        category_id: it.category_id,
+        category_name: it.category_name,
+        title: it.title,
+        body_preview: it.body_preview,
+        tags: it.tags,
+        score: it.score,
+        matched_keywords: it.matched_keywords
+      }));
+    }
+    if (format === 'context' || format === 'both') {
+      data.context = context;
+    }
+    res.json({ success: true, data });
+  })
+);

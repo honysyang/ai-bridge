@@ -15,7 +15,7 @@ import { taskQueue } from '../task-queue.js';
 class ClawManager {
   private adapter: ClawAdapter | null = null;
   private bridge: MessageBridge | null = null;
-  private idleNotifier: IdleNotifier | null = null;   // v5.5.0
+  private idleNotifier: IdleNotifier | null = null; // v5.5.0
 
   /**
    * 启动 claw（由 server.ts.startServer 调用）
@@ -59,7 +59,9 @@ class ClawManager {
     if (!this.adapter) return;
     try {
       await this.adapter.stop();
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     this.bridge?.destroy();
     this.bridge = null;
     this.adapter = null;

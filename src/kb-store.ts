@@ -12,15 +12,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { DATA_DIR } from './lib/paths.js';
 import { EventEmitter } from 'events';
-import {
-  KBEntry,
-  KBCategory,
-  KBItem,
-  KBListResponse
-} from './kb-types.js';
+import { KBEntry, KBCategory, KBItem, KBListResponse } from './kb-types.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const KB_FILE = path.join(DATA_DIR, 'kb.jsonl');
 
 // ======== Op Types ========
@@ -66,7 +61,10 @@ export class KBStore extends EventEmitter {
       return { categories: this.categories.size, items: this.items.size, seeded: true, corrupted: 0 };
     }
 
-    const lines = fs.readFileSync(KB_FILE, 'utf-8').split('\n').filter(l => l.trim());
+    const lines = fs
+      .readFileSync(KB_FILE, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim());
     let corrupted = 0;
     for (const line of lines) {
       try {
@@ -111,16 +109,20 @@ export class KBStore extends EventEmitter {
 
   list(): KBListResponse {
     const categories = Array.from(this.categories.values())
-      .filter(c => !c.archived)
+      .filter((c) => !c.archived)
       .sort((a, b) => a.order - b.order || a.created_at - b.created_at);
     const items = Array.from(this.items.values())
-      .filter(i => !i.archived)
+      .filter((i) => !i.archived)
       .sort((a, b) => a.order - b.order || a.created_at - b.created_at);
     return { categories, items, total: categories.length + items.length };
   }
 
-  getCategory(id: string): KBCategory | undefined { return this.categories.get(id); }
-  getItem(id: string): KBItem | undefined { return this.items.get(id); }
+  getCategory(id: string): KBCategory | undefined {
+    return this.categories.get(id);
+  }
+  getItem(id: string): KBItem | undefined {
+    return this.items.get(id);
+  }
 
   // ======== Mutations ========
 
@@ -187,7 +189,10 @@ export class KBStore extends EventEmitter {
       category_id: categoryId,
       title: title.trim().slice(0, 64),
       body: body.trim().slice(0, 4000),
-      tags: tags.slice(0, 8).map(t => t.trim()).filter(Boolean),
+      tags: tags
+        .slice(0, 8)
+        .map((t) => t.trim())
+        .filter(Boolean),
       order: this.itemOrder,
       created_at: now,
       updated_at: now
@@ -198,7 +203,10 @@ export class KBStore extends EventEmitter {
     return item;
   }
 
-  updateItem(id: string, patch: { category_id?: string; title?: string; body?: string; tags?: string[] }): KBItem | null {
+  updateItem(
+    id: string,
+    patch: { category_id?: string; title?: string; body?: string; tags?: string[] }
+  ): KBItem | null {
     const cur = this.items.get(id);
     if (!cur) return null;
     const ts = Date.now();
@@ -207,7 +215,14 @@ export class KBStore extends EventEmitter {
       ...(patch.category_id !== undefined ? { category_id: patch.category_id } : {}),
       ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 64) } : {}),
       ...(patch.body !== undefined ? { body: patch.body.trim().slice(0, 4000) } : {}),
-      ...(patch.tags !== undefined ? { tags: patch.tags.slice(0, 8).map(t => t.trim()).filter(Boolean) } : {}),
+      ...(patch.tags !== undefined
+        ? {
+            tags: patch.tags
+              .slice(0, 8)
+              .map((t) => t.trim())
+              .filter(Boolean)
+          }
+        : {}),
       updated_at: ts
     };
     this.appendOp({ op: 'update', id, patch, ts });
@@ -256,98 +271,173 @@ export class KBStore extends EventEmitter {
 
     // ===== 6 个分类 =====
     const cPrompt = cat('Prompt 模板', '📝');
-    const cFAQ    = cat('常见问答', '❓');
-    const cBiz    = cat('业务知识', '📚');
-    const cSales  = cat('销售场景', '💰');
-    const cFin    = cat('财务运营', '💼');
-    const cEng    = cat('工程实践', '🔧');
+    const cFAQ = cat('常见问答', '❓');
+    const cBiz = cat('业务知识', '📚');
+    const cSales = cat('销售场景', '💰');
+    const cFin = cat('财务运营', '💼');
+    const cEng = cat('工程实践', '🔧');
 
     // ===== Prompt 模板 =====
-    item(cPrompt, '查茅台价格',
+    item(
+      cPrompt,
+      '查茅台价格',
       '请帮我查询茅台的当前价格：1) 贵州茅台股票（600519）当前股价、当日涨跌幅、成交量；2) 飞天茅台 500ml 53度 i 茅台零售价；3) 拼多多/京东百亿补贴价（可选）。结果用表格输出。',
-      ['股票', '零售', '茅台']);
-    item(cPrompt, '查北京天气',
+      ['股票', '零售', '茅台']
+    );
+    item(
+      cPrompt,
+      '查北京天气',
       '查询北京今天的天气：当前实况（温/湿/风）、今日最高最低、是否降雨、未来 3 天趋势。文末给一句穿衣/出行建议。',
-      ['天气', '生活']);
-    item(cPrompt, '销售月报模板',
+      ['天气', '生活']
+    );
+    item(
+      cPrompt,
+      '销售月报模板',
       '请基于本月销售数据生成月报：1) 总销售额与环比/同比；2) TOP 5 商品 + TOP 5 客户；3) 各品类占比饼图（用 markdown 表格代替）；4) 异常点（同比 >±30%）说明。',
-      ['报告', '分析', '销售']);
-    item(cPrompt, '代码重构',
+      ['报告', '分析', '销售']
+    );
+    item(
+      cPrompt,
+      '代码重构',
       '请重构当前文件，重点关注：1) 显式状态机替代隐式分支；2) 单遍 O(N) 替代多次 filter；3) JSDoc 公共 API 文档；4) 错误处理边界检查。',
-      ['工程', '重构']);
-    item(cPrompt, '周报生成器',
+      ['工程', '重构']
+    );
+    item(
+      cPrompt,
+      '周报生成器',
       '基于本周工作内容生成周报：本周完成（按重要性排序）、下周计划、风险与求助。要求不超过 500 字，每条 bullet 不超过 30 字。',
-      ['周报', '总结']);
-    item(cPrompt, '告警分析模板',
+      ['周报', '总结']
+    );
+    item(
+      cPrompt,
+      '告警分析模板',
       '告警内容：{alert}。请按结构分析：1) 影响面（用户/服务/数据）；2) 紧急程度（P0/P1/P2）；3) 根因假设（至少 3 个）；4) 建议处置步骤。',
-      ['运维', '告警', '应急']);
+      ['运维', '告警', '应急']
+    );
 
     // ===== 常见问答 =====
-    item(cFAQ, 'ai-bridge 如何启动？',
+    item(
+      cFAQ,
+      'ai-bridge 如何启动？',
       '在 /home/kali/ai-bridge 目录下运行 `npm run dev`（自动清理 4567 端口的旧进程），服务默认监听 4567 端口，UI 访问 http://localhost:4567。',
-      ['入门', '启动']);
-    item(cFAQ, '数据存储在哪里？',
+      ['入门', '启动']
+    );
+    item(
+      cFAQ,
+      '数据存储在哪里？',
       '所有数据以 JSONL append-only 格式存储在 data/ 目录：tasks.jsonl（任务）、logs.jsonl（日志）、sessions.jsonl（会话）、kb.jsonl（知识库）、kb_links.jsonl（关联）、wf.jsonl（工作流）。',
-      ['存储', 'JSONL']);
-    item(cFAQ, '如何查看任务历史？',
+      ['存储', 'JSONL']
+    );
+    item(
+      cFAQ,
+      '如何查看任务历史？',
       '访问 GET /api/tasks?limit=50 或在 UI 中点击任意会话查看该会话下的所有任务。WebSocket 实时推送状态变更（事件类型: task:created / task:updated）。',
-      ['API', '历史']);
-    item(cFAQ, '如何重置演示数据？',
+      ['API', '历史']
+    );
+    item(
+      cFAQ,
+      '如何重置演示数据？',
       'KB: POST /api/kb/seed-demo  |  WF: POST /api/wf/seed-demo（均为追加模式，按 title 查重不会重复）。前端工具栏"➕ 演示"按钮一键调用。',
-      ['演示', 'API']);
+      ['演示', 'API']
+    );
 
     // ===== 业务知识 =====
-    item(cBiz, '茅台 600519',
+    item(
+      cBiz,
+      '茅台 600519',
       '贵州茅台股票代码 600519（上交所），总市值约 1.6 万亿。i 茅台平台零售价 1639 元/瓶（500ml 53度）。拳头产品：飞天茅台、五星茅台、茅台 1935。',
-      ['股票', '茅台', '百科']);
-    item(cBiz, 'iLink 微信机器人',
+      ['股票', '茅台', '百科']
+    );
+    item(
+      cBiz,
+      'iLink 微信机器人',
       '微信 iLink 机器人通过 webhook 与 ai-bridge 通信，扫码登录后 wxid 形如 `xxx@im.bot`。支持文本/图片/视频消息收发，群聊 @消息会自动创建任务。',
-      ['微信', '机器人', '集成']);
-    item(cBiz, 'JSONL 事件流',
+      ['微信', '机器人', '集成']
+    );
+    item(
+      cBiz,
+      'JSONL 事件流',
       'JSONL（JSON Lines）是一种每行一个独立 JSON 对象的存储格式，便于追加写入和流式读取。ai-bridge 全程使用，所有变更都是可追溯的事件。',
-      ['存储', '格式', '架构']);
-    item(cBiz, 'Cytoscape.js 知识图谱',
+      ['存储', '格式', '架构']
+    );
+    item(
+      cBiz,
+      'Cytoscape.js 知识图谱',
       'Cytoscape.js 是一款专业图谱可视化库，支持 cose/dagre/circle/concentric 等布局算法，提供拖拽/缩放/事件 API。ai-bridge 知识图谱用 3.30.4 版本。',
-      ['图谱', '可视化', '库']);
+      ['图谱', '可视化', '库']
+    );
 
     // ===== 销售场景 =====
-    item(cSales, '客户分级标准',
+    item(
+      cSales,
+      '客户分级标准',
       '按近 90 天 GMV 划分：A 级 (≥10w) — 重点维护；B 级 (1w-10w) — 定期跟进；C 级 (<1w) — 群发维护。每季度复评一次。',
-      ['客户', '分级', '销售']);
-    item(cSales, '话术：价格异议',
+      ['客户', '分级', '销售']
+    );
+    item(
+      cSales,
+      '话术：价格异议',
       '客户："太贵了"。三步：1) 共情（理解预算）2) 价值重构（拆分到日均成本/对比竞品）3) 促单（限时优惠/赠品）。忌直接降价。',
-      ['话术', '异议', '销售']);
-    item(cSales, '客户跟进节奏',
+      ['话术', '异议', '销售']
+    );
+    item(
+      cSales,
+      '客户跟进节奏',
       '新客首单后：24h 内确认收货 + 致谢；7 天问使用感受；30 天推关联品；90 天复购提醒。工具：企微 SCRM 自动 push。',
-      ['SOP', '跟进', '复购']);
-    item(cSales, '客诉处理 SOP',
+      ['SOP', '跟进', '复购']
+    );
+    item(
+      cSales,
+      '客诉处理 SOP',
       '收到客诉 1h 内响应 → 24h 内给出方案 → 7 天内回访满意度。退款授权 <500 元主管即可，≥500 需经理审批。',
-      ['客诉', 'SOP', '服务']);
+      ['客诉', 'SOP', '服务']
+    );
 
     // ===== 财务运营 =====
-    item(cFin, '日报核对流程',
+    item(
+      cFin,
+      '日报核对流程',
       '每日 10:00 前完成：1) 下载各平台账单 → 2) 与系统订单核对差异 → 3) 标记异常单（缺单/重单/金额不一）→ 4) 提交财务审核。',
-      ['对账', '流程', '财务']);
-    item(cFin, '毛利率计算',
+      ['对账', '流程', '财务']
+    );
+    item(
+      cFin,
+      '毛利率计算',
       '毛利率 = (营收 - 成本) / 营收 × 100%。注意：成本含采购 + 物流 + 包装 + 平台佣金 + 退货损耗。每月 5 日前出上月报表。',
-      ['财务', '指标', '公式']);
-    item(cFin, '现金流预警阈值',
+      ['财务', '指标', '公式']
+    );
+    item(
+      cFin,
+      '现金流预警阈值',
       '健康：现金 > 月固定支出 6 倍；警惕：3-6 倍；危险：<3 倍。危险时立即冻结非必要支出，3 天内启动融资或回款。',
-      ['现金流', '预警', '财务']);
+      ['现金流', '预警', '财务']
+    );
 
     // ===== 工程实践 =====
-    item(cEng, 'TypeScript 严格模式',
+    item(
+      cEng,
+      'TypeScript 严格模式',
       'tsconfig.json 开启：strict: true, noUncheckedIndexedAccess: true, exactOptionalPropertyTypes: true。所有数组下标访问必须判空。',
-      ['TS', '工程', '规范']);
-    item(cEng, 'JSONL 持久化模式',
+      ['TS', '工程', '规范']
+    );
+    item(
+      cEng,
+      'JSONL 持久化模式',
       'append-only 事件流：每次变更写入 {op, ...} 一行 JSON，加载时从尾部回放（last-write-wins）。优点：天然审计、可回放、零迁移。',
-      ['JSONL', '存储', '模式']);
-    item(cEng, 'WebSocket 重连退避',
+      ['JSONL', '存储', '模式']
+    );
+    item(
+      cEng,
+      'WebSocket 重连退避',
       '客户端重连用指数退避：1s → 2s → 4s → 8s → 16s（最大），30s 心跳保活。服务端检测到 3 次心跳失败（90s）则主动断开。',
-      ['WS', '重连', '网络']);
-    item(cEng, 'API 错误响应规范',
+      ['WS', '重连', '网络']
+    );
+    item(
+      cEng,
+      'API 错误响应规范',
       '统一格式：{success: false, error: "用户可读消息", code?: "MACHINE_CODE", details?: {...}}。4xx = 客户端错，5xx = 服务端错。',
-      ['API', '错误', '规范']);
+      ['API', '错误', '规范']
+    );
 
     return {
       categories_added: this.categories.size - before.c,
@@ -363,10 +453,12 @@ export class KBStore extends EventEmitter {
 
   private appendOp(op: KBOp): void {
     const line = JSON.stringify(op) + '\n';
-    this.writeQueue = this.writeQueue.then(() => this.doWrite(line)).catch((err) => {
-      this.writeErrors++;
-      console.error('[KBStore] write failed:', err);
-    });
+    this.writeQueue = this.writeQueue
+      .then(() => this.doWrite(line))
+      .catch((err) => {
+        this.writeErrors++;
+        console.error('[KBStore] write failed:', err);
+      });
   }
 
   private async doWrite(line: string): Promise<void> {

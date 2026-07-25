@@ -50,7 +50,7 @@ export async function uploadBufferToCdn(params: UploadBufferToCdnParams): Promis
       const res = await fetch(cdnUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream' },
-        body: new Uint8Array(ciphertext),
+        body: new Uint8Array(ciphertext)
       });
       if (res.status >= 400 && res.status < 500) {
         const errMsg = res.headers.get('x-error-message') ?? (await res.text());
@@ -89,9 +89,7 @@ export async function uploadBufferToCdn(params: UploadBufferToCdnParams): Promis
     }
   }
   if (!downloadParam) {
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(`CDN upload failed after ${UPLOAD_MAX_RETRIES} attempts`);
+    throw lastError instanceof Error ? lastError : new Error(`CDN upload failed after ${UPLOAD_MAX_RETRIES} attempts`);
   }
   return { downloadParam };
 }

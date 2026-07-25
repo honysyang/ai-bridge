@@ -1,8 +1,9 @@
-# AI 智能体桥接器 (ai-bridge) v5.1.0
+# AI 智能体桥接器 (ai-bridge) v5.5.5
 
-[![Version](https://img.shields.io/badge/version-5.1.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases)
+[![Version](https://img.shields.io/badge/version-5.5.5-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](./docker-compose.yml)
 
 > Trae IDE / 微信 ClawBot 与 AI 智能体之间的**通用中间层**：任务队列 + 执行依据 (evidence) + Web 工作台 + 微信适配 + 知识图谱 + 一键周报。
 
@@ -10,19 +11,19 @@
 
 ## 📸 界面预览
 
-7 个核心界面截图（1440×900，headless Chromium 截取）：
+7 个核心界面：
 
-| 截图 | 模块 | 说明 |
-|------|------|------|
-| ![chat](docs/screenshots/chat.png) | 💬 聊天 | 三栏工作台：会话 / 任务流 / 详情 |
-| ![kb](docs/screenshots/kb.png) | 📖 知识库 | 7 个分类、26+ 条目，支持搜索/筛选 |
-| ![graph](docs/screenshots/kb-graph.png) | 🕸 知识图谱 | Cytoscape 可视化，22 条关联 |
-| ![workflow](docs/screenshots/workflow.png) | ⚙️ 工作流 | 多步任务模板（3 步示例：查茅台股价 → 查飞天茅台酒价） |
-| ![plan](docs/screenshots/plan.png) | 📅 计划 | 周计划 / 日计划，状态跟踪 |
-| ![report](docs/screenshots/report.png) | 📝 周报 | 一键汇总本周数据为 Markdown |
-| ![claw](docs/screenshots/claw.png) | 💬 微信 Claw | iLink Bot 已登录状态、二维码扫码入口 |
+| 模块 | 说明 |
+|------|------|
+| 💬 聊天 | 三栏工作台：会话 / 任务流 / 详情 |
+| 📖 知识库 | 7 个分类、26+ 条目，支持搜索/筛选 |
+| 🕸 知识图谱 | Cytoscape 可视化，22 条关联 |
+| ⚙️ 工作流 | 多步任务模板（3 步示例：查茅台股价 → 查飞天茅台酒价） |
+| 📅 计划 | 周计划 / 日计划，状态跟踪 |
+| 📝 周报 | 一键汇总本周数据为 Markdown |
+| 💬 微信 Claw | iLink Bot 已登录状态、二维码扫码入口 |
 
-> 💡 截图规范：浏览器 1440×900，headless Chromium 截取，演示数据已加载。
+> 💡 截图不再随仓库分发（减少 clone 体积）。如需查看，请运行服务后使用浏览器或 headless Chromium 自行截取。
 
 ---
 
@@ -50,18 +51,33 @@
 
 ## 🚀 快速开始
 
+### 方式一：Docker Compose（推荐）
+
+```bash
+git clone https://gitee.com/yzj1/ai-bridge.git
+cd ai-bridge
+# 复制环境变量示例并编辑
+cp .env.example .env
+# 启动（首次会自动构建镜像）
+docker compose up -d
+```
+
+访问 http://localhost:4567，首次启动会生成默认管理员，密码写入容器内 `/root/.config/agent-canvas/secrets.env` 或挂载的卷。
+
+### 方式二：本地 Node.js
+
 ```bash
 # 克隆
 git clone https://gitee.com/yzj1/ai-bridge.git
 cd ai-bridge
 
-# 安装依赖
+# 安装依赖（需要 Node.js >= 20）
 npm install
 
 # 开发模式（热启动，自动清理端口冲突）
 npm run dev
 
-# 生产构建
+# 生产构建并启动
 npm run build
 npm start
 
@@ -69,7 +85,7 @@ npm start
 npm run smoke
 ```
 
-默认端口 `4567`，可通过 `PORT` 环境变量修改。
+默认端口 `4567`，可通过 `PORT` 环境变量修改。环境变量说明见 [.env.example](./.env.example)。
 
 启动后访问：http://localhost:4567
 
@@ -89,11 +105,12 @@ npm run smoke
                  ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Bridge 后端（Node.js + Express）                        │
-│  ├─ 任务队列（JSONL 持久化）                             │
+│  ├─ 任务队列（JSONL 持久化 + SQLite 查询层）              │
 │  ├─ 会话管理（CRUD + 默认会话保护）                      │
 │  ├─ 知识库 store（分类 / 条目 / 关联）                   │
 │  ├─ 工作流 store（模板 / 执行）                          │
-│  └─ Claw 适配层（微信 iLink SDK）                       │
+│  ├─ 用户认证（PBKDF2 + HMAC JWT）                        │
+│  └─ Claw 适配层（微信 iLink）                           │
 └────────────────┬────────────────────────────────────────┘
                  │ HTTP + 长轮询
                  ▼
@@ -116,37 +133,52 @@ ai-bridge/
 │   ├── task-queue.ts           # 任务状态机 + CRUD
 │   ├── session.ts              # 会话管理
 │   ├── storage.ts              # JSONL 持久化（任务/会话/日志）
+│   ├── lib/                    # 通用库
+│   │   ├── auth.ts             # JWT 签名/验证
+│   │   ├── users.ts            # 用户管理
+│   │   ├── settings.ts         # 系统设置
+│   │   ├── logger.ts           # winston 诊断日志
+│   │   ├── sqlite-store.ts     # SQLite 查询层
+│   │   └── version.ts          # 版本号读取
 │   ├── kb-store.ts             # 知识库 store
 │   ├── kb-link-store.ts        # 知识图谱关联
 │   ├── workflow-store.ts       # 工作流 store
 │   ├── types.ts                # 全局类型定义
-│   ├── middleware/             # error / notFound
-│   ├── routes/                 # 路由模块
-│   │   ├── health.ts
-│   │   ├── heartbeat.ts
-│   │   ├── sessions.ts
-│   │   ├── tasks.ts
-│   │   ├── kb.ts
-│   │   ├── workflows.ts
-│   │   ├── chat.ts
-│   │   └── claw.ts             # 微信 Claw 路由
-│   └── claw/                   # Claw 适配
-│       ├── manager.ts          # 适配器管理
-│       ├── message-bridge.ts   # 消息桥接（请求-应答 1:1）
-│       └── ilink-adapter.ts    # iLink SDK 封装
+│   ├── middleware/             # 认证 / 错误处理
+│   └── routes/                 # 路由模块
+│       ├── health.ts
+│       ├── heartbeat.ts
+│       ├── sessions.ts
+│       ├── tasks.ts
+│       ├── kb.ts
+│       ├── workflows.ts
+│       ├── chat.ts
+│       ├── claw.ts
+│       ├── auth.ts
+│       ├── system.ts
+│       └── ...
 ├── public/                     # 静态资源
 │   ├── index.html
-│   ├── app.js                  # 前端 SPA（~3000 行）
+│   ├── login.html
+│   ├── js/                     # 前端模块
+│   │   ├── core.js
+│   │   ├── main.js
+│   │   ├── tasks.js
+│   │   ├── kb.js
+│   │   ├── workflow.js
+│   │   ├── plan.js
+│   │   ├── settings.js
+│   │   └── ...
 │   └── style.css
 ├── scripts/
-│   ├── predev.sh               # 端口冲突清理
+│   ├── predev.sh               # 端口冲突清理（优雅终止）
 │   └── smoke.sh                # 端到端烟囱测试
-├── data/                       # JSONL 持久化（gitignore）
-│   ├── tasks.jsonl
-│   ├── sessions.jsonl
-│   └── logs.jsonl
-└── docs/                       # 文档 + 截图
-    └── screenshots/
+├── data/                       # JSONL/SQLite 持久化（gitignore）
+├── logs/                       # winston 日志（gitignore）
+├── docker-compose.yml          # Docker Compose 部署
+├── Dockerfile                  # Docker 镜像
+├── .env.example                # 环境变量示例
+└── docs/                       # 文档
 ```
 
 ---
@@ -295,7 +327,7 @@ interface Task {
 ## 🛠 配套脚本
 
 ```bash
-# 端口冲突自动清理
+# 端口冲突自动清理（优先 SIGTERM，超时后 SIGKILL）
 bash scripts/predev.sh 4567
 
 # 端到端烟囱测试（15 个端点）
@@ -304,6 +336,21 @@ npm run smoke
 # 类型检查
 npm run typecheck
 ```
+
+## 🔧 环境变量
+
+完整环境变量说明见 [.env.example](./.env.example)。常用变量：
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | 4567 | 服务端口 |
+| `LOG_LEVEL` | info | 日志级别 |
+| `AIBRIDGE_JWT_SECRET` | 自动生成 | JWT 签名密钥（建议生产固定） |
+| `AIBRIDGE_DATA_DIR` | `./data` | 数据目录 |
+| `AIBRIDGE_SQLITE_SYNC` | 1 | SQLite 同步开关 |
+| `AIBRIDGE_TRUSTED_PROXIES` | loopback,linklocal,uniquelocal | 受信反向代理 |
+| `AIBRIDGE_LOCAL_NETWORKS` | 127.0.0.1,::1 | 本地放行网段 |
+| `ALLOWED_ORIGINS` | localhost 系列 | CORS 白名单 |
 
 ---
 
@@ -324,10 +371,16 @@ lsof -ti:4567 | xargs -r kill -9
 ### 数据迁移
 所有数据存于 `data/*.jsonl`，是 append-only 事件流。备份即 `cp data/`。
 
+### 内存与查询窗口
+- 运行时内存中默认保留最近 **2000 条任务**（`TASK_MEMORY_LIMIT`），超出部分仍完整保存在 `tasks.jsonl` 与 SQLite 中。
+- 开启 `AIBRIDGE_SQLITE_SYNC=1`（默认开启）后，`GET /api/tasks` 等查询在超出内存窗口时会自动回查 SQLite，避免老任务“消失”。
+- 如需全量内存缓存，可提高该限制（需权衡启动时间与内存占用）。
+
 ---
 
 ## 📝 版本历史
 
+- **v5.5.5**（2026-07-24）：产品化基础：Docker 部署、统一版本号、受信代理、权限校验、依赖清理、.env.example
 - **v5.1.0**（2026-07-23）：计划模块、一键周报、多状态过滤、知识图谱稳定化
 - **v5.0.0**（2026-07-22）：多面板工作台、知识库 2.0、工作流、微信 Claw 适配层
 - **v4.0.0**（2026-07-21）：聊天即任务、evidence 协议、侧滑抽屉
@@ -343,6 +396,14 @@ lsof -ti:4567 | xargs -r kill -9
 
 - 仓库：https://gitee.com/yzj1/ai-bridge
 - 反馈：在 Gitee Issues 中提交
+
+---
+
+## 🗺️ 路线图
+
+- **高可用 / 集群**：当前为单进程架构，未来可考虑 Redis 任务队列 + 多实例负载均衡。
+- **License & 配额**：企业版功能开关、用户配额、计费对接。
+- **更多自动化测试**：逐步提升单元测试与 E2E 测试覆盖率。
 
 ---
 

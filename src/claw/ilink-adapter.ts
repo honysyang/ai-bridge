@@ -18,8 +18,8 @@
  */
 
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { SECRETS_FILE } from '../lib/paths.js';
 import { ClawAdapter } from './adapter.js';
 import { ClawStatus, WeChatMessage } from './types.js';
 import {
@@ -30,12 +30,11 @@ import {
   getConfig as sdkGetConfig,
   sendTyping as sdkSendTyping,
   notifyStart,
-  notifyStop,
+  notifyStop
 } from './ilink/api.js';
 import { reloadSecrets } from './ilink/shim.js';
 import { MessageItemType, MessageType, MessageState } from './ilink/types.js';
 
-const SECRETS_FILE = path.join(os.homedir(), '.config', 'agent-canvas', 'secrets.env');
 const DEFAULT_BASE_URL = 'https://ilinkai.weixin.qq.com';
 const QRCODE_POLL_INTERVAL_MS = 2000;
 const QRCODE_REFRESH_MAX = 3;
@@ -77,11 +76,7 @@ function writeSecrets(updates: Record<string, string>): void {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const existing = readSecrets();
     const merged = { ...existing, ...updates };
-    const lines: string[] = [
-      '# Agent Canvas - 本地密钥管理（自动维护，请勿手改）',
-      '# Permissions: 600 (chmod)',
-      '',
-    ];
+    const lines: string[] = ['# Agent Canvas - 本地密钥管理（自动维护，请勿手改）', '# Permissions: 600 (chmod)', ''];
     for (const [k, v] of Object.entries(merged)) {
       if (v === '' || v == null) continue;
       // 对含特殊字符的值加引号
@@ -95,7 +90,9 @@ function writeSecrets(updates: Record<string, string>): void {
     // chmod 600（双保险）
     try {
       fs.chmodSync(SECRETS_FILE, 0o600);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     reloadSecrets();
   } catch (e) {
     // best-effort
@@ -115,9 +112,13 @@ function clearSecrets(...keys: string[]): void {
     fs.writeFileSync(SECRETS_FILE, lines.join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 });
     try {
       fs.chmodSync(SECRETS_FILE, 0o600);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     reloadSecrets();
-  } catch {}
+  } catch {
+    /* ignore */
+  }
 }
 
 export class IlinkAdapter extends ClawAdapter {
@@ -150,7 +151,7 @@ export class IlinkAdapter extends ClawAdapter {
         state: 'connecting',
         adapter_name: 'ilink',
         wxid: secrets.ILINK_BOT_ID,
-        nickname: secrets.ILINK_NICKNAME || 'iLink Bot',
+        nickname: secrets.ILINK_NICKNAME || 'iLink Bot'
       });
       try {
         await notifyStart({ baseUrl, token });
@@ -158,7 +159,7 @@ export class IlinkAdapter extends ClawAdapter {
           state: 'connected',
           wxid: secrets.ILINK_BOT_ID,
           connected_at: Date.now(),
-          last_heartbeat_at: Date.now(),
+          last_heartbeat_at: Date.now()
         });
         this.startLongPolling(baseUrl, token);
       } catch (e: any) {
@@ -206,7 +207,7 @@ export class IlinkAdapter extends ClawAdapter {
     if (this.status.state !== 'qrcode' || !this.currentQrcode) return undefined;
     return {
       url: this.currentQrcode.imgUrl,
-      expiresAt: this.currentQrcode.expiresAt,
+      expiresAt: this.currentQrcode.expiresAt
     };
   }
 
@@ -225,7 +226,7 @@ export class IlinkAdapter extends ClawAdapter {
         state: 'qrcode',
         adapter_name: 'ilink',
         qrcode_url: qrcode_img_content,
-        qrcode_expires_at: expiresAt,
+        qrcode_expires_at: expiresAt
       });
       this.emit('qrcode', { qrcode_url: qrcode_img_content, expires_at: expiresAt });
       this.pollQrcodeStatus(baseUrl, qrcode, 0);
@@ -248,7 +249,7 @@ export class IlinkAdapter extends ClawAdapter {
               baseurl: status.baseurl || baseUrl,
               ilink_bot_id: status.ilink_bot_id || '',
               ilink_user_id: status.ilink_user_id || '',
-              nickname: 'iLink Bot',
+              nickname: 'iLink Bot'
             };
             // 写凭证到 secrets.env
             writeSecrets({
@@ -256,7 +257,7 @@ export class IlinkAdapter extends ClawAdapter {
               ILINK_BOT_TOKEN: creds.bot_token,
               ILINK_BOT_ID: creds.ilink_bot_id,
               ILINK_USER_ID: creds.ilink_user_id,
-              ILINK_NICKNAME: creds.nickname || 'iLink Bot',
+              ILINK_NICKNAME: creds.nickname || 'iLink Bot'
             });
             this.qrcodePollAbort = undefined;
             this.currentQrcode = undefined;
@@ -265,11 +266,13 @@ export class IlinkAdapter extends ClawAdapter {
               wxid: creds.ilink_bot_id,
               nickname: creds.nickname,
               connected_at: Date.now(),
-              last_heartbeat_at: Date.now(),
+              last_heartbeat_at: Date.now()
             });
             try {
               await notifyStart({ baseUrl: creds.baseurl, token: creds.bot_token });
-            } catch {}
+            } catch {
+              /* ignore */
+            }
             this.startLongPolling(creds.baseurl, creds.bot_token);
             return;
           }
@@ -308,7 +311,7 @@ export class IlinkAdapter extends ClawAdapter {
             token,
             get_updates_buf: this.getUpdatesBuf,
             abortSignal: signal,
-            timeoutMs: 38_000, // 略大于 35s
+            timeoutMs: 38_000 // 略大于 35s
           });
           this.getUpdatesBuf = resp.get_updates_buf || this.getUpdatesBuf;
           // 持久化游标
@@ -329,9 +332,7 @@ export class IlinkAdapter extends ClawAdapter {
           if (signal.aborted) return;
           // v5.2.1: 更宽松的 abort 检测（兼顾 name='AbortError' 和 message='This operation was aborted'）
           const isAbort =
-            e?.name === 'AbortError' ||
-            e?.code === 'ABORT_ERR' ||
-            /aborted|AbortError/i.test(String(e?.message ?? ''));
+            e?.name === 'AbortError' || e?.code === 'ABORT_ERR' || /aborted|AbortError/i.test(String(e?.message ?? ''));
           if (isAbort) {
             // 长轮询超时/被中止是正常的，回到循环
             continue;
@@ -383,7 +384,7 @@ export class IlinkAdapter extends ClawAdapter {
       content: text,
       type: text ? 'text' : 'unknown',
       timestamp: rawMsg.create_time_ms || Date.now(),
-      raw: rawMsg,
+      raw: rawMsg
     };
     this.emit('message', msg);
   }
@@ -409,11 +410,11 @@ export class IlinkAdapter extends ClawAdapter {
           item_list: [
             {
               type: MessageItemType.TEXT,
-              text_item: { text: content },
-            },
-          ],
-        },
-      },
+              text_item: { text: content }
+            }
+          ]
+        }
+      }
     });
     return String((resp as any).message_id ?? Date.now());
   }
@@ -434,7 +435,7 @@ export class IlinkAdapter extends ClawAdapter {
           baseUrl,
           token,
           ilinkUserId: wxid,
-          contextToken: this.contextTokens.get(wxid),
+          contextToken: this.contextTokens.get(wxid)
         });
         if (cfg.typing_ticket) {
           ticketEntry = { ticket: cfg.typing_ticket, fetchedAt: Date.now() };
@@ -452,8 +453,8 @@ export class IlinkAdapter extends ClawAdapter {
         body: {
           ilink_user_id: wxid,
           typing_ticket: ticketEntry.ticket,
-          status,
-        },
+          status
+        }
       });
     } catch {
       // best-effort
@@ -484,15 +485,11 @@ export class IlinkAdapter extends ClawAdapter {
     if (token) {
       try {
         await notifyStop({ baseUrl, token });
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
-    clearSecrets(
-      'ILINK_BOT_TOKEN',
-      'ILINK_BOT_ID',
-      'ILINK_USER_ID',
-      'ILINK_NICKNAME',
-      'ILINK_GET_UPDATES_BUF'
-    );
+    clearSecrets('ILINK_BOT_TOKEN', 'ILINK_BOT_ID', 'ILINK_USER_ID', 'ILINK_NICKNAME', 'ILINK_GET_UPDATES_BUF');
     this.getUpdatesBuf = '';
     this.contextTokens.clear();
     this.typingTickets.clear();

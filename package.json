@@ -1,39 +1,50 @@
 {
   "name": "ai-bridge",
   "version": "5.5.5",
-  "description": "AI 智能体桥接器 v5.5.5 - 通用 Claw 适配层 + SQLite 查询层 + JSONL 持久化 + 多面板工作台 + 知识图谱 + 周报生成 + 商务风设计 + 多模型路由 + 用户认证（PBKDF2+HMAC JWT）+ 任务撤回/恢复 + 补充对话 + 项目目录自动补全 + 概览页样式统一 + 微信空闲提醒（IdleNotifier）+ 动态版本号注入 + KB RAG 自动检索 + 分栏设置面板重构 + 自定义模型管理 + 多用户管理 + 设置面板风格统一",
+  "description": "AI 智能体桥接器：Trae IDE / 微信 ClawBot 与 AI 智能体之间的通用中间层",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",
     "predev": "bash scripts/predev.sh 4567",
     "dev": "tsx src/index.ts",
-    "prestart": "bash scripts/predev.sh 4567",
+    "prestart": "npm run build",
+    "test": "vitest run",
     "smoke": "bash scripts/smoke.sh",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write \"src/**/*.{ts,js,json}\" \"tests/**/*.{ts,js,json}\" \"public/**/*.{js,css,html}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json}\" \"tests/**/*.{ts,js,json}\" \"public/**/*.{js,css,html}\"",
     "sqlite:migrate": "tsx src/lib/sqlite-migrate.ts",
     "sqlite:status": "tsx -e \"import {sqliteStore} from './src/lib/sqlite-store.js'; console.log(JSON.stringify({tables: sqliteStore.getTableCounts(), file_size: sqliteStore.getDbFileSize()}, null, 2)); sqliteStore.close();\""
   },
   "dependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/qrcode": "^1.5.6",
-    "@types/winston": "^2.4.4",
     "better-sqlite3": "^13.0.1",
-    "cors": "^2.8.5",
-    "express": "^4.19.0",
+    "express": "^4.21.0",
     "qrcode": "^1.5.4",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@tencent-weixin/openclaw-weixin": "^2.4.6",
-    "@types/cors": "^2.8.17",
+    "@eslint/js": "^10.0.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
     "@types/node": "^20.0.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/winston": "^2.4.4",
     "@types/ws": "^8.5.0",
+    "eslint": "^10.8.0",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.6",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10"
   },
   "keywords": [
     "weixin",

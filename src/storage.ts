@@ -11,8 +11,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Task, LogEntry, Session } from './types.js';
 import { sqliteStore } from './lib/sqlite-store.js';
+import { DATA_DIR } from './lib/paths.js';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.jsonl');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.jsonl');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.jsonl');
@@ -24,9 +24,7 @@ const SQLITE_SYNC = process.env.AIBRIDGE_SQLITE_SYNC !== '0';
 // ======== Op Types ========
 
 export type TaskOp =
-  | { op: 'create'; task: Task }
-  | { op: 'update'; id: string; patch: Partial<Task> }
-  | { op: 'delete'; id: string };
+  { op: 'create'; task: Task } | { op: 'update'; id: string; patch: Partial<Task> } | { op: 'delete'; id: string };
 
 export type SessionOp =
   | { op: 'create'; session: Session }
@@ -93,30 +91,30 @@ export class Storage {
 
   // ======== Task Operations ========
 
-  appendTask(task: Task): void {
+  async appendTask(task: Task): Promise<void> {
     this.tasks.set(task.id, task);
     this.taskOrder.push(task.id);
     this.enforceTaskMemoryLimit();
-    this.appendLine(TASKS_FILE, { op: 'create', task });
+    await this.appendLine(TASKS_FILE, { op: 'create', task });
     if (SQLITE_SYNC) sqliteStore.upsertTask(task);
   }
 
-  updateTask(id: string, patch: Partial<Task>): boolean {
+  async updateTask(id: string, patch: Partial<Task>): Promise<boolean> {
     const existing = this.tasks.get(id);
     if (!existing) return false;
     const updated: Task = { ...existing, ...patch };
     this.tasks.set(id, updated);
-    this.appendLine(TASKS_FILE, { op: 'update', id, patch });
+    await this.appendLine(TASKS_FILE, { op: 'update', id, patch });
     if (SQLITE_SYNC) sqliteStore.upsertTask(updated);
     return true;
   }
 
-  deleteTask(id: string): boolean {
+  async deleteTask(id: string): Promise<boolean> {
     if (!this.tasks.has(id)) return false;
     this.tasks.delete(id);
     const idx = this.taskOrder.indexOf(id);
     if (idx >= 0) this.taskOrder.splice(idx, 1);
-    this.appendLine(TASKS_FILE, { op: 'delete', id });
+    await this.appendLine(TASKS_FILE, { op: 'delete', id });
     if (SQLITE_SYNC) sqliteStore.deleteTask(id);
     return true;
   }
@@ -126,29 +124,66 @@ export class Storage {
   }
 
   getAllTasks(): Task[] {
-    return this.taskOrder
-      .map(id => this.tasks.get(id))
-      .filter((t): t is Task => t !== undefined);
+    return this.taskOrder.map((id) => this.tasks.get(id)).filter((t): t is Task => t !== undefined);
   }
 
-  getRecentTasks(limit: number = 50, filter?: {
+  getRecentTasks(
+    limit: number = 50,
+    filter?: {
+      status?: Task['status'];
+      type?: Task['type'];
+      source?: Task['source'];
+      session_id?: string;
+      offset?: number;
+    }
+  ): Task[] {
+    const offset = filter?.offset || 0;
+
+    // v5.5.6: 当查询窗口超出内存保留范围（TASK_MEMORY_LIMIT）且 SQLite 同步开启时，
+    // 回查 SQLite 索引层，避免老任务“消失”。
+    if (SQLITE_SYNC && offset + limit > this.taskOrder.length) {
+      return sqliteStore.getRecentTasks(limit, { ...filter, offset });
+    }
+
+    let arr = this.getAllTasks();
+    if (filter?.status) {
+      // v5.1.1: 支持多状态过滤（逗号分隔），如 status=assigned,processing
+      const statuses = String(filter.status)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      arr =
+        statuses.length > 1
+          ? arr.filter((t) => statuses.includes(t.status))
+          : arr.filter((t) => t.status === filter!.status);
+    }
+    if (filter?.type) arr = arr.filter((t) => t.type === filter.type);
+    if (filter?.source) arr = arr.filter((t) => t.source === filter.source);
+    if (filter?.session_id) arr = arr.filter((t) => (t as any).session_id === filter.session_id);
+    return arr.sort((a, b) => b.created_at - a.created_at).slice(offset, offset + limit);
+  }
+
+  countTasks(filter?: {
     status?: Task['status'];
     type?: Task['type'];
     source?: Task['source'];
     session_id?: string;
-  }): Task[] {
+  }): number {
     let arr = this.getAllTasks();
     if (filter?.status) {
-      // v5.1.1: 支持多状态过滤（逗号分隔），如 status=assigned,processing
-      const statuses = String(filter.status).split(',').map(s => s.trim()).filter(Boolean);
-      arr = statuses.length > 1
-        ? arr.filter(t => statuses.includes(t.status))
-        : arr.filter(t => t.status === filter!.status);
+      const statuses = String(filter.status)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      arr =
+        statuses.length > 1
+          ? arr.filter((t) => statuses.includes(t.status))
+          : arr.filter((t) => t.status === filter!.status);
     }
-    if (filter?.type) arr = arr.filter(t => t.type === filter.type);
-    if (filter?.source) arr = arr.filter(t => t.source === filter.source);
-    if (filter?.session_id) arr = arr.filter(t => (t as any).session_id === filter.session_id);
-    return arr.sort((a, b) => b.created_at - a.created_at).slice(0, limit);
+    if (filter?.type) arr = arr.filter((t) => t.type === filter.type);
+    if (filter?.source) arr = arr.filter((t) => t.source === filter.source);
+    if (filter?.session_id) arr = arr.filter((t) => (t as any).session_id === filter.session_id);
+    return arr.length;
   }
 
   getTasksBySession(sessionId: string): Task[] {
@@ -178,11 +213,21 @@ export class Storage {
     for (const task of this.tasks.values()) {
       counts.total++;
       switch (task.status) {
-        case 'pending':    counts.pending++;    break;
-        case 'assigned':   counts.assigned++;   break;
-        case 'processing': counts.processing++; break;
-        case 'completed':  counts.completed++;  break;
-        case 'failed':     counts.failed++;     break;
+        case 'pending':
+          counts.pending++;
+          break;
+        case 'assigned':
+          counts.assigned++;
+          break;
+        case 'processing':
+          counts.processing++;
+          break;
+        case 'completed':
+          counts.completed++;
+          break;
+        case 'failed':
+          counts.failed++;
+          break;
       }
     }
     return counts;
@@ -197,23 +242,26 @@ export class Storage {
 
   // ======== Log Operations ========
 
-  appendLog(entry: LogEntry): void {
+  async appendLog(entry: LogEntry): Promise<void> {
     this.logs.push(entry);
     this.logsTotal++;
     if (this.logs.length > this.LOG_MEMORY_LIMIT) {
       this.logs.shift();
     }
-    this.appendLine(LOGS_FILE, entry);
+    await this.appendLine(LOGS_FILE, entry);
     if (SQLITE_SYNC) sqliteStore.upsertLog(entry);
   }
 
-  getRecentLogs(limit: number = 100, filter?: {
-    level?: LogEntry['level'];
-    source?: LogEntry['source'];
-  }): LogEntry[] {
+  getRecentLogs(
+    limit: number = 100,
+    filter?: {
+      level?: LogEntry['level'];
+      source?: LogEntry['source'];
+    }
+  ): LogEntry[] {
     let arr = [...this.logs];
-    if (filter?.level) arr = arr.filter(l => l.level === filter.level);
-    if (filter?.source) arr = arr.filter(l => l.source === filter.source);
+    if (filter?.level) arr = arr.filter((l) => l.level === filter.level);
+    if (filter?.source) arr = arr.filter((l) => l.source === filter.source);
     return arr.sort((a, b) => b.created_at - a.created_at).slice(0, limit);
   }
 
@@ -223,31 +271,31 @@ export class Storage {
 
   // ======== Session Operations (Phase B will use; defined here for unified storage) ========
 
-  appendSession(session: Session): void {
+  async appendSession(session: Session): Promise<void> {
     this.sessions.set(session.id, session);
     if (!this.sessionOrder.includes(session.id)) {
       this.sessionOrder.push(session.id);
     }
-    this.appendLine(SESSIONS_FILE, { op: 'create', session });
+    await this.appendLine(SESSIONS_FILE, { op: 'create', session });
     if (SQLITE_SYNC) sqliteStore.upsertSession(session);
   }
 
-  updateSession(id: string, patch: Partial<Session>): boolean {
+  async updateSession(id: string, patch: Partial<Session>): Promise<boolean> {
     const existing = this.sessions.get(id);
     if (!existing) return false;
     const updated: Session = { ...existing, ...patch, updated_at: Date.now() };
     this.sessions.set(id, updated);
-    this.appendLine(SESSIONS_FILE, { op: 'update', id, patch });
+    await this.appendLine(SESSIONS_FILE, { op: 'update', id, patch });
     if (SQLITE_SYNC) sqliteStore.upsertSession(updated);
     return true;
   }
 
-  deleteSession(id: string): boolean {
+  async deleteSession(id: string): Promise<boolean> {
     if (!this.sessions.has(id)) return false;
     this.sessions.delete(id);
     const idx = this.sessionOrder.indexOf(id);
     if (idx >= 0) this.sessionOrder.splice(idx, 1);
-    this.appendLine(SESSIONS_FILE, { op: 'delete', id });
+    await this.appendLine(SESSIONS_FILE, { op: 'delete', id });
     if (SQLITE_SYNC) sqliteStore.deleteSession(id);
     return true;
   }
@@ -257,9 +305,7 @@ export class Storage {
   }
 
   getAllSessions(): Session[] {
-    return this.sessionOrder
-      .map(id => this.sessions.get(id))
-      .filter((s): s is Session => s !== undefined);
+    return this.sessionOrder.map((id) => this.sessions.get(id)).filter((s): s is Session => s !== undefined);
   }
 
   // ======== Stats ========
@@ -307,7 +353,7 @@ export class Storage {
     try {
       const content = fs.readFileSync(file, 'utf-8');
       if (!content) return 0;
-      return content.split('\n').filter(l => l.trim()).length;
+      return content.split('\n').filter((l) => l.trim()).length;
     } catch {
       return 0;
     }
@@ -389,17 +435,155 @@ export class Storage {
     }
   }
 
+  // ======== Compaction & Backup & Archive ========
+
+  /**
+   * Compact JSONL files: rewrite tasks/sessions with only the final state.
+   * 将重复的 update/delete 操作合并，减少文件大小。
+   */
+  async compact(): Promise<{ tasks: number; sessions: number }> {
+    await this.flush();
+    let tasksCompacted = 0;
+    let sessionsCompacted = 0;
+
+    try {
+      const taskLines = this.taskOrder
+        .map((id) => this.tasks.get(id))
+        .filter((t): t is Task => t !== undefined)
+        .map((t) => JSON.stringify({ op: 'create', task: t }));
+      await fs.promises.writeFile(TASKS_FILE, taskLines.join('\n') + (taskLines.length ? '\n' : ''), 'utf-8');
+      tasksCompacted = taskLines.length;
+    } catch (e: any) {
+      console.error('[storage] compact tasks failed:', e.message);
+    }
+
+    try {
+      const sessionLines = this.sessionOrder
+        .map((id) => this.sessions.get(id))
+        .filter((s): s is Session => s !== undefined)
+        .map((s) => JSON.stringify({ op: 'create', session: s }));
+      await fs.promises.writeFile(SESSIONS_FILE, sessionLines.join('\n') + (sessionLines.length ? '\n' : ''), 'utf-8');
+      sessionsCompacted = sessionLines.length;
+    } catch (e: any) {
+      console.error('[storage] compact sessions failed:', e.message);
+    }
+
+    return { tasks: tasksCompacted, sessions: sessionsCompacted };
+  }
+
+  /**
+   * Backup all data files to a timestamped directory under data/backups.
+   */
+  async backup(): Promise<{ dir: string; files: string[] }> {
+    await this.flush();
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupDir = path.join(DATA_DIR, 'backups', ts);
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    const files: string[] = [];
+    const candidates = [
+      TASKS_FILE,
+      LOGS_FILE,
+      SESSIONS_FILE,
+      path.join(DATA_DIR, 'kb.jsonl'),
+      path.join(DATA_DIR, 'kb_links.jsonl'),
+      path.join(DATA_DIR, 'wf.jsonl'),
+      path.join(DATA_DIR, 'users.jsonl'),
+      path.join(DATA_DIR, 'audit.jsonl'),
+      path.join(DATA_DIR, 'system-settings.json'),
+      path.join(DATA_DIR, 'models-config.json'),
+      path.join(DATA_DIR, 'claw-config.json'),
+      path.join(DATA_DIR, 'ai-bridge.db')
+    ];
+
+    for (const file of candidates) {
+      if (fs.existsSync(file)) {
+        const target = path.join(backupDir, path.basename(file));
+        fs.copyFileSync(file, target);
+        files.push(path.basename(file));
+      }
+    }
+
+    return { dir: backupDir, files };
+  }
+
+  /**
+   * Clean up old backups, keeping the most recent `keep` ones.
+   */
+  cleanupBackups(keep: number = 10): { removed: number; remaining: number } {
+    const backupsDir = path.join(DATA_DIR, 'backups');
+    if (!fs.existsSync(backupsDir)) return { removed: 0, remaining: 0 };
+    const dirs = fs
+      .readdirSync(backupsDir)
+      .map((name) => ({ name, stat: fs.statSync(path.join(backupsDir, name)) }))
+      .filter((item) => item.stat.isDirectory())
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+
+    let removed = 0;
+    for (const d of dirs.slice(keep)) {
+      try {
+        fs.rmSync(path.join(backupsDir, d.name), { recursive: true, force: true });
+        removed++;
+      } catch (e) {
+        console.error(`[storage] remove backup ${d.name} failed:`, e);
+      }
+    }
+    return { removed, remaining: Math.min(dirs.length, keep) };
+  }
+
+  /**
+   * Archive completed tasks older than `days` into a separate file.
+   * 归档后的任务从当前 JSONL 中移除，但保留在 archive 文件中。
+   */
+  async archiveCompletedTasks(days: number): Promise<{ archived: number; file: string }> {
+    await this.flush();
+    const cutoff = Date.now() - days * 86400 * 1000;
+    const toArchive: Task[] = [];
+    const remainingOrder: string[] = [];
+
+    for (const id of this.taskOrder) {
+      const t = this.tasks.get(id);
+      if (!t) continue;
+      if (t.status === 'completed' && t.completed_at && t.completed_at < cutoff) {
+        toArchive.push(t);
+      } else {
+        remainingOrder.push(id);
+      }
+    }
+
+    if (toArchive.length === 0) return { archived: 0, file: '' };
+
+    const archiveFile = path.join(DATA_DIR, `tasks-archive-${new Date().toISOString().slice(0, 10)}.jsonl`);
+    const archiveLines = toArchive.map((t) => JSON.stringify({ op: 'create', task: t }));
+    fs.appendFileSync(archiveFile, archiveLines.join('\n') + '\n', 'utf-8');
+
+    this.taskOrder = remainingOrder;
+    for (const t of toArchive) {
+      this.tasks.delete(t.id);
+    }
+
+    await this.compact();
+    return { archived: toArchive.length, file: archiveFile };
+  }
+
   // ======== Internal: File I/O ========
 
-  private appendLine(file: string, data: any): void {
+  private async appendLine(file: string, data: any): Promise<void> {
     this.writeCount++;
     const line = JSON.stringify(data) + '\n';
-    this.writeQueue = this.writeQueue
+    const previous = this.writeQueue;
+    const current = previous
       .then(() => fs.promises.appendFile(file, line, 'utf-8'))
-      .catch(e => {
+      .catch((e) => {
         this.writeErrors++;
         console.error(`[storage] append failed for ${file}:`, e);
+        throw e;
       });
+    // 保持队列持续前进：即使本次失败也不阻塞后续写入
+    this.writeQueue = current.catch(() => {
+      /* error already counted & logged */
+    });
+    return current;
   }
 
   private loadTasks(): { count: number; corrupted: number } {
@@ -407,7 +591,10 @@ export class Storage {
     this.taskOrder = [];
     if (!fs.existsSync(TASKS_FILE)) return { count: 0, corrupted: 0 };
 
-    const lines = fs.readFileSync(TASKS_FILE, 'utf-8').split('\n').filter(l => l.trim());
+    const lines = fs
+      .readFileSync(TASKS_FILE, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim());
     let corrupted = 0;
     for (let i = 0; i < lines.length; i++) {
       try {
@@ -440,7 +627,10 @@ export class Storage {
     this.logsTotal = 0;
     if (!fs.existsSync(LOGS_FILE)) return { count: 0, corrupted: 0 };
 
-    const lines = fs.readFileSync(LOGS_FILE, 'utf-8').split('\n').filter(l => l.trim());
+    const lines = fs
+      .readFileSync(LOGS_FILE, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim());
     let corrupted = 0;
     for (let i = 0; i < lines.length; i++) {
       try {
@@ -462,7 +652,10 @@ export class Storage {
     this.sessionOrder = [];
     if (!fs.existsSync(SESSIONS_FILE)) return { count: 0, corrupted: 0 };
 
-    const lines = fs.readFileSync(SESSIONS_FILE, 'utf-8').split('\n').filter(l => l.trim());
+    const lines = fs
+      .readFileSync(SESSIONS_FILE, 'utf-8')
+      .split('\n')
+      .filter((l) => l.trim());
     let corrupted = 0;
     for (let i = 0; i < lines.length; i++) {
       try {

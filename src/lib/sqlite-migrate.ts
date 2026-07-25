@@ -25,7 +25,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const log = childLogger({ module: 'sqlite-migrate' });
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+import { DATA_DIR } from './paths.js';
+
+// DATA_DIR 从 paths.js 读取，支持 AIBRIDGE_DATA_DIR 环境变量
 
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.jsonl');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.jsonl');
@@ -85,7 +87,10 @@ function reduceJsonlEvents<T extends { id: string }>(rows: any[]): T[] {
     if (row.op === 'create') {
       let payload: any = null;
       for (const k of createKeys) {
-        if (row[k]) { payload = row[k]; break; }
+        if (row[k]) {
+          payload = row[k];
+          break;
+        }
       }
       if (payload && payload.id) {
         map.set(payload.id, payload as T);
@@ -104,7 +109,7 @@ function reduceJsonlEvents<T extends { id: string }>(rows: any[]): T[] {
       if (!order.includes(row.id)) order.push(row.id);
     }
   }
-  return order.map(id => map.get(id)!).filter(Boolean);
+  return order.map((id) => map.get(id)!).filter(Boolean);
 }
 
 /**
@@ -188,7 +193,15 @@ export function runMigration(): MigrateResult {
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       for (const it of items) {
-        stmt.run(it.id, it.category_id, it.title, it.body || '', (it.tags || []).join(','), it.created_at, it.updated_at || it.created_at);
+        stmt.run(
+          it.id,
+          it.category_id,
+          it.title,
+          it.body || '',
+          (it.tags || []).join(','),
+          it.created_at,
+          it.updated_at || it.created_at
+        );
       }
       result.kb_items = items.length;
     }
@@ -235,7 +248,15 @@ export function runMigration(): MigrateResult {
       for (const w of workflows) {
         // 跳过缺 name 的损坏行
         if (!w.name) continue;
-        stmt.run(w.id, w.name, w.description || null, w.icon || null, JSON.stringify(w.steps || []), w.created_at, w.updated_at || w.created_at);
+        stmt.run(
+          w.id,
+          w.name,
+          w.description || null,
+          w.icon || null,
+          JSON.stringify(w.steps || []),
+          w.created_at,
+          w.updated_at || w.created_at
+        );
         inserted++;
       }
       result.workflows = inserted;
@@ -254,7 +275,17 @@ export function runMigration(): MigrateResult {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const u of userRows) {
-        stmt.run(u.id, u.username, u.password_hash, u.role, u.display_name || null, u.wechat_wxid || null, u.created_at, u.last_login_at || null, u.disabled ? 1 : 0);
+        stmt.run(
+          u.id,
+          u.username,
+          u.password_hash,
+          u.role,
+          u.display_name || null,
+          u.wechat_wxid || null,
+          u.created_at,
+          u.last_login_at || null,
+          u.disabled ? 1 : 0
+        );
       }
       result.users = userRows.length;
       log.info(`  用户: ${result.users}`);

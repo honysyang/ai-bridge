@@ -17,12 +17,8 @@
 import winston from 'winston';
 import 'winston-daily-rotate-file';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
 import * as fs from 'fs';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const LOGS_DIR = path.join(__dirname, '../../logs');
+import { LOGS_DIR } from './paths.js';
 
 // 确保 logs 目录存在
 if (!fs.existsSync(LOGS_DIR)) {
@@ -44,9 +40,7 @@ const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'HH:mm:ss' }),
   winston.format.colorize({ all: true }),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
-    const metaStr = Object.keys(meta).length > 0
-      ? ' ' + JSON.stringify(meta)
-      : '';
+    const metaStr = Object.keys(meta).length > 0 ? ' ' + JSON.stringify(meta) : '';
     return `${timestamp} ${level} ${message}${metaStr}`;
   })
 );
@@ -59,7 +53,7 @@ export const logger = winston.createLogger({
     // 控制台（开发/排错）
     new winston.transports.Console({
       format: consoleFormat,
-      silent: process.env.NODE_ENV === 'test'  // 测试环境静默
+      silent: process.env.NODE_ENV === 'test' // 测试环境静默
     }),
     // 全量日志（按日切分）
     new winston.transports.DailyRotateFile({
@@ -94,7 +88,20 @@ export function childLogger(meta: Record<string, any>) {
 /**
  * 便捷：记录 HTTP 请求
  */
-export function logRequest(method: string, path: string, status: number, durationMs: number, meta?: Record<string, any>) {
+export function logRequest(
+  method: string,
+  path: string,
+  status: number,
+  durationMs: number,
+  meta?: Record<string, any>
+) {
   const level = status >= 500 ? 'error' : status >= 400 ? 'warn' : 'info';
-  logger.log(level, `${method} ${path} ${status} ${durationMs}ms`, { http: true, method, path, status, durationMs, ...meta });
+  logger.log(level, `${method} ${path} ${status} ${durationMs}ms`, {
+    http: true,
+    method,
+    path,
+    status,
+    durationMs,
+    ...meta
+  });
 }

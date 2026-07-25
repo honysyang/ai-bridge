@@ -8,7 +8,23 @@
 
   const { state, api, escapeHtml, formatRelative, showNotification, setHash } = global.Core;
 
+  function showSkeletonSessions() {
+    const container = document.getElementById('session-list');
+    if (!container) return;
+    container.innerHTML = Array.from({ length: 5 })
+      .map(
+        () => `
+      <div class="skeleton-card">
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton skeleton-text"></div>
+        <div class="skeleton skeleton-text" style="width:70%"></div>
+      </div>`
+      )
+      .join('');
+  }
+
   async function loadSessions() {
+    showSkeletonSessions();
     try {
       const params = new URLSearchParams();
       if (state.sessionFilter && state.sessionFilter !== 'all') params.set('status', state.sessionFilter);
@@ -36,13 +52,14 @@
       return;
     }
 
-    container.innerHTML = state.sessions.map(s => {
-      const isActive = s.id === state.currentSessionId;
-      const isDefault = s.id === 'sess-default' || s.meta?.is_default;
-      const projectDirBadge = s.project_dir
-        ? `<div class="session-project-dir" title="项目目录（任务执行 cwd）"><span class="dir-icon">📂</span><code>${escapeHtml(s.project_dir)}</code></div>`
-        : '';
-      return `
+    container.innerHTML = state.sessions
+      .map((s) => {
+        const isActive = s.id === state.currentSessionId;
+        const isDefault = s.id === 'sess-default' || s.meta?.is_default;
+        const projectDirBadge = s.project_dir
+          ? `<div class="session-project-dir" title="项目目录（任务执行 cwd）"><span class="dir-icon">📂</span><code>${escapeHtml(s.project_dir)}</code></div>`
+          : '';
+        return `
         <div class="session-item ${isActive ? 'active' : ''} ${s.status === 'archived' ? 'archived' : ''} ${isDefault ? 'default' : ''}"
              data-session-id="${s.id}">
           <div class="session-item-header">
@@ -52,14 +69,19 @@
           ${s.last_task_summary ? `<div class="session-item-summary">${escapeHtml(s.last_task_summary)}</div>` : ''}
           ${projectDirBadge}
           <div class="session-item-time">${formatRelative(s.updated_at)}</div>
-          ${!isDefault ? `
+          ${
+            !isDefault
+              ? `
           <div class="session-item-actions">
             <button class="session-action-btn" data-action="rename" data-session-id="${s.id}" title="重命名">✎</button>
             <button class="session-action-btn" data-action="archive" data-session-id="${s.id}" title="归档">📦</button>
             <button class="session-action-btn danger" data-action="delete" data-session-id="${s.id}" title="删除">🗑</button>
-          </div>` : ''}
+          </div>`
+              : ''
+          }
         </div>`;
-    }).join('');
+      })
+      .join('');
   }
 
   function selectSession(sessionId) {
@@ -70,7 +92,7 @@
     if (global.Tasks && global.Tasks.loadTasks) global.Tasks.loadTasks();
     if (global.Tasks && global.Tasks.enableCompose) global.Tasks.enableCompose(true);
     document.getElementById('middle-title').textContent =
-      `📌 ${state.sessions.find(s => s.id === sessionId)?.name || '任务流'}`;
+      `📌 ${state.sessions.find((s) => s.id === sessionId)?.name || '任务流'}`;
     document.getElementById('detail-body').innerHTML = `
       <div class="empty-state">
         <div class="empty-icon">👈</div>
@@ -81,20 +103,23 @@
   }
 
   async function createSession() {
-    await showSessionEditor({ title: '新建会话', onSubmit: async (data) => {
-      try {
-        const { data: session } = await api('/api/sessions', { method: 'POST', body: data });
-        showNotification(`✅ 会话已创建: ${session.name}`, 'success');
-        await loadSessions();
-        selectSession(session.id);
-      } catch (e) {
-        showNotification(`❌ 创建失败: ${e.message}`, 'error');
+    await showSessionEditor({
+      title: '新建会话',
+      onSubmit: async (data) => {
+        try {
+          const { data: session } = await api('/api/sessions', { method: 'POST', body: data });
+          showNotification(`✅ 会话已创建: ${session.name}`, 'success');
+          await loadSessions();
+          selectSession(session.id);
+        } catch (e) {
+          showNotification(`❌ 创建失败: ${e.message}`, 'error');
+        }
       }
-    }});
+    });
   }
 
   async function renameSession(sessionId) {
-    const s = state.sessions.find(s => s.id === sessionId);
+    const s = state.sessions.find((s) => s.id === sessionId);
     if (!s) return;
     await showSessionEditor({
       title: '编辑会话',
@@ -163,7 +188,7 @@
 
     // ======== 补全 ========
     let suggestTimer = null;
-    let suggestSeq = 0;  // 防止竞态（旧响应覆盖新响应）
+    let suggestSeq = 0; // 防止竞态（旧响应覆盖新响应）
 
     function scheduleSuggest() {
       if (suggestTimer) clearTimeout(suggestTimer);
@@ -188,15 +213,19 @@
         if (cands.length === 0) {
           suggestEl.innerHTML = '<div class="suggest-empty">无匹配目录</div>';
         } else {
-          suggestEl.innerHTML = cands.map((c, i) => `
+          suggestEl.innerHTML = cands
+            .map(
+              (c, i) => `
             <div class="suggest-item" data-idx="${i}" data-path="${escapeHtml(c.path)}">
               <span class="suggest-name">${escapeHtml(c.name)}</span>
               <span class="suggest-path">${escapeHtml(c.path)}</span>
               ${c.marker ? `<span class="suggest-marker" title="项目标记：${escapeHtml(c.marker)}">📦</span>` : ''}
             </div>
-          `).join('');
+          `
+            )
+            .join('');
           // 绑定点击
-          suggestEl.querySelectorAll('.suggest-item').forEach(el => {
+          suggestEl.querySelectorAll('.suggest-item').forEach((el) => {
             el.addEventListener('mousedown', (ev) => {
               // mousedown 而非 click：避免 input blur 抢先关闭建议框
               ev.preventDefault();
@@ -321,7 +350,9 @@
 
     // ======== 关闭 + 提交 ========
     const close = () => overlay.remove();
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
     overlay.querySelector('[data-action="cancel"]').addEventListener('click', close);
     overlay.querySelector('[data-action="confirm"]').addEventListener('click', async () => {
       const data = {
@@ -353,7 +384,10 @@
     });
 
     const escHandler = (e) => {
-      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); }
+      if (e.key === 'Escape') {
+        close();
+        document.removeEventListener('keydown', escHandler);
+      }
     };
     document.addEventListener('keydown', escHandler);
 
@@ -364,7 +398,12 @@
   }
 
   async function archiveSession(sessionId) {
-    if (!confirm('归档此会话？\n（任务保留，可在归档列表查看）')) return;
+    const ok = await global.Core.openConfirm({
+      title: '归档会话',
+      message: '归档此会话？\n（任务保留，可在归档列表查看）',
+      confirmText: '归档'
+    });
+    if (!ok) return;
     try {
       await api(`/api/sessions/${sessionId}`, { method: 'PATCH', body: { status: 'archived' } });
       showNotification('📦 已归档', 'success');
@@ -380,7 +419,13 @@
   }
 
   async function deleteSession(sessionId) {
-    if (!confirm('删除此会话？\n（其任务会重新归属到默认会话，数据不丢失）')) return;
+    const ok = await global.Core.openConfirm({
+      title: '删除会话',
+      message: '删除此会话？\n（其任务会重新归属到默认会话，数据不丢失）',
+      confirmText: '删除',
+      danger: true
+    });
+    if (!ok) return;
     try {
       const { data } = await api(`/api/sessions/${sessionId}`, { method: 'DELETE' });
       showNotification(`🗑 已删除，${data.reassigned_tasks} 个任务已重新归属`, 'success');
