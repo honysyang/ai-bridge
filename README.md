@@ -1,5 +1,9 @@
 # 鹤仙人 (ai-bridge) v6.0.0
 
+<p align="center">
+  <img src="public/logo.png" width="120" alt="鹤仙人 logo">
+</p>
+
 [![Version](https://img.shields.io/badge/version-v6.0.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases/v6.0.0)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
