@@ -14,7 +14,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DATA_DIR } from './lib/paths.js';
 import { EventEmitter } from 'events';
-import { KBEntry, KBCategory, KBItem, KBListResponse } from './kb-types.js';
+import {
+  KBEntry,
+  KBCategory,
+  KBItem,
+  KBListResponse,
+  KBSourceType,
+  KBContentType,
+  KBSourceMetadata
+} from './kb-types.js';
+import { kbChunkStore } from './kb-chunk-store.js';
+import { scenarioKBLinkStore } from './scenario-kb-link-store.js';
+import { chunkText, TextChunk } from './lib/chunking.js';
+import { createEmbeddings, getEmbeddingConfig } from './lib/embedding.js';
+import { scenarioStore } from './scenario-store.js';
 
 const KB_FILE = path.join(DATA_DIR, 'kb.jsonl');
 
@@ -77,13 +90,23 @@ export class KBStore extends EventEmitter {
     return { categories: this.categories.size, items: this.items.size, seeded: false, corrupted };
   }
 
+  private normalizeItem(item: KBItem): KBItem {
+    return {
+      ...item,
+      scenario_id: item.scenario_id || scenarioStore.getDefaultId() || '__orphan__',
+      source_type: item.source_type || 'manual',
+      chunk_count: item.chunk_count ?? 0,
+      index_status: item.index_status || 'pending'
+    };
+  }
+
   private applyOp(op: KBOp): void {
     switch (op.op) {
       case 'create': {
         if (op.entry.type === 'category') {
           this.categories.set(op.entry.id, op.entry);
         } else {
-          this.items.set(op.entry.id, op.entry);
+          this.items.set(op.entry.id, this.normalizeItem(op.entry));
         }
         break;
       }
@@ -93,7 +116,7 @@ export class KBStore extends EventEmitter {
           this.categories.set(op.id, { ...cur, ...(op.patch as Partial<KBCategory>), updated_at: op.ts });
         } else if (this.items.has(op.id)) {
           const cur = this.items.get(op.id)!;
-          this.items.set(op.id, { ...cur, ...(op.patch as Partial<KBItem>), updated_at: op.ts });
+          this.items.set(op.id, this.normalizeItem({ ...cur, ...(op.patch as Partial<KBItem>), updated_at: op.ts }));
         }
         break;
       }
@@ -126,13 +149,16 @@ export class KBStore extends EventEmitter {
 
   // ======== Mutations ========
 
-  createCategory(name: string, icon?: string): KBCategory {
+  createCategory(name: string, icon?: string, scenarioId?: string): KBCategory {
     this.categoryOrder++;
     this.idCounter++;
     const now = Date.now();
+    const resolvedScenarioId =
+      scenarioId && scenarioStore.get(scenarioId) ? scenarioId : scenarioStore.getDefaultId() || '__orphan__';
     const cat: KBCategory = {
       id: `kb-cat-${now}-${this.idCounter}`,
       type: 'category',
+      scenario_id: resolvedScenarioId,
       name: name.trim().slice(0, 32),
       icon: icon?.trim() || '📁',
       order: this.categoryOrder,
@@ -145,7 +171,7 @@ export class KBStore extends EventEmitter {
     return cat;
   }
 
-  updateCategory(id: string, patch: { name?: string; icon?: string }): KBCategory | null {
+  updateCategory(id: string, patch: { name?: string; icon?: string; scenario_id?: string }): KBCategory | null {
     const cur = this.categories.get(id);
     if (!cur) return null;
     const ts = Date.now();
@@ -153,9 +179,17 @@ export class KBStore extends EventEmitter {
       ...cur,
       ...(patch.name !== undefined ? { name: patch.name.trim().slice(0, 32) } : {}),
       ...(patch.icon !== undefined ? { icon: patch.icon.trim() } : {}),
+      ...(patch.scenario_id !== undefined && scenarioStore.get(patch.scenario_id)
+        ? { scenario_id: patch.scenario_id }
+        : {}),
       updated_at: ts
     };
-    this.appendOp({ op: 'update', id, patch: { name: next.name, icon: next.icon }, ts });
+    this.appendOp({
+      op: 'update',
+      id,
+      patch: { name: next.name, icon: next.icon, scenario_id: next.scenario_id },
+      ts
+    });
     this.categories.set(id, next);
     this.emit('category_updated', next);
     return next;
@@ -178,14 +212,33 @@ export class KBStore extends EventEmitter {
     return true;
   }
 
-  createItem(categoryId: string, title: string, body: string, tags: string[] = []): KBItem | null {
+  createItem(
+    categoryId: string,
+    title: string,
+    body: string,
+    tags: string[] = [],
+    opts: {
+      scenario_id?: string;
+      source_type?: KBSourceType;
+      source_url?: string;
+      source_metadata?: KBSourceMetadata;
+      content_type?: KBContentType;
+    } = {}
+  ): KBItem | null {
     if (!this.categories.has(categoryId) && categoryId !== '__orphan__') return null;
+    const cat = this.categories.get(categoryId);
+    const resolvedScenarioId =
+      (opts.scenario_id && scenarioStore.get(opts.scenario_id) && opts.scenario_id) ||
+      cat?.scenario_id ||
+      scenarioStore.getDefaultId() ||
+      '__orphan__';
     this.itemOrder++;
     this.idCounter++;
     const now = Date.now();
     const item: KBItem = {
       id: `kb-item-${now}-${this.idCounter}`,
       type: 'item',
+      scenario_id: resolvedScenarioId,
       category_id: categoryId,
       title: title.trim().slice(0, 64),
       body: body.trim().slice(0, 4000),
@@ -195,24 +248,57 @@ export class KBStore extends EventEmitter {
         .filter(Boolean),
       order: this.itemOrder,
       created_at: now,
-      updated_at: now
+      updated_at: now,
+      source_type: opts.source_type || 'manual',
+      source_url: opts.source_url,
+      source_metadata: opts.source_metadata,
+      content_type: opts.content_type || 'text',
+      chunk_count: 0,
+      index_status: 'pending'
     };
     this.appendOp({ op: 'create', entry: item });
     this.items.set(item.id, item);
     this.emit('item_created', item);
+    scenarioKBLinkStore.ensure(item.scenario_id, item.id);
     return item;
   }
 
   updateItem(
     id: string,
-    patch: { category_id?: string; title?: string; body?: string; tags?: string[] }
+    patch: {
+      scenario_id?: string;
+      category_id?: string;
+      title?: string;
+      body?: string;
+      tags?: string[];
+      source_url?: string;
+      source_metadata?: KBSourceMetadata;
+      content_type?: KBContentType;
+      chunk_count?: number;
+      embedding_model?: string;
+      last_indexed_at?: number;
+      index_status?: KBItem['index_status'];
+    }
   ): KBItem | null {
     const cur = this.items.get(id);
     if (!cur) return null;
     const ts = Date.now();
+    const nextScenarioId =
+      patch.scenario_id !== undefined
+        ? scenarioStore.get(patch.scenario_id)
+          ? patch.scenario_id
+          : cur.scenario_id
+        : cur.scenario_id;
+    const nextCategoryId =
+      patch.category_id !== undefined
+        ? this.categories.has(patch.category_id) || patch.category_id === '__orphan__'
+          ? patch.category_id
+          : cur.category_id
+        : cur.category_id;
     const next: KBItem = {
       ...cur,
-      ...(patch.category_id !== undefined ? { category_id: patch.category_id } : {}),
+      scenario_id: nextScenarioId,
+      category_id: nextCategoryId,
       ...(patch.title !== undefined ? { title: patch.title.trim().slice(0, 64) } : {}),
       ...(patch.body !== undefined ? { body: patch.body.trim().slice(0, 4000) } : {}),
       ...(patch.tags !== undefined
@@ -223,11 +309,19 @@ export class KBStore extends EventEmitter {
               .filter(Boolean)
           }
         : {}),
+      ...(patch.source_url !== undefined ? { source_url: patch.source_url } : {}),
+      ...(patch.source_metadata !== undefined ? { source_metadata: patch.source_metadata } : {}),
+      ...(patch.content_type !== undefined ? { content_type: patch.content_type } : {}),
+      ...(patch.chunk_count !== undefined ? { chunk_count: patch.chunk_count } : {}),
+      ...(patch.embedding_model !== undefined ? { embedding_model: patch.embedding_model } : {}),
+      ...(patch.last_indexed_at !== undefined ? { last_indexed_at: patch.last_indexed_at } : {}),
+      ...(patch.index_status !== undefined ? { index_status: patch.index_status } : {}),
       updated_at: ts
     };
     this.appendOp({ op: 'update', id, patch, ts });
     this.items.set(id, next);
     this.emit('item_updated', next);
+    scenarioKBLinkStore.ensure(next.scenario_id, id);
     return next;
   }
 
@@ -236,6 +330,7 @@ export class KBStore extends EventEmitter {
     const ts = Date.now();
     this.appendOp({ op: 'delete', id, ts });
     this.items.delete(id);
+    scenarioKBLinkStore.cascadeDeleteForItem(id);
     this.emit('item_deleted', { id });
     return true;
   }
@@ -250,6 +345,10 @@ export class KBStore extends EventEmitter {
   seedDemo(): { categories_added: number; items_added: number } {
     const before = { c: this.categories.size, i: this.items.size };
 
+    const scenarios = scenarioStore.list();
+    const scenarioIdByName = (name: string) => scenarios.find((s) => s.name === name)?.id;
+    const defaultScenarioId = scenarioStore.getDefaultId() || '__orphan__';
+
     const hasItemByTitle = (title: string) => {
       for (const it of this.items.values()) if (it.title === title) return true;
       return false;
@@ -258,24 +357,24 @@ export class KBStore extends EventEmitter {
       for (const c of this.categories.values()) if (c.name === name) return true;
       return false;
     };
-    const cat = (name: string, icon: string) => {
+    const cat = (name: string, icon: string, scenarioName: string) => {
       if (hasCatByName(name)) {
         for (const c of this.categories.values()) if (c.name === name) return c;
       }
-      return this.createCategory(name, icon);
+      return this.createCategory(name, icon, scenarioIdByName(scenarioName) || defaultScenarioId);
     };
     const item = (catObj: KBCategory, title: string, body: string, tags: string[] = []) => {
       if (hasItemByTitle(title)) return null;
-      return this.createItem(catObj.id, title, body, tags);
+      return this.createItem(catObj.id, title, body, tags, { scenario_id: catObj.scenario_id });
     };
 
-    // ===== 6 个分类 =====
-    const cPrompt = cat('Prompt 模板', '📝');
-    const cFAQ = cat('常见问答', '❓');
-    const cBiz = cat('业务知识', '📚');
-    const cSales = cat('销售场景', '💰');
-    const cFin = cat('财务运营', '💼');
-    const cEng = cat('工程实践', '🔧');
+    // ===== 6 个分类，分别归属不同场景 =====
+    const cPrompt = cat('Prompt 模板', '📝', '学习');
+    const cFAQ = cat('常见问答', '❓', '学习');
+    const cBiz = cat('业务知识', '📚', '售前');
+    const cSales = cat('销售场景', '💰', '售前');
+    const cFin = cat('财务运营', '💼', '财务');
+    const cEng = cat('工程实践', '🔧', '研发');
 
     // ===== Prompt 模板 =====
     item(
@@ -447,6 +546,97 @@ export class KBStore extends EventEmitter {
 
   private seedSampleData(): void {
     this.seedDemo();
+  }
+
+  // ======== Indexing ========
+
+  /**
+   * 为指定条目重新生成 chunks 和 embedding（后台异步）
+   * 失败时会将 index_status 标记为 failed，不影响 JSONL 主数据
+   */
+  async reindexItem(
+    id: string,
+    customChunks?: TextChunk[]
+  ): Promise<{ chunks: number; status: KBItem['index_status'] } | null> {
+    const item = this.items.get(id);
+    if (!item) return null;
+
+    this.updateItem(id, { index_status: 'indexing' });
+
+    const cfg = getEmbeddingConfig();
+    if (!cfg) {
+      this.updateItem(id, { index_status: 'failed' });
+      return { chunks: 0, status: 'failed' };
+    }
+
+    try {
+      // 1. 清理旧 chunks
+      kbChunkStore.deleteByItem(id);
+
+      // 2. 切分新 chunks
+      const chunks =
+        customChunks && customChunks.length > 0
+          ? customChunks
+          : chunkText(item.body, { maxChunkSize: 800, overlap: 100 });
+      if (chunks.length === 0) {
+        this.updateItem(id, { chunk_count: 0, index_status: 'indexed', last_indexed_at: Date.now() });
+        return { chunks: 0, status: 'indexed' };
+      }
+
+      // 3. 批量生成 embedding
+      const embeddings = await createEmbeddings(chunks.map((c) => c.content));
+
+      // 4. 保存 chunks
+      const now = Date.now();
+      const modelKey = `${cfg.provider}/${cfg.model}`;
+      kbChunkStore.createMany(
+        id,
+        chunks.map((c, i) => ({
+          chunk_index: i,
+          content: c.content,
+          token_count: c.token_count,
+          embedding: embeddings.embeddings[i],
+          embedding_model: modelKey,
+          created_at: now
+        }))
+      );
+
+      this.updateItem(id, {
+        chunk_count: chunks.length,
+        embedding_model: modelKey,
+        last_indexed_at: now,
+        index_status: 'indexed'
+      });
+
+      return { chunks: chunks.length, status: 'indexed' };
+    } catch (e) {
+      console.error(`[KBStore] reindexItem(${id}) failed:`, e);
+      this.updateItem(id, { index_status: 'failed' });
+      return { chunks: 0, status: 'failed' };
+    }
+  }
+
+  /**
+   * 后台重新索引所有 pending 条目
+   */
+  schedulePendingReindex(): void {
+    const pending = Array.from(this.items.values()).filter(
+      (i) => !i.archived && (i.index_status === 'pending' || i.index_status === 'failed')
+    );
+    if (pending.length === 0) return;
+    if (!getEmbeddingConfig()) {
+      console.log('[KBStore] 存在待索引条目但 Embedding 未配置，跳过自动索引');
+      return;
+    }
+    console.log(`[KBStore] 计划后台索引 ${pending.length} 个条目...`);
+    // 串行执行，避免 burst 调用 embedding API
+    (async () => {
+      for (const item of pending) {
+        await this.reindexItem(item.id);
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      console.log('[KBStore] 后台索引完成');
+    })();
   }
 
   // ======== Internals ========

@@ -72,6 +72,11 @@ export interface ModelsConfig {
   /** v5.5.4: 知识库模型路由 */
   kb_provider?: string;
   kb_model?: string;
+  /** v5.6.0: Embedding 模型路由（用于知识库向量检索） */
+  embedding_provider?: string;
+  embedding_model?: string;
+  embedding_dimensions?: number;
+  embedding_batch_size?: number;
 }
 
 export const DEFAULT_TASK_ROUTING: ModelsConfig['task_routing'] = {
@@ -88,7 +93,11 @@ export const DEFAULT_MODELS_CONFIG: ModelsConfig = {
   provider_overrides: {},
   task_routing: { ...DEFAULT_TASK_ROUTING },
   routing_strategy: 'fixed',
-  custom_providers: []
+  custom_providers: [],
+  embedding_provider: undefined,
+  embedding_model: undefined,
+  embedding_dimensions: 1536,
+  embedding_batch_size: 8
 };
 
 /** 静态模型目录（v5.4.2 扩展为多 provider） */
@@ -152,6 +161,20 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         tier: 'fast',
         description: '高性价比小模型',
         best_for: ['chat', 'reply_message']
+      },
+      {
+        id: 'text-embedding-3-small',
+        name: 'Text Embedding 3 Small',
+        context_window: 8191,
+        tier: 'embedding',
+        description: '1536 维通用 Embedding 模型'
+      },
+      {
+        id: 'text-embedding-3-large',
+        name: 'Text Embedding 3 Large',
+        context_window: 8191,
+        tier: 'embedding',
+        description: '3072 维高精度 Embedding 模型'
       },
       {
         id: 'o1',
@@ -234,6 +257,20 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         best_for: ['chat', 'reply_message', 'query_info']
       },
       {
+        id: 'text-embedding-v3',
+        name: '通义千问 Embedding V3',
+        context_window: 8192,
+        tier: 'embedding',
+        description: '1024 维通用 Embedding 模型'
+      },
+      {
+        id: 'text-embedding-v2',
+        name: '通义千问 Embedding V2',
+        context_window: 2048,
+        tier: 'embedding',
+        description: '1536 维 Embedding 模型'
+      },
+      {
         id: 'qwen-max',
         name: 'Qwen Max',
         context_window: 32000,
@@ -272,6 +309,13 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         tier: 'fast',
         description: '免费快速',
         best_for: ['chat', 'reply_message']
+      },
+      {
+        id: 'embedding-3',
+        name: '智谱 Embedding-3',
+        context_window: 8192,
+        tier: 'embedding',
+        description: '2048 维 Embedding 模型'
       }
     ]
   },
@@ -352,6 +396,20 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         tier: 'local',
         description: '本地推理模型',
         best_for: ['analyze_data']
+      },
+      {
+        id: 'nomic-embed-text',
+        name: 'Nomic Embed Text (本地)',
+        context_window: 8192,
+        tier: 'embedding',
+        description: 'Ollama 本地 Embedding 模型'
+      },
+      {
+        id: 'bge-m3',
+        name: 'BGE-M3 (本地)',
+        context_window: 8192,
+        tier: 'embedding',
+        description: 'Ollama 本地多语言 Embedding 模型'
       }
     ]
   },
@@ -617,6 +675,32 @@ class ModelsConfigManager {
     if (!p || !cfg.enabled_providers.includes(cfg.kb_provider)) return null;
     if (!p.models.some((m) => m.id === cfg.kb_model)) return null;
     return { provider: cfg.kb_provider, model: cfg.kb_model };
+  }
+
+  /**
+   * v5.6.0: 解析 Embedding 模型（用于知识库向量检索）
+   */
+  resolveEmbedding(): { provider: string; model: string; dimensions: number; batch_size: number } | null {
+    const cfg = this.config;
+    if (!cfg.embedding_provider || !cfg.embedding_model) return null;
+    const providers = this.allProviders();
+    const p = providers.find((p) => p.id === cfg.embedding_provider);
+    if (!p || !cfg.enabled_providers.includes(cfg.embedding_provider)) return null;
+    if (!p.models.some((m) => m.id === cfg.embedding_model)) return null;
+    return {
+      provider: cfg.embedding_provider,
+      model: cfg.embedding_model,
+      dimensions: cfg.embedding_dimensions || 1536,
+      batch_size: cfg.embedding_batch_size || 8
+    };
+  }
+
+  getEmbeddingDimensions(): number {
+    return this.config.embedding_dimensions || 1536;
+  }
+
+  getEmbeddingBatchSize(): number {
+    return this.config.embedding_batch_size || 8;
   }
 
   /** 读取 ~/.config/agent-canvas/secrets.env，仅返回关心的变量 */

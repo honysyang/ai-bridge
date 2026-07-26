@@ -74,7 +74,8 @@ async function saveDocumentToKB(
   tags: string[],
   source_type: 'file' | 'url',
   source_url?: string,
-  fileName?: string
+  fileName?: string,
+  scenarioId?: string
 ): Promise<IngestFileResult> {
   const title = parsed.title || fileName || '未命名文档';
   const contentType = inferContentType(parsed.mime_type, fileName);
@@ -87,6 +88,7 @@ async function saveDocumentToKB(
   };
 
   const item = kbStore.createItem(categoryId, title.slice(0, 64), parsed.content.slice(0, 4000), tags, {
+    scenario_id: scenarioId,
     source_type,
     source_url,
     source_metadata: metadata,
@@ -116,10 +118,11 @@ export async function ingestFile(
   mimeType: string,
   fileName: string,
   categoryId: string = '__orphan__',
-  tags: string[] = []
+  tags: string[] = [],
+  scenarioId?: string
 ): Promise<IngestFileResult> {
   const parsed = await parseDocument(buffer, mimeType, fileName);
-  return saveDocumentToKB(parsed, categoryId, tags, 'file', undefined, fileName);
+  return saveDocumentToKB(parsed, categoryId, tags, 'file', undefined, fileName, scenarioId);
 }
 
 /**
@@ -128,7 +131,8 @@ export async function ingestFile(
 export async function ingestUrl(
   url: string,
   categoryId: string = '__orphan__',
-  tags: string[] = []
+  tags: string[] = [],
+  scenarioId?: string
 ): Promise<IngestUrlResult> {
   const res = await fetch(url, {
     headers: {
@@ -140,7 +144,7 @@ export async function ingestUrl(
   }
   const buffer = Buffer.from(await res.arrayBuffer());
   const parsed = parseHtml(buffer, url);
-  const result = await saveDocumentToKB(parsed, categoryId, tags, 'url', url, parsed.title);
+  const result = await saveDocumentToKB(parsed, categoryId, tags, 'url', url, parsed.title, scenarioId);
   return { ...result, url };
 }
 
@@ -169,7 +173,8 @@ export async function ingestRepo(
   categoryId: string = '__orphan__',
   tags: string[] = [],
   branch?: string,
-  depth = 1
+  depth = 1,
+  scenarioId?: string
 ): Promise<IngestRepoResult> {
   const repoId = makeRepoId(`${repoUrl}#${branch || 'HEAD'}`);
   const meta = await cloneOrUpdateRepo({ repoUrl, repoId, branch, depth });
@@ -188,6 +193,7 @@ export async function ingestRepo(
   const body = buildRepoBody(meta);
 
   const item = kbStore.createItem(categoryId, title, body, tags, {
+    scenario_id: scenarioId,
     source_type: 'repository',
     source_url: repoUrl,
     source_metadata: {
@@ -226,11 +232,13 @@ export async function ingestMessage(
   message: string,
   title?: string,
   categoryId: string = '__orphan__',
-  tags: string[] = []
+  tags: string[] = [],
+  scenarioId?: string
 ): Promise<IngestMessageResult> {
   const itemTitle = title ? title.slice(0, 64) : message.trim().slice(0, 64);
   const itemBody = message.trim().slice(0, 4000);
   const item = kbStore.createItem(categoryId, itemTitle, itemBody, tags, {
+    scenario_id: scenarioId,
     source_type: 'chat',
     content_type: 'text'
   });

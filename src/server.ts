@@ -7,10 +7,11 @@ import { sessionManager } from './session.js';
 import { clawManager } from './claw/index.js';
 import { clawConfig } from './claw/config.js';
 import { kbStore } from './kb-store.js';
+import { scenarioStore } from './scenario-store.js';
+import { scenarioKBLinkStore } from './scenario-kb-link-store.js';
 import { kbChunkStore } from './kb-chunk-store.js';
 import { kbLinkStore } from './kb-link-store.js';
 import { workflowStore } from './workflow-store.js';
-import { promptStore } from './prompt-store.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -23,7 +24,6 @@ import { fsRouter } from './routes/fs.js';
 import { taskRouter, contextRouter, logRouter } from './routes/tasks.js';
 import { kbRouter } from './routes/kb.js';
 import { workflowRouter } from './routes/workflows.js';
-import { promptRouter } from './routes/prompts.js';
 import { chatRouter } from './routes/chat.js';
 import { clawRouter, legacyWeixinRouter } from './routes/claw.js';
 import { heartbeatRouter } from './routes/heartbeat.js';
@@ -258,7 +258,6 @@ app.use('/api/context', contextRouter);
 app.use('/api/logs', logRouter);
 app.use('/api/kb', kbRouter);
 app.use('/api/wf', workflowRouter);
-app.use('/api/prompts', promptRouter);
 app.use('/api/chat', chatRouter);
 app.use('/api/claw', clawRouter);
 app.use('/api/overview', overviewRouter);
@@ -287,7 +286,6 @@ app.use('/api/v1/context', contextRouter);
 app.use('/api/v1/logs', logRouter);
 app.use('/api/v1/kb', kbRouter);
 app.use('/api/v1/wf', workflowRouter);
-app.use('/api/v1/prompts', promptRouter);
 app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/claw', clawRouter);
 app.use('/api/v1/overview', overviewRouter);
@@ -336,10 +334,14 @@ export async function startServer(port: number = 4567) {
     log.warn(`  请登录后尽快修改默认密码`);
     log.warn(`═══════════════════════════════════════════`);
   }
+  // 加载场景（知识库顶层组织维度）
+  const scenarioLoad = scenarioStore.loadAll();
   // 加载知识库（如无 kb.jsonl 则写入示例数据）
   const kbLoad = kbStore.loadAll();
   // 加载知识库片段
   const kbChunksLoad = kbChunkStore.loadAll();
+  // 加载场景-条目关联
+  const scenarioKBLinksLoad = scenarioKBLinkStore.loadAll();
   // 加载知识库关联（首次启动 seed 示例关联）
   const kbLinksLoad = kbLinkStore.loadAll();
   seedKBLinksIfEmpty();
@@ -347,8 +349,6 @@ export async function startServer(port: number = 4567) {
   kbStore.schedulePendingReindex();
   // 加载工作流（如无 wf.jsonl 则写入示例数据）
   const wfLoad = workflowStore.loadAll();
-  // 加载提示词库（如无 prompts.jsonl 则写入示例数据）
-  promptStore.loadAll();
 
   taskQueue.addLog(
     'success',
@@ -356,6 +356,13 @@ export async function startServer(port: number = 4567) {
     `数据恢复完成: 任务 ${loadResult.tasks}, 日志 ${loadResult.logs}, 会话 ${loadResult.sessions}, 损坏行 ${loadResult.corrupted}`,
     loadResult as any
   );
+  taskQueue.addLog(
+    scenarioLoad.seeded ? 'success' : 'info',
+    'kb',
+    `知识库场景${scenarioLoad.seeded ? '已初始化（首次启动写入内置）' : '已加载'}: ${scenarioLoad.scenarios} 个`,
+    scenarioLoad as any
+  );
+  taskQueue.addLog('info', 'kb', `知识库场景关联已加载: ${scenarioKBLinksLoad.links} 条`, scenarioKBLinksLoad as any);
   taskQueue.addLog(
     kbLoad.seeded ? 'success' : 'info',
     'kb',

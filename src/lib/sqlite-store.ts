@@ -82,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_created ON logs(created_at);
 
 CREATE TABLE IF NOT EXISTS kb_categories (
   id TEXT PRIMARY KEY,
+  scenario_id TEXT,
   name TEXT NOT NULL,
   icon TEXT,
   sort_order INTEGER,
@@ -90,15 +91,60 @@ CREATE TABLE IF NOT EXISTS kb_categories (
 
 CREATE TABLE IF NOT EXISTS kb_items (
   id TEXT PRIMARY KEY,
+  scenario_id TEXT,
   category_id TEXT NOT NULL,
   title TEXT NOT NULL,
   body TEXT,
   tags TEXT,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  source_type TEXT DEFAULT 'manual',
+  source_url TEXT,
+  source_metadata_json TEXT,
+  content_type TEXT,
+  chunk_count INTEGER DEFAULT 0,
+  embedding_model TEXT,
+  index_status TEXT DEFAULT 'pending',
+  last_indexed_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_kb_items_category ON kb_items(category_id);
 CREATE INDEX IF NOT EXISTS idx_kb_items_updated ON kb_items(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS kb_scenarios (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  icon TEXT,
+  description TEXT,
+  sort_order INTEGER,
+  archived INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kb_scenarios_order ON kb_scenarios(sort_order);
+
+CREATE TABLE IF NOT EXISTS scenario_kb_links (
+  id TEXT PRIMARY KEY,
+  scenario_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scenario_kb_links_scenario ON scenario_kb_links(scenario_id);
+CREATE INDEX IF NOT EXISTS idx_scenario_kb_links_item ON scenario_kb_links(item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scenario_kb_links_unique ON scenario_kb_links(scenario_id, item_id);
+
+CREATE TABLE IF NOT EXISTS kb_chunks (
+  id TEXT PRIMARY KEY,
+  item_id TEXT NOT NULL,
+  chunk_index INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  source_path TEXT,
+  token_count INTEGER,
+  embedding_json TEXT,
+  embedding_model TEXT,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_item ON kb_chunks(item_id);
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_item_index ON kb_chunks(item_id, chunk_index);
 
 CREATE TABLE IF NOT EXISTS kb_links (
   id TEXT PRIMARY KEY,
@@ -167,6 +213,7 @@ export class SqliteStore {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.exec(SCHEMA);
+    this.runMigrations();
 
     this.stmts = {
       insertTask: this.db.prepare(`
@@ -190,8 +237,16 @@ export class SqliteStore {
         VALUES (@id, @level, @source, @message, @created_at, @meta_json)
       `),
       insertKBItem: this.db.prepare(`
-        INSERT OR REPLACE INTO kb_items (id, category_id, title, body, tags, created_at, updated_at)
-        VALUES (@id, @category_id, @title, @body, @tags, @created_at, @updated_at)
+        INSERT OR REPLACE INTO kb_items (
+          id, scenario_id, category_id, title, body, tags, created_at, updated_at,
+          source_type, source_url, source_metadata_json, content_type,
+          chunk_count, embedding_model, index_status, last_indexed_at
+        )
+        VALUES (
+          @id, @scenario_id, @category_id, @title, @body, @tags, @created_at, @updated_at,
+          @source_type, @source_url, @source_metadata_json, @content_type,
+          @chunk_count, @embedding_model, @index_status, @last_indexed_at
+        )
       `),
       insertKBLink: this.db.prepare(`
         INSERT OR REPLACE INTO kb_links (id, source_id, target_id, type, label, created_at)
@@ -599,7 +654,18 @@ export class SqliteStore {
    */
   getTableCounts(): Record<string, number> {
     try {
-      const tables = ['tasks', 'sessions', 'logs', 'kb_items', 'kb_categories', 'kb_links', 'workflows', 'users'];
+      const tables = [
+        'tasks',
+        'sessions',
+        'logs',
+        'kb_items',
+        'kb_categories',
+        'kb_scenarios',
+        'scenario_kb_links',
+        'kb_links',
+        'workflows',
+        'users'
+      ];
       const counts: Record<string, number> = {};
       for (const t of tables) {
         try {
@@ -717,6 +783,130 @@ export class SqliteStore {
       last_task_summary: r.last_task_summary,
       meta: r.meta_json ? JSON.parse(r.meta_json) : undefined
     };
+  }
+
+  /**
+   * v5.6.0: 表结构迁移（向后兼容）
+   */
+  private runMigrations(): void {
+    try {
+      const version = this.getMeta('schema_version') || '1.0.0';
+      if (this.versionCompare(version, '1.1.0') < 0) {
+        this.migrateTo110();
+        this.setMeta('schema_version', '1.1.0');
+      }
+      if (this.versionCompare(version, '1.2.0') < 0) {
+        this.migrateTo120();
+        this.setMeta('schema_version', '1.2.0');
+      }
+    } catch (e: any) {
+      console.error('[sqlite] migration failed:', e.message);
+    }
+  }
+
+  private versionCompare(a: string, b: string): number {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const x = pa[i] || 0;
+      const y = pb[i] || 0;
+      if (x < y) return -1;
+      if (x > y) return 1;
+    }
+    return 0;
+  }
+
+  private migrateTo110(): void {
+    const addColumn = (table: string, col: string, def: string) => {
+      try {
+        this.db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`).run();
+      } catch (e: any) {
+        // 列已存在时会抛 "duplicate column name"，忽略
+        if (!e.message.includes('duplicate column name')) {
+          console.error(`[sqlite] migrate add column ${table}.${col} failed:`, e.message);
+        }
+      }
+    };
+
+    addColumn('kb_items', 'source_type', "TEXT DEFAULT 'manual'");
+    addColumn('kb_items', 'source_url', 'TEXT');
+    addColumn('kb_items', 'source_metadata_json', 'TEXT');
+    addColumn('kb_items', 'content_type', 'TEXT');
+    addColumn('kb_items', 'chunk_count', 'INTEGER DEFAULT 0');
+    addColumn('kb_items', 'embedding_model', 'TEXT');
+    addColumn('kb_items', 'index_status', "TEXT DEFAULT 'pending'");
+    addColumn('kb_items', 'last_indexed_at', 'INTEGER');
+
+    // 为新增列建索引
+    try {
+      this.db.prepare('CREATE INDEX IF NOT EXISTS idx_kb_items_source_type ON kb_items(source_type)').run();
+      this.db.prepare('CREATE INDEX IF NOT EXISTS idx_kb_items_index_status ON kb_items(index_status)').run();
+    } catch (e: any) {
+      console.error('[sqlite] migrate create index failed:', e.message);
+    }
+
+    // 创建 kb_chunks 表（SCHEMA 中已有 IF NOT EXISTS，但迁移时确保索引）
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS kb_chunks (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL,
+        chunk_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        source_path TEXT,
+        token_count INTEGER,
+        embedding_json TEXT,
+        embedding_model TEXT,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_kb_chunks_item ON kb_chunks(item_id);
+      CREATE INDEX IF NOT EXISTS idx_kb_chunks_item_index ON kb_chunks(item_id, chunk_index);
+    `);
+  }
+
+  private migrateTo120(): void {
+    const addColumn = (table: string, col: string, def: string) => {
+      try {
+        this.db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`).run();
+      } catch (e: any) {
+        if (!e.message.includes('duplicate column name')) {
+          console.error(`[sqlite] migrate add column ${table}.${col} failed:`, e.message);
+        }
+      }
+    };
+
+    addColumn('kb_categories', 'scenario_id', 'TEXT');
+    addColumn('kb_items', 'scenario_id', 'TEXT');
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS kb_scenarios (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        icon TEXT,
+        description TEXT,
+        sort_order INTEGER,
+        archived INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_kb_scenarios_order ON kb_scenarios(sort_order);
+
+      CREATE TABLE IF NOT EXISTS scenario_kb_links (
+        id TEXT PRIMARY KEY,
+        scenario_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_scenario_kb_links_scenario ON scenario_kb_links(scenario_id);
+      CREATE INDEX IF NOT EXISTS idx_scenario_kb_links_item ON scenario_kb_links(item_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_scenario_kb_links_unique ON scenario_kb_links(scenario_id, item_id);
+    `);
+
+    try {
+      this.db.prepare('CREATE INDEX IF NOT EXISTS idx_kb_items_scenario ON kb_items(scenario_id)').run();
+      this.db.prepare('CREATE INDEX IF NOT EXISTS idx_kb_categories_scenario ON kb_categories(scenario_id)').run();
+    } catch (e: any) {
+      console.error('[sqlite] migrate create scenario index failed:', e.message);
+    }
   }
 
   close() {

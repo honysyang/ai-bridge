@@ -5,8 +5,16 @@
 (function (global) {
   'use strict';
 
-  const { state, i18n, api, escapeHtml, formatRelative, showNotification, openDrawer, closeDrawer, switchTab } =
-    global.Core;
+  const { state, i18n, api, escapeHtml, formatRelative, showNotification } = global.Core;
+  function openDrawer(id) {
+    if (global.Main && global.Main.openDrawer) global.Main.openDrawer(id);
+  }
+  function closeDrawer(id) {
+    if (global.Main && global.Main.closeDrawer) global.Main.closeDrawer(id);
+  }
+  function switchTab(name, opts) {
+    if (global.Main && global.Main.switchTab) global.Main.switchTab(name, opts);
+  }
 
   async function initWF() {
     bindWFEvents();

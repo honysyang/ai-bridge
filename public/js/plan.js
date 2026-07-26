@@ -5,7 +5,13 @@
 (function (global) {
   'use strict';
 
-  const { state, api, escapeHtml, showNotification, openDrawer, closeDrawer } = global.Core;
+  const { state, api, escapeHtml, showNotification } = global.Core;
+  function openDrawer(id) {
+    if (global.Main && global.Main.openDrawer) global.Main.openDrawer(id);
+  }
+  function closeDrawer(id) {
+    if (global.Main && global.Main.closeDrawer) global.Main.closeDrawer(id);
+  }
 
   // ======== 常量 ========
   const PLAN_STORAGE_KEY = 'ai_bridge_plans_v1';

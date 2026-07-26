@@ -13,7 +13,6 @@
     chat: 'panel-chat',
     kb: 'panel-kb',
     workflow: 'panel-workflow',
-    prompts: 'panel-prompts',
     plan: 'panel-plan',
     overview: 'panel-overview',
     settings: 'panel-settings' // v5.3.0
@@ -24,7 +23,6 @@
     chat: () => null, // 始终初始化（init 流程已加载）
     kb: () => window.initKB,
     workflow: () => window.initWF,
-    prompts: () => window.initPrompts,
     plan: () => window.initPlan,
     overview: () => window.initOverview,
     settings: () => (global.Settings && global.Settings.init) || window.initSettings // v5.3.0
@@ -129,16 +127,6 @@
         planCount.hidden = false;
       } else {
         planCount.hidden = true;
-      }
-    }
-    const promptsCount = document.getElementById('tab-count-prompts');
-    if (promptsCount) {
-      const n = (state.promptsList || []).length;
-      if (n > 0) {
-        promptsCount.textContent = n;
-        promptsCount.hidden = false;
-      } else {
-        promptsCount.hidden = true;
       }
     }
   }

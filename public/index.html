@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ai-bridge 智能体桥接器 · 控制台</title>
+    <title>鹤桥 ai-bridge · 智能体桥接控制台</title>
     <link
       rel="icon"
       type="image/svg+xml"
@@ -17,9 +17,9 @@
     <!-- ========== Header ========== -->
     <header class="app-header">
       <div class="header-left">
-        <img src="logo.png" alt="ai-bridge logo" class="app-logo" />
+        <img src="logo.png" alt="鹤桥 ai-bridge logo" class="app-logo" />
         <div>
-          <h1>ai-bridge <span class="version" id="app-version">v--</span></h1>
+          <h1>鹤桥 <span class="brand-en">ai-bridge</span> <span class="version" id="app-version">v--</span></h1>
           <p class="subtitle" id="header-subtitle">智能体桥接控制台 · 知识库 · 工作流 · 计划 · 设置</p>
         </div>
       </div>
@@ -61,11 +61,6 @@
         <span class="tab-icon">▦</span>
         <span class="tab-label">工作流</span>
         <span class="tab-count" id="tab-count-wf" hidden>0</span>
-      </button>
-      <button class="tab-btn" data-tab="prompts" role="tab" aria-selected="false">
-        <span class="tab-icon">📝</span>
-        <span class="tab-label">提示词</span>
-        <span class="tab-count" id="tab-count-prompts" hidden>0</span>
       </button>
       <button class="tab-btn" data-tab="plan" role="tab" aria-selected="false">
         <span class="tab-icon">🗓</span>
@@ -194,6 +189,9 @@
       <div class="panel panel-kb" id="panel-kb" hidden>
         <div class="kb-panel">
           <div class="kb-toolbar">
+            <select id="kb-scenario-filter" class="filter-select" title="切换业务场景">
+              <option value="all">🌐 全部场景</option>
+            </select>
             <div class="filter-tabs" id="kb-view-tabs">
               <button class="tab active" data-view="list">📋 列表</button>
               <button class="tab" data-view="graph">🕸 图谱</button>
@@ -291,29 +289,6 @@
                 <button class="btn-demo btn-demo-large" id="btn-wf-seed-demo-2">🎁 一键加载演示数据</button>
               </div>
             </main>
-          </div>
-        </div>
-      </div>
-
-      <!-- ===== 面板：提示词库 ===== -->
-      <div class="panel panel-prompts" id="panel-prompts" hidden>
-        <div class="prompt-panel">
-          <div class="prompt-toolbar">
-            <input type="search" id="prompt-search" placeholder="🔍 搜索提示词..." class="search-input" />
-            <select id="prompt-cat-filter" class="filter-select">
-              <option value="all">全部分类</option>
-            </select>
-            <button class="btn-primary" id="btn-prompt-new-category">+ 分类</button>
-            <button class="btn-secondary" id="btn-prompt-new">+ 提示词</button>
-            <button class="btn-demo" id="btn-prompt-seed-demo" title="一键加载示例提示词">🎁 演示数据</button>
-          </div>
-          <div class="prompt-list" id="prompt-list">
-            <div class="empty-state">
-              <div class="empty-icon">📝</div>
-              <div class="empty-text">提示词库还是空的</div>
-              <div class="empty-hint">点击「🎁 演示数据」加载示例提示词，或点击「+ 提示词」创建</div>
-              <button class="btn-demo btn-demo-large" id="btn-prompt-seed-demo-2">🎁 一键加载演示数据</button>
-            </div>
           </div>
         </div>
       </div>
@@ -553,82 +528,103 @@
             </div>
 
             <div class="settings-content">
-              <!-- ===== 区段：AI 模型 ===== -->
+              <!-- ===== 区段：AI 模型（v6.0.1 产品化改造） ===== -->
               <section
                 class="settings-section"
                 id="settings-section-models"
-                data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型 Embedding 向量"
+                data-search-keywords="AI 模型 provider 默认模型 模型路由 温度 top_p max_tokens 密钥 模型列表 自定义模型 知识库模型 Embedding 向量 服务商 连通性测试"
               >
-                <div class="settings-section-block">
-                  <div class="settings-block-title">💬 普通模型</div>
-                  <p class="settings-block-desc">日常对话与任务默认使用的模型</p>
+                <!-- 区段顶部工具栏 -->
+                <div class="settings-section-toolbar">
+                  <nav class="tab-bar" id="models-tab-bar">
+                    <button type="button" class="tab-item active" data-tab="overview">📊 模型概览</button>
+                    <button type="button" class="tab-item" data-tab="routing">🎯 默认与路由</button>
+                    <button type="button" class="tab-item" data-tab="providers">🏭 服务商管理</button>
+                    <button type="button" class="tab-item" data-tab="kb">📚 知识库模型</button>
+                    <button type="button" class="tab-item" data-tab="advanced">⚙️ 高级参数</button>
+                  </nav>
+                  <button class="btn-secondary btn-sm" id="btn-refresh-models" title="刷新状态">⟳ 刷新</button>
+                <button class="btn-secondary btn-sm" id="btn-reset-models" title="恢复默认模型配置">恢复默认</button>
+                </div>
 
-                  <div class="settings-card">
-                    <div class="settings-card-head">
-                      <h3>🤖 当前默认模型</h3>
-                      <p class="settings-card-hint">所有 AI 调用（除明确指定）会使用此组合</p>
+                <!-- Tab 1: 模型概览 -->
+                <div class="tab-panel active" id="models-tab-overview">
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">📊 已启用模型</div>
+                    <p class="settings-block-desc">当前可用模型卡片，绿色表示已配置并启用</p>
+                    <div class="model-cards-grid" id="model-overview-grid">
+                      <div class="empty-state"><div class="empty-text">加载中...</div></div>
                     </div>
-                    <div class="settings-form-grid settings-form-grid-2">
-                      <div class="form-group">
-                        <label>服务商</label>
-                        <select id="setting-model-provider" class="form-input"></select>
-                      </div>
-                      <div class="form-group">
-                        <label>模型</label>
-                        <select id="setting-model-name" class="form-input"></select>
-                        <div class="form-hint" id="setting-model-name-hint">--</div>
+                  </div>
+
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">🌉 实时解析结果</div>
+                    <p class="settings-block-desc">各任务类型实际会调用哪个模型</p>
+                    <div class="routing-summary" id="model-routing-summary">
+                      <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                    </div>
+                  </div>
+
+                  <div class="settings-card settings-callout">
+                    <div class="callout-icon">💡</div>
+                    <div class="callout-body">
+                      <strong>模型选择建议</strong>
+                      <p>
+                        日常对话优先选「快速」模型；复杂分析、代码、多步任务优先选「推理」模型；RAG
+                        生成答案可单独配置更强的「旗舰」模型。在「服务商管理」标签中点击「测试连通性」可验证配置是否生效。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Tab 2: 默认与路由 -->
+                <div class="tab-panel" id="models-tab-routing">
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">🤖 全局默认模型</div>
+                    <p class="settings-block-desc">未命中任务路由时使用的模型组合</p>
+                    <div class="settings-card">
+                      <div class="settings-form-grid settings-form-grid-2">
+                        <div class="form-group">
+                          <label>默认服务商</label>
+                          <select id="setting-model-provider" class="form-input"></select>
+                          <div class="form-hint">未指定任务类型时使用</div>
+                        </div>
+                        <div class="form-group">
+                          <label>默认模型</label>
+                          <select id="setting-model-name" class="form-input"></select>
+                          <div class="form-hint" id="setting-model-name-hint">--</div>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  <div class="settings-card">
-                    <div class="settings-card-head">
-                      <h3>⚙️ 生成参数</h3>
-                      <p class="settings-card-hint">控制默认生成行为</p>
-                    </div>
-                    <div class="settings-form-grid settings-form-grid-4">
-                      <div class="form-group">
-                        <label>Temperature</label>
-                        <input
-                          type="number"
-                          id="setting-model-temperature"
-                          class="form-input"
-                          min="0"
-                          max="2"
-                          step="0.1"
-                        />
-                        <div class="form-hint">0=确定，1=平衡</div>
-                      </div>
-                      <div class="form-group">
-                        <label>Max Tokens</label>
-                        <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000" />
-                      </div>
-                      <div class="form-group">
-                        <label>Top P</label>
-                        <input type="number" id="setting-model-top-p" class="form-input" min="0" max="1" step="0.05" />
-                      </div>
-                      <div class="form-group">
-                        <label>Frequency Penalty</label>
-                        <input
-                          type="number"
-                          id="setting-model-freq-penalty"
-                          class="form-input"
-                          min="-2"
-                          max="2"
-                          step="0.1"
-                        />
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">🎯 按任务类型路由</div>
+                    <p class="settings-block-desc">为不同任务类型指定专用模型，留空则使用全局默认</p>
+                    <div class="settings-card">
+                      <div class="routing-editor" id="task-routing-editor">
+                        <div class="empty-state"><div class="empty-text">加载中...</div></div>
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div class="settings-card">
-                    <div class="settings-card-head settings-card-head-between">
-                      <div>
-                        <h3>🏭 自定义服务商</h3>
-                        <p class="settings-card-hint">选择服务商 → 填写 Base URL → 添加模型 → 输入 API 密钥</p>
-                      </div>
+                <!-- Tab 3: 服务商管理 -->
+                <div class="tab-panel" id="models-tab-providers">
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">🏭 内置与自定义服务商</div>
+                    <p class="settings-block-desc">启用/禁用服务商，管理 API 密钥与模型列表</p>
+                    <div class="provider-status-table" id="provider-status-table">
+                      <div class="empty-state"><div class="empty-text">加载中...</div></div>
+                    </div>
+                  </div>
+
+                  <div class="settings-section-block">
+                    <div class="settings-block-title settings-block-title-between">
+                      <span>📝 自定义服务商</span>
                       <button class="btn-secondary btn-sm" id="btn-add-provider">＋ 新建服务商</button>
                     </div>
+                    <p class="settings-block-desc">添加 OpenAI 兼容的自定义接口，如本地 Ollama、One API 等</p>
                     <div class="provider-list" id="custom-provider-list">
                       <div class="empty-state"><div class="empty-text">加载中...</div></div>
                     </div>
@@ -647,102 +643,127 @@
                   </div>
                 </div>
 
-                <div class="settings-section-block">
-                  <div class="settings-block-title">📚 知识库模型</div>
-                  <p class="settings-block-desc">用于知识库 RAG 检索后的内容生成</p>
-
-                  <div class="settings-card">
-                    <div class="settings-card-head">
-                      <h3>🧠 知识库专用模型</h3>
-                      <p class="settings-card-hint">RAG 检索后生成答案时使用的模型</p>
-                    </div>
-                    <div class="settings-form-grid settings-form-grid-2">
-                      <div class="form-group">
-                        <label>服务商</label>
-                        <select id="setting-kb-provider" class="form-input"></select>
+                <!-- Tab 4: 知识库模型 -->
+                <div class="tab-panel" id="models-tab-kb">
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">🧠 知识库生成模型</div>
+                    <p class="settings-block-desc">RAG 检索后生成答案时使用的模型</p>
+                    <div class="settings-card">
+                      <div class="settings-form-grid settings-form-grid-2">
+                        <div class="form-group">
+                          <label>服务商</label>
+                          <select id="setting-kb-provider" class="form-input"></select>
+                        </div>
+                        <div class="form-group">
+                          <label>模型</label>
+                          <select id="setting-kb-model" class="form-input"></select>
+                          <div class="form-hint" id="setting-kb-model-hint">--</div>
+                        </div>
                       </div>
-                      <div class="form-group">
-                        <label>模型</label>
-                        <select id="setting-kb-model" class="form-input"></select>
-                        <div class="form-hint" id="setting-kb-model-hint">--</div>
+                    </div>
+                  </div>
+
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">🔢 Embedding 模型</div>
+                    <p class="settings-block-desc">用于知识库向量检索（必须配置才能启用语义搜索）</p>
+                    <div class="settings-card">
+                      <div class="settings-form-grid settings-form-grid-2">
+                        <div class="form-group">
+                          <label>服务商</label>
+                          <select id="setting-embedding-provider" class="form-input"></select>
+                        </div>
+                        <div class="form-group">
+                          <label>模型</label>
+                          <select id="setting-embedding-model" class="form-input"></select>
+                          <div class="form-hint" id="setting-embedding-model-hint">--</div>
+                        </div>
+                        <div class="form-group">
+                          <label>向量维度</label>
+                          <input
+                            type="number"
+                            id="setting-embedding-dimensions"
+                            class="form-input"
+                            min="1"
+                            max="8192"
+                          />
+                          <div class="form-hint">常见：text-embedding-3-small=1536，千问 V3=1024</div>
+                        </div>
+                        <div class="form-group">
+                          <label>批处理大小</label>
+                          <input type="number" id="setting-embedding-batch-size" class="form-input" min="1" max="64" />
+                          <div class="form-hint">单次请求最多生成多少个向量</div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div class="settings-section-block">
-                  <div class="settings-block-title">🔢 Embedding 模型</div>
-                  <p class="settings-block-desc">用于知识库向量检索（必须配置才能启用语义搜索）</p>
-
-                  <div class="settings-card">
-                    <div class="settings-card-head">
-                      <h3>📐 向量 Embedding 模型</h3>
-                      <p class="settings-card-hint">
-                        将知识库文本转换为向量，支持 OpenAI / 通义千问 / 智谱 / Ollama 等兼容接口
-                      </p>
-                    </div>
-                    <div class="settings-form-grid settings-form-grid-2">
-                      <div class="form-group">
-                        <label>服务商</label>
-                        <select id="setting-embedding-provider" class="form-input"></select>
-                      </div>
-                      <div class="form-group">
-                        <label>模型</label>
-                        <select id="setting-embedding-model" class="form-input"></select>
-                        <div class="form-hint" id="setting-embedding-model-hint">--</div>
-                      </div>
-                      <div class="form-group">
-                        <label>向量维度</label>
-                        <input type="number" id="setting-embedding-dimensions" class="form-input" min="1" max="8192" />
-                        <div class="form-hint">常见：text-embedding-3-small=1536，千问 V3=1024</div>
-                      </div>
-                      <div class="form-group">
-                        <label>批处理大小</label>
-                        <input type="number" id="setting-embedding-batch-size" class="form-input" min="1" max="64" />
-                        <div class="form-hint">单次请求最多生成多少个向量</div>
+                <!-- Tab 5: 高级参数 -->
+                <div class="tab-panel" id="models-tab-advanced">
+                  <div class="settings-section-block">
+                    <div class="settings-block-title">⚙️ 默认生成参数</div>
+                    <p class="settings-block-desc">控制默认生成行为，任务级参数可覆盖这些值</p>
+                    <div class="settings-card">
+                      <div class="settings-form-grid settings-form-grid-4">
+                        <div class="form-group">
+                          <label>Temperature</label>
+                          <input
+                            type="range"
+                            id="setting-model-temperature"
+                            class="form-range"
+                            min="0"
+                            max="2"
+                            step="0.1"
+                          />
+                          <div class="range-value" id="setting-model-temperature-value">0.7</div>
+                          <div class="form-hint">0=确定，1=平衡，2=随机</div>
+                        </div>
+                        <div class="form-group">
+                          <label>Max Tokens</label>
+                          <input type="number" id="setting-model-max-tokens" class="form-input" min="1" max="32000" />
+                          <div class="form-hint">单次回复最大 token 数</div>
+                        </div>
+                        <div class="form-group">
+                          <label>Top P</label>
+                          <input
+                            type="number"
+                            id="setting-model-top-p"
+                            class="form-input"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                          />
+                          <div class="form-hint">核采样概率阈值</div>
+                        </div>
+                        <div class="form-group">
+                          <label>Frequency Penalty</label>
+                          <input
+                            type="number"
+                            id="setting-model-freq-penalty"
+                            class="form-input"
+                            min="-2"
+                            max="2"
+                            step="0.1"
+                          />
+                          <div class="form-hint">正值减少重复用词</div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </section>
 
-              <!-- ===== 区段：系统行为 ===== -->
+              <!-- ===== 区段：运行设置 ===== -->
               <section
                 class="settings-section"
                 id="settings-section-system"
                 hidden
-                data-search-keywords="系统 主题 密度 语言 动画 任务 优先级 重试 归档 心跳 长轮询 skill AI Bridge Skill 安装 智能体"
+                data-search-keywords="运行设置 任务 优先级 重试 归档 自动重试 skill AI Bridge Skill 安装 智能体"
               >
                 <div class="settings-card">
                   <div class="settings-card-head">
-                    <h3>🎨 界面偏好</h3>
-                    <p class="settings-card-hint">密度、动画、语言（主题固定为 Indigo Modern）</p>
-                  </div>
-                  <div class="settings-form-grid">
-                    <div class="form-group">
-                      <label>密度</label>
-                      <select id="setting-ui-density" class="form-input">
-                        <option value="comfortable">宽松</option>
-                        <option value="compact">紧凑</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label>语言</label>
-                      <select id="setting-ui-language" class="form-input">
-                        <option value="zh-CN">简体中文</option>
-                        <option value="en-US">English</option>
-                      </select>
-                    </div>
-                    <div class="form-group form-check">
-                      <label><input type="checkbox" id="setting-ui-animations" /> 启用界面动画</label>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
                     <h3>📌 任务行为</h3>
-                    <p class="settings-card-hint">新建任务的默认行为</p>
+                    <p class="settings-card-hint">新建任务的默认行为与清理策略</p>
                   </div>
                   <div class="settings-form-grid">
                     <div class="form-group">
@@ -764,23 +785,6 @@
                     <div class="form-group">
                       <label>完成后归档（天）</label>
                       <input type="number" id="setting-task-archive-days" min="1" max="365" class="form-input" />
-                    </div>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>🌉 桥接器</h3>
-                    <p class="settings-card-hint">心跳 / 长轮询参数（修改后下次启动生效）</p>
-                  </div>
-                  <div class="settings-form-grid">
-                    <div class="form-group">
-                      <label>心跳间隔（秒）</label>
-                      <input type="number" id="setting-bridge-heartbeat" min="1" max="60" class="form-input" />
-                    </div>
-                    <div class="form-group">
-                      <label>长轮询超时（秒）</label>
-                      <input type="number" id="setting-bridge-poll" min="5" max="60" class="form-input" />
                     </div>
                   </div>
                 </div>
@@ -822,17 +826,17 @@
                 </div>
               </section>
 
-              <!-- ===== 区段：日志与存储 ===== -->
+              <!-- ===== 区段：数据维护 ===== -->
               <section
                 class="settings-section"
                 id="settings-section-logs"
                 hidden
-                data-search-keywords="日志 存储 数据目录 清理 日志级别 保留天数 备份 导出"
+                data-search-keywords="数据维护 日志 存储 数据目录 日志级别 保留天数 清理"
               >
                 <div class="settings-card">
                   <div class="settings-card-head">
                     <h3>📜 日志</h3>
-                    <p class="settings-card-hint">日志级别、保留策略、清理</p>
+                    <p class="settings-card-hint">日志级别与保留策略</p>
                   </div>
                   <div class="settings-form-grid">
                     <div class="form-group">
@@ -849,9 +853,11 @@
                       <label>保留天数（0=永久）</label>
                       <input type="number" id="setting-log-retention" min="0" max="365" class="form-input" />
                     </div>
-                    <div class="form-group form-check">
-                      <label><input type="checkbox" id="setting-log-console" /> 同时输出到控制台</label>
-                    </div>
+                  </div>
+                  <div class="settings-card-actions settings-card-actions-right">
+                    <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">
+                      🗑 立即清理日志
+                    </button>
                   </div>
                 </div>
 
@@ -864,26 +870,14 @@
                     <div class="empty-state"><div class="empty-text">加载中...</div></div>
                   </div>
                 </div>
-
-                <div class="settings-card settings-danger">
-                  <div class="settings-card-head">
-                    <h3>⚠️ 危险操作</h3>
-                    <p class="settings-card-hint">下列操作不可撤销，请谨慎</p>
-                  </div>
-                  <div class="settings-card-actions">
-                    <button class="btn-danger" id="btn-setting-log-cleanup" title="按保留天数删除 logs/*.log">
-                      🗑 立即清理日志
-                    </button>
-                  </div>
-                </div>
               </section>
 
-              <!-- ===== 区段：微信桥接（v5.5.0 空闲提醒） ===== -->
+              <!-- ===== 区段：微信桥接 ===== -->
               <section
                 class="settings-section"
                 id="settings-section-wechat"
                 hidden
-                data-search-keywords="微信 claw 桥接 自动回复 去重 空闲提醒 工作窗口 冷却"
+                data-search-keywords="微信 claw 桥接 自动回复 去重"
               >
                 <div class="settings-card">
                   <div class="settings-card-head">
@@ -902,109 +896,6 @@
                       <input type="number" id="setting-claw-dedup" class="form-input" min="0" step="1000" />
                       <div class="form-hint">同一 msg_id 在此时间内的重复消息会被丢弃（默认 5 分钟）</div>
                     </div>
-                  </div>
-                </div>
-
-                <div class="settings-card settings-callout">
-                  <div class="callout-icon">💡</div>
-                  <div class="callout-body">
-                    <strong>空闲提醒（v5.5.0 新增）</strong>
-                    <p>
-                      当某个微信用户
-                      <strong>N 分钟</strong>
-                      没有发新任务时，自动发送一条提醒。可选发送今日数据摘要、最近任务总结或两者结合。默认
-                      <strong>关闭</strong>，需用户显式开启。
-                    </p>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>⏰ 空闲提醒 · 触发条件</h3>
-                    <p class="settings-card-hint">满足下列<strong>全部</strong>条件时，发送一条提醒</p>
-                  </div>
-                  <div class="settings-form-grid">
-                    <div class="form-group form-check">
-                      <label><input type="checkbox" id="setting-idle-enabled" /> 启用空闲提醒</label>
-                    </div>
-                    <div class="form-group">
-                      <label>检查间隔（分钟）</label>
-                      <input type="number" id="setting-idle-interval" class="form-input" min="1" max="1440" />
-                      <div class="form-hint">后台多久检查一次活跃用户（默认 5 分钟）</div>
-                    </div>
-                    <div class="form-group">
-                      <label>最少静默时间（分钟）</label>
-                      <input type="number" id="setting-idle-min-quiet" class="form-input" min="1" max="1440" />
-                      <div class="form-hint">用户最后一条任务/消息后，至少 N 分钟才发（默认 5 分钟）</div>
-                    </div>
-                    <div class="form-group">
-                      <label>同 wxid 冷却时间（分钟）</label>
-                      <input type="number" id="setting-idle-cooldown" class="form-input" min="1" max="1440" />
-                      <div class="form-hint">同一用户两次提醒之间的最小间隔（默认 30 分钟，避免打扰）</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>🕐 空闲提醒 · 时间窗口</h3>
-                    <p class="settings-card-hint">只在工作时间内提醒，休息时间静默（跨天支持）</p>
-                  </div>
-                  <div class="settings-form-grid">
-                    <div class="form-group">
-                      <label>工作时间起始（小时 0-23）</label>
-                      <input type="number" id="setting-idle-work-start" class="form-input" min="0" max="23" />
-                    </div>
-                    <div class="form-group">
-                      <label>工作时间结束（小时 0-24）</label>
-                      <input type="number" id="setting-idle-work-end" class="form-input" min="0" max="24" />
-                    </div>
-                    <div class="form-group">
-                      <label>休息时间起始（小时 0-23）</label>
-                      <input type="number" id="setting-idle-rest-start" class="form-input" min="0" max="23" />
-                    </div>
-                    <div class="form-group">
-                      <label>休息时间结束（小时 0-24，跨天则小于 start）</label>
-                      <input type="number" id="setting-idle-rest-end" class="form-input" min="0" max="24" />
-                      <div class="form-hint">例：22-7 表示 22:00 至次日 07:00 休息（不提醒）</div>
-                    </div>
-                    <div class="form-group">
-                      <label>当前窗口状态</label>
-                      <div class="form-hint" id="setting-idle-window-status">--</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>📤 空闲提醒 · 消息内容</h3>
-                    <p class="settings-card-hint">选择要发送的内容类型（可多选）</p>
-                  </div>
-                  <div class="settings-form-grid">
-                    <div class="form-group form-check">
-                      <label
-                        ><input type="checkbox" id="setting-idle-msg-daily" /> 📊 今日数据摘要（任务数 / 成功率 /
-                        累计）</label
-                      >
-                    </div>
-                    <div class="form-group form-check">
-                      <label
-                        ><input type="checkbox" id="setting-idle-msg-task" /> 📋 最近任务总结（最近 10 条 Q&A）</label
-                      >
-                    </div>
-                  </div>
-                  <div class="settings-card-actions">
-                    <button class="btn-secondary" id="btn-setting-idle-tick">🚀 立即触发一次</button>
-                  </div>
-                </div>
-
-                <div class="settings-card">
-                  <div class="settings-card-head">
-                    <h3>📊 空闲提醒 · 运行时状态</h3>
-                    <p class="settings-card-hint">最近一次检查、发送、冷却情况</p>
-                  </div>
-                  <div class="about-grid" id="settings-idle-status">
-                    <div class="empty-state"><div class="empty-text">加载中...</div></div>
                   </div>
                 </div>
               </section>
@@ -1125,7 +1016,7 @@
               >
                 <div class="settings-card">
                   <div class="settings-card-head">
-                    <h3>ℹ️ 关于 ai-bridge</h3>
+                    <h3>ℹ️ 关于 鹤桥 ai-bridge</h3>
                     <p class="settings-card-hint">运行时信息</p>
                   </div>
                   <div class="about-grid" id="settings-about-info">
@@ -1159,6 +1050,10 @@
             <input type="text" id="kb-drawer-title-input" maxlength="64" placeholder="如：查茅台价格" />
           </div>
           <div class="form-group">
+            <label>场景 *</label>
+            <select id="kb-drawer-scenario-select"></select>
+          </div>
+          <div class="form-group">
             <label>分类 *</label>
             <select id="kb-drawer-cat-select"></select>
           </div>
@@ -1169,6 +1064,7 @@
           <div class="form-group">
             <label>标签<small>（用英文逗号分隔，最多 8 个）</small></label>
             <input type="text" id="kb-drawer-tags-input" placeholder="如：股票, 茅台" />
+            <div class="kb-tag-suggestions" id="kb-tag-suggestions"></div>
           </div>
           <div class="form-group form-meta">
             <span id="kb-drawer-meta"></span>
@@ -1178,49 +1074,6 @@
           <button class="btn-secondary" id="kb-drawer-cancel">取消</button>
           <button class="btn-primary" id="kb-drawer-save">保存</button>
           <button class="btn-danger" id="kb-drawer-delete" style="display: none">删除</button>
-        </div>
-      </div>
-
-      <!-- ===== 抽屉：提示词编辑 ===== -->
-      <div class="drawer" id="prompt-drawer" aria-hidden="true">
-        <div class="drawer-header">
-          <h2 id="prompt-drawer-title">📝 编辑提示词</h2>
-          <button class="drawer-close" data-close="prompt-drawer" aria-label="关闭">×</button>
-        </div>
-        <div class="drawer-body">
-          <div class="form-group">
-            <label>标题 *</label>
-            <input type="text" id="prompt-drawer-title-input" maxlength="64" placeholder="如：查天气" />
-          </div>
-          <div class="form-group">
-            <label>分类 *</label>
-            <select id="prompt-drawer-cat-select"></select>
-          </div>
-          <div class="form-group">
-            <label>描述</label>
-            <input type="text" id="prompt-drawer-desc-input" maxlength="200" placeholder="一句话说明用途" />
-          </div>
-          <div class="form-group">
-            <label>内容 *<small>（支持 {{变量名}} 占位符）</small></label>
-            <textarea
-              id="prompt-drawer-content-input"
-              rows="12"
-              maxlength="4000"
-              placeholder="请输入提示词模板..."
-            ></textarea>
-          </div>
-          <div class="form-group">
-            <label>标签<small>（用英文逗号分隔，最多 8 个）</small></label>
-            <input type="text" id="prompt-drawer-tags-input" placeholder="如：天气, 查询" />
-          </div>
-          <div class="form-group form-meta">
-            <span id="prompt-drawer-meta"></span>
-          </div>
-        </div>
-        <div class="drawer-footer">
-          <button class="btn-secondary" id="prompt-drawer-cancel">取消</button>
-          <button class="btn-primary" id="prompt-drawer-save">保存</button>
-          <button class="btn-danger" id="prompt-drawer-delete" style="display: none">删除</button>
         </div>
       </div>
 
@@ -1455,7 +1308,6 @@
     <script src="js/tasks.js?v={VERSION}"></script>
     <script src="js/kb.js?v={VERSION}"></script>
     <script src="js/wf.js?v={VERSION}"></script>
-    <script src="js/prompts.js?v={VERSION}"></script>
     <script src="js/plan.js?v={VERSION}"></script>
     <script src="js/claw.js?v={VERSION}"></script>
     <script src="js/overview.js?v={VERSION}"></script>

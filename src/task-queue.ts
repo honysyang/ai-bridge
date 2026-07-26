@@ -113,10 +113,10 @@ export class TaskQueue extends EventEmitter {
     }
     // v5.4.2: 根据 task_type 解析使用的 provider/model，写入 context.model_routing
     const routing = modelsConfig.resolve(taskData.type);
-    // v5.5.2: 自动 RAG 检索（KB Top-3，失败安全）
+    // v5.6.0: 自动 RAG 检索（KB Top-3，失败安全，支持向量检索）
     let kbRetrieval: { context: string; items: any[]; hit_count: number; query: string; retrieved_at: number };
     try {
-      const result = retrieveAndFormat(taskData.data?.content || '', { topK: 3, minScore: 1 });
+      const result = await retrieveAndFormat(taskData.data?.content || '', { topK: 3, minScore: 1, mode: 'hybrid' });
       kbRetrieval = {
         query: taskData.data?.content || '',
         context: result.context,

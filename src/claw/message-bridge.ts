@@ -97,7 +97,7 @@ export class MessageBridge {
     // 3. v5.5.2: 预检索 KB（失败安全，try-catch 吞掉异常）
     let kbHits: { count: number; titles: string[]; context: string } = { count: 0, titles: [], context: '' };
     try {
-      const result = retrieveAndFormat(msg.content || '', { topK: 3, minScore: 1 });
+      const result = await retrieveAndFormat(msg.content || '', { topK: 3, minScore: 1, mode: 'hybrid' });
       kbHits = {
         count: result.hit_count,
         titles: result.items.map((i) => i.title),

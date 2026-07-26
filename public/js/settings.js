@@ -13,13 +13,12 @@
   // 内存缓存（避免重复请求）
   let catalogCache = null;
   let systemSettingsCache = null;
-  let idleStatusCache = null;
 
   // 区段配置
   const SECTIONS = {
     models: { label: 'AI 模型', icon: '🤖', load: loadModels, save: saveModels, reset: resetDefaultModel },
-    system: { label: '系统行为', icon: '🛠', load: loadSystem, save: saveSystem, reset: resetSystem },
-    logs: { label: '日志与存储', icon: '📜', load: loadLogs, save: saveSystem, reset: resetSystem },
+    system: { label: '运行设置', icon: '🛠', load: loadSystem, save: saveSystem, reset: resetSystem },
+    logs: { label: '数据维护', icon: '📜', load: loadLogs, save: saveSystem, reset: resetSystem },
     wechat: { label: '微信桥接', icon: '💬', load: loadWechat, save: saveWechat, reset: null },
     users: { label: '用户管理', icon: '👥', load: loadUsers, save: null, reset: null, adminOnly: true },
     security: { label: '安全', icon: '🔐', load: loadSecurity, save: null, reset: null },
@@ -105,6 +104,37 @@
   // ======== AI 模型区段 ========
 
   let editingCustomProviders = [];
+  let modelsCurrentTab = 'overview';
+  let modelStatusCache = null;
+  let resolveCache = null;
+  let routingOverrides = {};
+
+  function updateRangeValue(rangeId, valueId) {
+    const range = $(rangeId);
+    const valueEl = $(valueId);
+    if (!range || !valueEl) return;
+    valueEl.textContent = range.value;
+  }
+
+  function initModelsTabSwitch() {
+    const tabBar = $('models-tab-bar');
+    if (!tabBar) return;
+    tabBar.addEventListener('click', (e) => {
+      const tabItem = e.target.closest('.tab-item');
+      if (!tabItem) return;
+      switchModelsTab(tabItem.dataset.tab);
+    });
+  }
+
+  function switchModelsTab(tab) {
+    modelsCurrentTab = tab;
+    document.querySelectorAll('#models-tab-bar .tab-item').forEach((item) => {
+      item.classList.toggle('active', item.dataset.tab === tab);
+    });
+    document.querySelectorAll('#settings-section-models .tab-panel').forEach((panel) => {
+      panel.classList.toggle('active', panel.id === `models-tab-${tab}`);
+    });
+  }
 
   function renderProviderSelect(providers, selectedId, elementId) {
     const sel = $(elementId || 'setting-model-provider');
@@ -180,6 +210,207 @@
     }
   }
 
+  function renderModelOverview(catalog, status, resolve) {
+    const grid = $('model-overview-grid');
+    if (!grid) return;
+    const providers = catalog.providers || [];
+    const config = catalog.config || {};
+    const enabledSet = new Set(config.enabled_providers || []);
+    const statusMap = new Map((status || []).map((s) => [s.id, s]));
+    const models = [];
+    providers.forEach((p) => {
+      p.models.forEach((m) => {
+        if (enabledSet.has(p.id)) {
+          models.push({ ...m, providerId: p.id, providerName: p.name, providerStatus: statusMap.get(p.id) });
+        }
+      });
+    });
+    if (models.length === 0) {
+      grid.innerHTML = '<div class="empty-state"><div class="empty-text">暂无已启用模型</div></div>';
+      return;
+    }
+    grid.innerHTML = models
+      .map((m) => {
+        const ps = m.providerStatus || {};
+        const configured = ps.configured;
+        const tierClass = m.tier || 'flagship';
+        const ctx = m.context_window ? `${(m.context_window / 1000).toFixed(0)}K 上下文` : '';
+        const out = m.max_output ? `${(m.max_output / 1000).toFixed(0)}K 输出` : '';
+        return `
+      <div class="model-card ${configured ? '' : 'unconfigured'}">
+        <div class="model-card-header">
+          <div class="model-card-title">${escapeHtml(m.name)} <span class="tier-badge ${tierClass}">${escapeHtml(m.tier || 'model')}</span></div>
+          <span class="status-dot ${configured ? 'ok' : 'warn'}"></span>
+        </div>
+        <div class="model-card-meta">${escapeHtml(m.providerName)} · ${ctx || out || '—'}</div>
+        <div class="model-card-desc">${escapeHtml(m.description || '')}</div>
+        <div class="model-card-footer">
+          <span>${configured ? '已配置' : '未配置'}</span>
+          <span>${escapeHtml(m.id)}</span>
+        </div>
+      </div>`;
+      })
+      .join('');
+  }
+
+  function renderModelRoutingSummary(resolve) {
+    const el = $('model-routing-summary');
+    if (!el) return;
+    if (!resolve || resolve.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div class="empty-text">暂无路由数据</div></div>';
+      return;
+    }
+    el.innerHTML = resolve
+      .map(
+        (r) => `
+    <div class="routing-summary-row">
+      <div class="task-type-label">${escapeHtml(r.task_type)}</div>
+      <div class="routing-provider"><span class="status-dot ok"></span>${escapeHtml(r.provider_name || r.provider)}</div>
+      <div class="routing-model">${escapeHtml(r.model_name || r.model)}</div>
+      <div class="routing-source">${escapeHtml(r.source || 'default')}</div>
+    </div>`
+      )
+      .join('');
+  }
+
+  function renderTaskRoutingEditor(catalog, taskTypes) {
+    const editor = $('task-routing-editor');
+    if (!editor) return;
+    const providers = catalog.providers || [];
+    const config = catalog.config || {};
+    routingOverrides = config.task_routing ? JSON.parse(JSON.stringify(config.task_routing)) : {};
+
+    const header = document.createElement('div');
+    header.className = 'routing-editor-header';
+    header.innerHTML = '<div>任务类型</div><div>服务商</div><div>模型</div><div>操作</div>';
+
+    const rows = document.createElement('div');
+    rows.className = 'routing-rows';
+    (taskTypes || []).forEach((taskType) => {
+      const routed = routingOverrides[taskType] || {};
+      const row = document.createElement('div');
+      row.className = 'routing-row';
+      row.dataset.taskType = taskType;
+
+      const providerOptions = providers
+        .map(
+          (p) =>
+            `<option value="${escapeHtml(p.id)}" ${p.id === routed.provider ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+        )
+        .join('');
+      const selectedProvider = providers.find((p) => p.id === routed.provider) || providers[0];
+      const modelOptions = (selectedProvider?.models || [])
+        .map(
+          (m) =>
+            `<option value="${escapeHtml(m.id)}" ${m.id === routed.model ? 'selected' : ''}>${escapeHtml(m.name)}</option>`
+        )
+        .join('');
+
+      row.innerHTML = `
+      <div class="routing-task-label">${escapeHtml(taskType)}</div>
+      <select class="form-input routing-provider-select"><option value="">-- 默认 --</option>${providerOptions}</select>
+      <select class="form-input routing-model-select"><option value="">-- 默认 --</option>${modelOptions}</select>
+      <div class="routing-row-actions">
+        <button class="btn-secondary btn-xs btn-test-routing" title="测试连通性">测试</button>
+        <button class="btn-danger btn-xs btn-reset-routing" title="重置为默认">⟲</button>
+      </div>`;
+
+      const providerSelect = row.querySelector('.routing-provider-select');
+      const modelSelect = row.querySelector('.routing-model-select');
+      providerSelect.value = routed.provider || '';
+      modelSelect.value = routed.model || '';
+
+      providerSelect.addEventListener('change', () => {
+        const p = providers.find((x) => x.id === providerSelect.value);
+        modelSelect.innerHTML =
+          '<option value="">-- 默认 --</option>' +
+          (p ? p.models.map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('') : '');
+        if (providerSelect.value && modelSelect.value) {
+          routingOverrides[taskType] = { provider: providerSelect.value, model: modelSelect.value };
+        } else {
+          delete routingOverrides[taskType];
+        }
+        setDirty(true);
+      });
+      modelSelect.addEventListener('change', () => {
+        if (providerSelect.value && modelSelect.value) {
+          routingOverrides[taskType] = { provider: providerSelect.value, model: modelSelect.value };
+        } else {
+          delete routingOverrides[taskType];
+        }
+        setDirty(true);
+      });
+      row
+        .querySelector('.btn-test-routing')
+        ?.addEventListener('click', () =>
+          testModel(providerSelect.value || config.default_provider, modelSelect.value || config.default_model)
+        );
+      row.querySelector('.btn-reset-routing')?.addEventListener('click', () => {
+        providerSelect.value = '';
+        modelSelect.innerHTML = '<option value="">-- 默认 --</option>';
+        delete routingOverrides[taskType];
+        setDirty(true);
+      });
+
+      rows.appendChild(row);
+    });
+
+    editor.innerHTML = '';
+    editor.appendChild(header);
+    editor.appendChild(rows);
+  }
+
+  function renderProviderStatusTable(status) {
+    const table = $('provider-status-table');
+    if (!table) return;
+    if (!status || status.length === 0) {
+      table.innerHTML = '<div class="empty-state"><div class="empty-text">暂无服务商数据</div></div>';
+      return;
+    }
+    const rows = status
+      .map(
+        (s) => `
+      <tr data-provider="${escapeHtml(s.id)}">
+        <td><div class="provider-status-cell"><span class="status-dot ${s.configured ? 'ok' : s.enabled ? 'warn' : 'error'}"></span>${escapeHtml(s.name)}</div></td>
+        <td><span class="status-badge ${s.enabled ? 'enabled' : 'disabled'}">${s.enabled ? '已启用' : '已禁用'}</span></td>
+        <td><span class="status-badge ${s.configured ? 'configured' : 'unconfigured'}">${s.configured ? '已配置' : '未配置'}</span></td>
+        <td><code>${escapeHtml(s.base_url || '')}</code></td>
+        <td>${escapeHtml(s.api_key_masked || '')}</td>
+        <td>${s.model_count}</td>
+        <td><div class="provider-status-actions"><button class="btn-secondary btn-xs btn-test-provider" title="测试默认模型连通性">测试</button></div></td>
+      </tr>`
+      )
+      .join('');
+    table.innerHTML = `<table class="provider-status-table">
+      <thead><tr><th>服务商</th><th>状态</th><th>配置</th><th>Base URL</th><th>API Key</th><th>模型数</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+    table.querySelectorAll('.btn-test-provider').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const providerId = e.target.closest('tr').dataset.provider;
+        testModel(providerId);
+      });
+    });
+  }
+
+  async function testModel(providerId, modelId) {
+    try {
+      showNotification(`⏳ 正在测试 ${providerId}${modelId ? '/' + modelId : ''} ...`, 'info');
+      const { data } = await api('/api/models/test', {
+        method: 'POST',
+        body: { provider: providerId, model: modelId }
+      });
+      if (data.status === 'ok') {
+        showNotification(`✅ ${data.provider}/${data.model} 连通成功 (${data.latency_ms}ms)`, 'success');
+      } else {
+        showNotification(`❌ ${data.provider}/${data.model} 测试失败: ${data.error || '未知错误'}`, 'error');
+      }
+    } catch (e) {
+      showNotification(`❌ 测试失败: ${e.message}`, 'error');
+    }
+  }
+
   function renderCustomProviderList() {
     const el = $('custom-provider-list');
     if (!el) return;
@@ -202,6 +433,7 @@
             <code><input type="text" class="form-input form-input-inline provider-id-input" placeholder="ID（小写英文）" value="${escapeHtml(p.id)}"></code>
           </div>
           <div class="provider-actions">
+            <button class="btn-secondary btn-xs btn-test-provider" title="测试默认模型连通性">测试</button>
             <button class="btn-secondary btn-xs btn-add-model" title="添加模型">＋ 模型</button>
             <button class="btn-danger btn-xs btn-remove-provider" title="删除">🗑</button>
           </div>
@@ -266,6 +498,9 @@
         setDirty(true);
       });
 
+      card.querySelector('.btn-test-provider')?.addEventListener('click', () => {
+        testModel(p.id, p.default_model);
+      });
       card.querySelector('.btn-add-model')?.addEventListener('click', () => {
         p.models.push({ id: '', name: '' });
         renderCustomProviderList();
@@ -320,10 +555,22 @@
 
   async function loadModels() {
     try {
-      const { data } = await api('/api/models');
-      catalogCache = data;
-      const { providers, config } = data;
+      const [catalogRes, statusRes, resolveRes] = await Promise.all([
+        api('/api/models'),
+        api('/api/models/status'),
+        api('/api/models/resolve')
+      ]);
+      catalogCache = catalogRes.data;
+      modelStatusCache = statusRes.data;
+      resolveCache = resolveRes.data;
 
+      const { providers, config, task_types } = catalogCache;
+
+      // Tab 1: 概览
+      renderModelOverview(catalogCache, modelStatusCache, resolveCache);
+      renderModelRoutingSummary(resolveCache);
+
+      // Tab 2: 默认与路由
       renderProviderSelect(providers, config.default_provider, 'setting-model-provider');
       renderModelSelect(
         providers,
@@ -332,10 +579,16 @@
         'setting-model-name',
         'setting-model-name-hint'
       );
+      renderTaskRoutingEditor(catalogCache, task_types);
 
+      // Tab 3: 服务商管理
+      renderProviderStatusTable(modelStatusCache);
+      editingCustomProviders = JSON.parse(JSON.stringify(config.custom_providers || []));
+      renderCustomProviderList();
+
+      // Tab 4: 知识库模型
       renderProviderSelect(providers, config.kb_provider, 'setting-kb-provider');
       renderModelSelect(providers, config.kb_provider, config.kb_model, 'setting-kb-model', 'setting-kb-model-hint');
-
       renderProviderSelect(providers, config.embedding_provider, 'setting-embedding-provider');
       renderEmbeddingModelSelect(
         providers,
@@ -347,14 +600,13 @@
       setValue('setting-embedding-dimensions', config.embedding_dimensions || 1536);
       setValue('setting-embedding-batch-size', config.embedding_batch_size || 8);
 
-      editingCustomProviders = JSON.parse(JSON.stringify(config.custom_providers || []));
-      renderCustomProviderList();
-
+      // Tab 5: 高级参数
       const params = config.model_params || {};
       setValue('setting-model-temperature', params.temperature !== undefined ? params.temperature : 0.7);
       setValue('setting-model-max-tokens', params.max_tokens || 2048);
       setValue('setting-model-top-p', params.top_p !== undefined ? params.top_p : 1);
       setValue('setting-model-freq-penalty', params.frequency_penalty || 0);
+      updateRangeValue('setting-model-temperature', 'setting-model-temperature-value');
     } catch (e) {
       showNotification(`❌ 模型加载失败: ${e.message}`, 'error');
     }
@@ -397,6 +649,7 @@
           embedding_model: embeddingModel || null,
           embedding_dimensions: parseInt(valueOf('setting-embedding-dimensions'), 10) || 1536,
           embedding_batch_size: parseInt(valueOf('setting-embedding-batch-size'), 10) || 8,
+          task_routing: routingOverrides,
           custom_providers: customProviders,
           model_params: {
             temperature: parseFloat(valueOf('setting-model-temperature')) || 0.7,
@@ -428,28 +681,16 @@
   // ======== 系统设置区段 ========
 
   function fillSystemForm(s) {
-    setValue('setting-ui-density', s.ui.density);
-    setValue('setting-ui-language', s.ui.language);
-    setValue('setting-ui-animations', s.ui.animations);
     setValue('setting-task-priority', s.tasks.default_priority);
     setValue('setting-task-retries', s.tasks.max_retries);
     setValue('setting-task-auto-retry', s.tasks.auto_retry_on_failure);
     setValue('setting-task-archive-days', s.tasks.archive_after_days);
     setValue('setting-log-level', s.logs.level);
     setValue('setting-log-retention', s.logs.retention_days);
-    setValue('setting-log-console', s.logs.console_output);
-    setValue('setting-bridge-heartbeat', s.bridge.heartbeat_interval_sec);
-    setValue('setting-bridge-poll', s.bridge.long_poll_timeout_sec);
   }
 
   function readSystemForm() {
     return {
-      ui: {
-        theme: 'indigo',
-        density: valueOf('setting-ui-density'),
-        language: valueOf('setting-ui-language'),
-        animations: valueOf('setting-ui-animations')
-      },
       tasks: {
         default_priority: valueOf('setting-task-priority'),
         max_retries: parseInt(valueOf('setting-task-retries'), 10) || 0,
@@ -458,12 +699,7 @@
       },
       logs: {
         level: valueOf('setting-log-level'),
-        retention_days: parseInt(valueOf('setting-log-retention'), 10) || 0,
-        console_output: valueOf('setting-log-console')
-      },
-      bridge: {
-        heartbeat_interval_sec: parseInt(valueOf('setting-bridge-heartbeat'), 10) || 5,
-        long_poll_timeout_sec: parseInt(valueOf('setting-bridge-poll'), 10) || 30
+        retention_days: parseInt(valueOf('setting-log-retention'), 10) || 0
       }
     };
   }
@@ -473,9 +709,6 @@
       const { data } = await api('/api/system/settings');
       systemSettingsCache = data;
       fillSystemForm(data);
-      // v5.5.7: 主题固定为 indigo，仅同步语言
-      global.Core.setTheme();
-      if (data.ui?.language) global.Core.setLanguage(data.ui.language);
       // v6.0.0: 加载 skill 安装信息
       await loadSkillInfo();
     } catch (e) {
@@ -486,21 +719,13 @@
   async function saveSystem() {
     try {
       const patch = readSystemForm();
-      const prevLang = global.Core.currentLang;
       const { data } = await api('/api/system/settings', {
         method: 'PATCH',
         body: patch
       });
       systemSettingsCache = data;
-      // v5.5.7: 主题固定为 indigo，仅应用语言
-      global.Core.setTheme();
-      if (patch.ui?.language) global.Core.setLanguage(patch.ui.language);
       showNotification('✅ 系统设置已保存', 'success');
       setDirty(false);
-      // 语言切换后刷新以重新渲染静态文本
-      if (patch.ui?.language && patch.ui.language !== prevLang) {
-        setTimeout(() => location.reload(), 300);
-      }
     } catch (e) {
       showNotification(`❌ 保存失败: ${e.message}`, 'error');
     }
@@ -576,40 +801,13 @@
     setValue('setting-claw-enabled', cfg.enabled);
     setValue('setting-claw-auto-reply', cfg.auto_reply);
     setValue('setting-claw-dedup', cfg.message_dedup_ttl_ms || 300000);
-    setValue('setting-idle-enabled', cfg.idle_enabled);
-    setValue('setting-idle-interval', cfg.idle_check_interval_min || 5);
-    setValue('setting-idle-min-quiet', cfg.idle_min_quiet_min || 5);
-    setValue('setting-idle-cooldown', cfg.idle_cooldown_min || 30);
-    setValue('setting-idle-work-start', (cfg.idle_work_hours || {}).start ?? 9);
-    setValue('setting-idle-work-end', (cfg.idle_work_hours || {}).end ?? 18);
-    setValue('setting-idle-rest-start', (cfg.idle_rest_hours || {}).start ?? 22);
-    setValue('setting-idle-rest-end', (cfg.idle_rest_hours || {}).end ?? 7);
-    const types = cfg.idle_message_types || [];
-    setValue('setting-idle-msg-daily', types.includes('daily_summary'));
-    setValue('setting-idle-msg-task', types.includes('task_summary'));
   }
 
   function readWechatForm() {
-    const types = [];
-    if (valueOf('setting-idle-msg-daily')) types.push('daily_summary');
-    if (valueOf('setting-idle-msg-task')) types.push('task_summary');
     return {
       enabled: valueOf('setting-claw-enabled') ?? true,
       auto_reply: valueOf('setting-claw-auto-reply') ?? true,
-      message_dedup_ttl_ms: parseInt(valueOf('setting-claw-dedup'), 10) || 300000,
-      idle_enabled: valueOf('setting-idle-enabled') ?? false,
-      idle_check_interval_min: parseInt(valueOf('setting-idle-interval'), 10) || 5,
-      idle_min_quiet_min: parseInt(valueOf('setting-idle-min-quiet'), 10) || 5,
-      idle_cooldown_min: parseInt(valueOf('setting-idle-cooldown'), 10) || 30,
-      idle_work_hours: {
-        start: parseInt(valueOf('setting-idle-work-start'), 10) || 9,
-        end: parseInt(valueOf('setting-idle-work-end'), 10) || 18
-      },
-      idle_rest_hours: {
-        start: parseInt(valueOf('setting-idle-rest-start'), 10) || 22,
-        end: parseInt(valueOf('setting-idle-rest-end'), 10) || 7
-      },
-      idle_message_types: types
+      message_dedup_ttl_ms: parseInt(valueOf('setting-claw-dedup'), 10) || 300000
     };
   }
 
@@ -620,7 +818,6 @@
     } catch (e) {
       showNotification(`❌ 微信配置加载失败: ${e.message}`, 'error');
     }
-    loadIdleStatus();
   }
 
   async function saveWechat() {
@@ -631,71 +828,10 @@
         body: patch
       });
       fillWechatForm(data);
-      showNotification('✅ 微信配置已保存（idle notifier 已自动重排）', 'success');
+      showNotification('✅ 微信配置已保存', 'success');
       setDirty(false);
-      loadIdleStatus();
     } catch (e) {
       showNotification(`❌ 保存失败: ${e.message}`, 'error');
-    }
-  }
-
-  async function triggerIdleTick() {
-    try {
-      const { data } = await api('/api/claw/idle/tick', { method: 'POST', body: '{}' });
-      const { checked, sent, skipped, errors, in_work_window } = data;
-      const winStr = in_work_window ? '✅ 在窗口' : '⏸ 不在窗口';
-      showNotification(
-        `${winStr} · 检查 ${checked} 个 wxid · 发送 ${sent} · 跳过 ${skipped}${errors.length ? ' · 错误 ' + errors.length : ''}`,
-        errors.length ? 'warning' : sent > 0 ? 'success' : 'info'
-      );
-      loadIdleStatus();
-    } catch (e) {
-      showNotification(`❌ 触发失败: ${e.message}`, 'error');
-    }
-  }
-
-  async function loadIdleStatus() {
-    const el = $('settings-idle-status');
-    const winEl = $('setting-idle-window-status');
-    if (!el) return;
-    try {
-      const { data } = await api('/api/claw/idle/status');
-      idleStatusCache = data;
-      if (winEl) {
-        winEl.textContent = data.in_work_window ? '✅ 当前在工作时间内' : '⏸ 当前在休息/非工作时段';
-        winEl.style.color = data.in_work_window ? 'var(--success)' : 'var(--text-muted)';
-      }
-      const lastTick = data.last_tick_at ? new Date(data.last_tick_at).toLocaleString('zh-CN') : '—';
-      const lastSent = data.last_sent_at ? new Date(data.last_sent_at).toLocaleString('zh-CN') : '—';
-      const rows = [
-        ['已初始化', data.initialized ? '✅' : '❌'],
-        ['启用状态', data.enabled ? '✅ 启用' : '❌ 禁用'],
-        ['工作窗口', data.in_work_window ? '✅ 在窗口内' : '⏸ 不在窗口'],
-        ['活跃微信用户', `${data.active_wxid_count} 个`],
-        ['上次检查', lastTick],
-        ['上次发送', lastSent],
-        ['上次目标', data.last_sent_wxid || '—'],
-        ['上次结果', data.last_sent_status || '—'],
-        [
-          '冷却中 wxid',
-          data.cooldowns && data.cooldowns.length > 0
-            ? data.cooldowns
-                .map(
-                  (c) =>
-                    `${c.wxid.slice(0, 12)}…(剩 ${Math.max(0, Math.round((c.next_avail_at - Date.now()) / 60000))} 分)`
-                )
-                .join(', ')
-            : '无'
-        ]
-      ];
-      el.innerHTML = rows
-        .map(
-          ([k, v]) =>
-            `<div class="about-row"><div class="about-key">${escapeHtml(k)}</div><div class="about-val">${escapeHtml(String(v))}</div></div>`
-        )
-        .join('');
-    } catch (e) {
-      el.innerHTML = `<div class="empty-state"><div class="empty-text">加载失败: ${escapeHtml(e.message)}</div></div>`;
     }
   }
 
@@ -1072,6 +1208,13 @@
     $('btn-settings-reset-all')?.addEventListener('click', handleReset);
 
     // 模型
+    initModelsTabSwitch();
+    $('btn-refresh-models')?.addEventListener('click', loadModels);
+    $('btn-reset-models')?.addEventListener('click', resetDefaultModel);
+    $('setting-model-temperature')?.addEventListener('input', () =>
+      updateRangeValue('setting-model-temperature', 'setting-model-temperature-value')
+    );
+
     $('setting-model-provider')?.addEventListener('change', (e) => {
       if (!catalogCache) return;
       const cfg = catalogCache.config;
@@ -1129,18 +1272,12 @@
 
     // 系统设置字段变更
     [
-      'setting-ui-density',
-      'setting-ui-language',
-      'setting-ui-animations',
       'setting-task-priority',
       'setting-task-retries',
       'setting-task-auto-retry',
       'setting-task-archive-days',
       'setting-log-level',
-      'setting-log-retention',
-      'setting-log-console',
-      'setting-bridge-heartbeat',
-      'setting-bridge-poll'
+      'setting-log-retention'
     ].forEach((id) => {
       $(id)?.addEventListener('change', () => setDirty(true));
     });
@@ -1149,24 +1286,9 @@
     $('btn-setting-log-cleanup')?.addEventListener('click', cleanupLogs);
 
     // 微信字段变更
-    [
-      'setting-claw-enabled',
-      'setting-claw-auto-reply',
-      'setting-claw-dedup',
-      'setting-idle-enabled',
-      'setting-idle-interval',
-      'setting-idle-min-quiet',
-      'setting-idle-cooldown',
-      'setting-idle-work-start',
-      'setting-idle-work-end',
-      'setting-idle-rest-start',
-      'setting-idle-rest-end',
-      'setting-idle-msg-daily',
-      'setting-idle-msg-task'
-    ].forEach((id) => {
+    ['setting-claw-enabled', 'setting-claw-auto-reply', 'setting-claw-dedup'].forEach((id) => {
       $(id)?.addEventListener('change', () => setDirty(true));
     });
-    $('btn-setting-idle-tick')?.addEventListener('click', triggerIdleTick);
 
     // 安全
     $('btn-setting-change-password')?.addEventListener('click', changePassword);

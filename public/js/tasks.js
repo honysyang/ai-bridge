@@ -292,7 +292,10 @@
       }
 
       <div class="detail-section">
-        <h3>📌 任务内容</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>📌 任务内容</h3>
+          <button class="detail-action-btn" data-action="save-content" title="保存到知识库">💾 保存到知识库</button>
+        </div>
         <div class="detail-content">${escapeHtml(task.data?.content || '')}</div>
       </div>
 
@@ -302,7 +305,10 @@
         result
           ? `
       <div class="detail-section">
-        <h3>✅ 结论</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>✅ 结论</h3>
+          <button class="detail-action-btn" data-action="save-result" title="保存结论到知识库">💾 保存结论到知识库</button>
+        </div>
         <div class="detail-summary">${escapeHtml(result.result?.summary || '无摘要')}</div>
         ${result.result?.details ? `<div class="detail-content" style="margin-top: 8px; border-left-color: var(--success);">${escapeHtml(result.result.details)}</div>` : ''}
       </div>
@@ -610,6 +616,25 @@
             if (global.Sessions) await global.Sessions.loadSessions();
           } catch (e) {
             showNotification(`❌ ${e.message}`, 'error');
+          }
+        } else if (action === 'save-content' || action === 'save-result') {
+          const message = action === 'save-content' ? task.data?.content || '' : result?.result?.summary || '';
+          const titlePrefix = action === 'save-content' ? '任务内容' : '任务结论';
+          if (!message.trim()) {
+            showNotification('❌ 无内容可保存', 'error');
+            return;
+          }
+          try {
+            const { data } = await api('/api/kb/from-message', {
+              method: 'POST',
+              body: {
+                message: message.trim(),
+                title: `${titlePrefix}: ${message.trim().slice(0, 40)}`
+              }
+            });
+            showNotification(`✓ 已保存到知识库: ${data.title}`, 'success');
+          } catch (e) {
+            showNotification(`❌ 保存失败: ${e.message}`, 'error');
           }
         } else if (action === 'delete') {
           const ok = await global.Core.openConfirm({

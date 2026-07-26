@@ -16,6 +16,9 @@ import { fileURLToPath } from 'url';
 import { sqliteStore } from './sqlite-store.js';
 import { Task, Session, LogEntry } from '../types.js';
 import { KBCategory, KBItem } from '../kb-types.js';
+import { Scenario } from '../scenario-types.js';
+import { ScenarioKBLink } from '../scenario-kb-link-store.js';
+import { KBChunk } from '../kb-chunk-types.js';
 import { KBLink } from '../kb-link-types.js';
 import { Workflow } from '../workflow-types.js';
 import { User } from '../lib/users.js';
@@ -33,7 +36,10 @@ const TASKS_FILE = path.join(DATA_DIR, 'tasks.jsonl');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.jsonl');
 const LOGS_FILE = path.join(DATA_DIR, 'logs.jsonl');
 const KB_FILE = path.join(DATA_DIR, 'kb.jsonl');
+const KB_CHUNKS_FILE = path.join(DATA_DIR, 'kb_chunks.jsonl');
 const KB_LINKS_FILE = path.join(DATA_DIR, 'kb_links.jsonl');
+const SCENARIOS_FILE = path.join(DATA_DIR, 'scenarios.jsonl');
+const SCENARIO_KB_LINKS_FILE = path.join(DATA_DIR, 'scenario_kb_links.jsonl');
 const WF_FILE = path.join(DATA_DIR, 'wf.jsonl');
 const USERS_FILE = path.join(DATA_DIR, 'users.jsonl');
 
@@ -43,7 +49,10 @@ interface MigrateResult {
   logs: number;
   kb_categories: number;
   kb_items: number;
+  kb_chunks: number;
   kb_links: number;
+  scenarios: number;
+  scenario_kb_links: number;
   workflows: number;
   users: number;
   duration_ms: number;
@@ -123,7 +132,10 @@ export function runMigration(): MigrateResult {
     logs: 0,
     kb_categories: 0,
     kb_items: 0,
+    kb_chunks: 0,
     kb_links: 0,
+    scenarios: 0,
+    scenario_kb_links: 0,
     workflows: 0,
     users: 0,
     duration_ms: 0,
@@ -179,34 +191,128 @@ export function runMigration(): MigrateResult {
     }
     if (categories.length > 0) {
       const stmt = sqliteStore['db'].prepare(`
-        INSERT OR REPLACE INTO kb_categories (id, name, icon, sort_order, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO kb_categories (id, scenario_id, name, icon, sort_order, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
       for (const c of categories) {
-        stmt.run(c.id, c.name, c.icon || null, c.order || 0, c.created_at);
+        stmt.run(c.id, c.scenario_id || null, c.name, c.icon || null, c.order || 0, c.created_at);
       }
       result.kb_categories = categories.length;
     }
     if (items.length > 0) {
       const stmt = sqliteStore['db'].prepare(`
-        INSERT OR REPLACE INTO kb_items (id, category_id, title, body, tags, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO kb_items (
+          id, scenario_id, category_id, title, body, tags, created_at, updated_at,
+          source_type, source_url, source_metadata_json, content_type,
+          chunk_count, embedding_model, index_status, last_indexed_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const it of items) {
         stmt.run(
           it.id,
+          it.scenario_id || null,
           it.category_id,
           it.title,
           it.body || '',
           (it.tags || []).join(','),
           it.created_at,
-          it.updated_at || it.created_at
+          it.updated_at || it.created_at,
+          it.source_type || 'manual',
+          it.source_url || null,
+          it.source_metadata ? JSON.stringify(it.source_metadata) : null,
+          it.content_type || null,
+          it.chunk_count ?? 0,
+          it.embedding_model || null,
+          it.index_status || 'pending',
+          it.last_indexed_at || null
         );
       }
       result.kb_items = items.length;
     }
-    if (categories.length || items.length) {
-      log.info(`  知识库: ${result.kb_categories} 分类, ${result.kb_items} 条目`);
+
+    // ===== KB Chunks =====
+    try {
+      const rawChunks = readJsonl<any>(KB_CHUNKS_FILE);
+      const chunks = reduceJsonlEvents<KBChunk>(rawChunks);
+      if (chunks.length > 0) {
+        const stmt = sqliteStore['db'].prepare(`
+          INSERT OR REPLACE INTO kb_chunks (id, item_id, chunk_index, content, source_path, token_count, embedding_json, embedding_model, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        let inserted = 0;
+        for (const c of chunks) {
+          if (!c.id || !c.item_id || c.chunk_index === undefined) continue;
+          stmt.run(
+            c.id,
+            c.item_id,
+            c.chunk_index,
+            c.content,
+            c.source_path || null,
+            c.token_count || null,
+            c.embedding ? JSON.stringify(c.embedding) : null,
+            c.embedding_model || null,
+            c.created_at
+          );
+          inserted++;
+        }
+        result.kb_chunks = inserted;
+      }
+    } catch (e: any) {
+      result.errors.push(`kb_chunks: ${e.message}`);
+    }
+    // ===== Scenarios =====
+    try {
+      const rawScenarios = readJsonl<any>(SCENARIOS_FILE);
+      const scenarios = reduceJsonlEvents<Scenario>(rawScenarios);
+      if (scenarios.length > 0) {
+        const stmt = sqliteStore['db'].prepare(`
+          INSERT OR REPLACE INTO kb_scenarios (id, name, icon, description, sort_order, archived, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const s of scenarios) {
+          stmt.run(
+            s.id,
+            s.name,
+            s.icon || null,
+            s.description || null,
+            s.order ?? 0,
+            s.archived ? 1 : 0,
+            s.created_at,
+            s.updated_at || s.created_at
+          );
+        }
+        result.scenarios = scenarios.length;
+      }
+    } catch (e: any) {
+      result.errors.push(`scenarios: ${e.message}`);
+    }
+
+    // ===== Scenario KB Links =====
+    try {
+      const rawLinks = readJsonl<any>(SCENARIO_KB_LINKS_FILE);
+      const links = reduceJsonlEvents<ScenarioKBLink>(rawLinks);
+      if (links.length > 0) {
+        const stmt = sqliteStore['db'].prepare(`
+          INSERT OR REPLACE INTO scenario_kb_links (id, scenario_id, item_id, created_at)
+          VALUES (?, ?, ?, ?)
+        `);
+        let inserted = 0;
+        for (const l of links) {
+          if (!l.id || !l.scenario_id || !l.item_id) continue;
+          stmt.run(l.id, l.scenario_id, l.item_id, l.created_at);
+          inserted++;
+        }
+        result.scenario_kb_links = inserted;
+      }
+    } catch (e: any) {
+      result.errors.push(`scenario_kb_links: ${e.message}`);
+    }
+
+    if (categories.length || items.length || result.scenarios || result.scenario_kb_links) {
+      log.info(
+        `  知识库: ${result.kb_categories} 分类, ${result.kb_items} 条目, ${result.kb_chunks} chunks, ${result.scenarios} 场景, ${result.scenario_kb_links} 场景关联`
+      );
     }
   } catch (e: any) {
     result.errors.push(`kb: ${e.message}`);
@@ -296,7 +402,7 @@ export function runMigration(): MigrateResult {
 
   result.duration_ms = Date.now() - start;
   sqliteStore.setMeta('migrated_at', new Date().toISOString());
-  sqliteStore.setMeta('schema_version', '1.0.0');
+  sqliteStore.setMeta('schema_version', '1.2.0');
 
   log.info(`迁移完成，耗时 ${result.duration_ms}ms`);
   if (result.errors.length > 0) {

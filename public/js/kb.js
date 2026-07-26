@@ -6,7 +6,16 @@
 (function (global) {
   'use strict';
 
-  const { state, api, escapeHtml, formatRelative, showNotification, openDrawer, closeDrawer, switchTab } = global.Core;
+  const { state, api, escapeHtml, formatRelative, showNotification } = global.Core;
+  function openDrawer(id) {
+    if (global.Main && global.Main.openDrawer) global.Main.openDrawer(id);
+  }
+  function closeDrawer(id) {
+    if (global.Main && global.Main.closeDrawer) global.Main.closeDrawer(id);
+  }
+  function switchTab(name, opts) {
+    if (global.Main && global.Main.switchTab) global.Main.switchTab(name, opts);
+  }
 
   // ======== 状态（持久化到 localStorage）========
   const KB_STORAGE_KEY = 'kb-state-v1';
@@ -23,6 +32,9 @@
   state.kbPagination = { limit: 50, offset: 0, total: 0, hasMore: false };
   state.kbSearchKeyword = '';
   state.kbCategoryId = null;
+  state.kbScenarios = [];
+  state.kbScenarioId = null;
+  state.kbBuiltinTags = [];
 
   function loadKBState() {
     try {
@@ -52,6 +64,7 @@
   async function initKB() {
     loadKBState();
     bindKBEvents();
+    loadKBBuiltinTags();
     await loadKB();
   }
 
@@ -72,6 +85,15 @@
         }, 300);
       });
     }
+    const scenarioFilter = document.getElementById('kb-scenario-filter');
+    if (scenarioFilter) {
+      scenarioFilter.addEventListener('change', (e) => {
+        state.kbScenarioId = e.target.value === 'all' ? null : e.target.value;
+        state.currentKbCategoryId = null;
+        state.kbCategoryId = null;
+        loadKB();
+      });
+    }
     const catFilter = document.getElementById('kb-cat-filter');
     if (catFilter) {
       catFilter.addEventListener('change', (e) => {
@@ -86,6 +108,24 @@
     if (btnNewItem) btnNewItem.addEventListener('click', () => openKBDrawer(null));
     document.getElementById('btn-kb-seed-demo')?.addEventListener('click', seedKBDemo);
     document.getElementById('btn-kb-seed-demo-2')?.addEventListener('click', seedKBDemo);
+
+    // v5.6.0: 导入下拉
+    const importToggle = document.getElementById('btn-kb-import-toggle');
+    const importDropdown = document.getElementById('kb-import-dropdown');
+    const importMenu = importDropdown?.querySelector('.dropdown-menu');
+    if (importToggle && importMenu) {
+      importToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        importMenu.hidden = !importMenu.hidden;
+      });
+      document.addEventListener('click', (e) => {
+        if (!importDropdown.contains(e.target)) importMenu.hidden = true;
+      });
+    }
+    document.getElementById('kb-file-input')?.addEventListener('change', handleKBFileUpload);
+    document.getElementById('btn-kb-import-url')?.addEventListener('click', handleKBUrlImport);
+    document.getElementById('btn-kb-import-repo')?.addEventListener('click', handleKBRepoImport);
+
     const drawer = document.getElementById('kb-drawer');
     if (drawer) {
       document.getElementById('kb-drawer-cancel')?.addEventListener('click', () => closeDrawer('kb-drawer'));
@@ -94,6 +134,9 @@
       drawer
         .querySelectorAll('[data-close="kb-drawer"]')
         .forEach((b) => b.addEventListener('click', () => closeDrawer('kb-drawer')));
+      document.getElementById('kb-drawer-scenario-select')?.addEventListener('change', (e) => {
+        renderKBCatSelectForScenario(e.target.value);
+      });
     }
     document.getElementById('kb-link-create')?.addEventListener('click', createKBLink);
   }
@@ -122,7 +165,9 @@
       params.set('offset', String(offset));
       if (state.kbSearchKeyword) params.set('search', state.kbSearchKeyword);
       if (state.kbCategoryId) params.set('category_id', state.kbCategoryId);
+      if (state.kbScenarioId) params.set('scenario_id', state.kbScenarioId);
       const { data, meta } = await api(`/api/kb?${params}`);
+      state.kbScenarios = data.scenarios || state.kbScenarios || [];
       state.kbCategories = data.categories || state.kbCategories || [];
       state.kbItems = append ? [...state.kbItems, ...(data.items || [])] : data.items || [];
       state.kbLinks = data.links || state.kbLinks || [];
@@ -170,9 +215,21 @@
   }
 
   function renderKB() {
+    renderKBScenarios();
     renderKBCategories();
     renderKBCatFilter();
     renderKBItems();
+  }
+
+  function renderKBScenarios() {
+    const sel = document.getElementById('kb-scenario-filter');
+    if (!sel) return;
+    const cur = state.kbScenarioId || 'all';
+    let html = `<option value="all">🌐 全部场景</option>`;
+    for (const s of state.kbScenarios) {
+      html += `<option value="${s.id}" ${s.id === cur ? 'selected' : ''}>${escapeHtml(s.icon || '🏠')} ${escapeHtml(s.name)}</option>`;
+    }
+    sel.innerHTML = html;
   }
 
   function renderKBCategories() {
@@ -269,6 +326,8 @@
           .slice(0, 3)
           .map((t) => `<span class="kb-tag">${escapeHtml(t)}</span>`)
           .join('');
+        const sourceLabel = getKBSourceLabel(i.source_type);
+        const indexBadge = getKBIndexBadge(i.index_status);
         return `
         <div class="kb-item-card" data-item-id="${i.id}">
           <div class="kb-item-card-header">
@@ -280,7 +339,11 @@
           </div>
           <div class="kb-item-card-preview">${escapeHtml(preview)}</div>
           <div class="kb-item-card-footer">
-            <div class="kb-item-card-tags">${tags}</div>
+            <div class="kb-item-card-tags">
+              <span class="kb-source-badge" title="来源: ${sourceLabel}">${sourceLabel}</span>
+              ${indexBadge}
+              ${tags}
+            </div>
             <div class="kb-item-card-time">${formatRelative(i.updated_at)}</div>
           </div>
         </div>`;
@@ -327,19 +390,36 @@
     }
   }
 
+  function renderKBCatSelectForScenario(scenarioId) {
+    const catSelect = document.getElementById('kb-drawer-cat-select');
+    if (!catSelect) return;
+    const cats = scenarioId ? state.kbCategories.filter((c) => c.scenario_id === scenarioId) : state.kbCategories;
+    const oldValue = catSelect.value;
+    catSelect.innerHTML = cats
+      .map((c) => `<option value="${c.id}">${escapeHtml(c.icon || '📁')} ${escapeHtml(c.name)}</option>`)
+      .join('');
+    // 尽量保留原选择，否则选第一个
+    if (cats.some((c) => c.id === oldValue)) {
+      catSelect.value = oldValue;
+    } else if (cats[0]) {
+      catSelect.value = cats[0].id;
+    }
+  }
+
   function openKBDrawer(itemId) {
     const drawer = document.getElementById('kb-drawer');
     if (!drawer) return;
     const titleInput = document.getElementById('kb-drawer-title-input');
     const bodyInput = document.getElementById('kb-drawer-body-input');
     const tagsInput = document.getElementById('kb-drawer-tags-input');
+    const scenarioSelect = document.getElementById('kb-drawer-scenario-select');
     const catSelect = document.getElementById('kb-drawer-cat-select');
     const meta = document.getElementById('kb-drawer-meta');
     const titleEl = document.getElementById('kb-drawer-title');
     const delBtn = document.getElementById('kb-drawer-delete');
 
-    catSelect.innerHTML = state.kbCategories
-      .map((c) => `<option value="${c.id}">${escapeHtml(c.icon || '📁')} ${escapeHtml(c.name)}</option>`)
+    scenarioSelect.innerHTML = state.kbScenarios
+      .map((s) => `<option value="${s.id}">${escapeHtml(s.icon || '🏠')} ${escapeHtml(s.name)}</option>`)
       .join('');
 
     if (itemId) {
@@ -349,6 +429,8 @@
       titleInput.value = item.title || '';
       bodyInput.value = item.body || '';
       tagsInput.value = (item.tags || []).join(', ');
+      scenarioSelect.value = item.scenario_id || state.kbScenarios[0]?.id || '';
+      renderKBCatSelectForScenario(scenarioSelect.value);
       catSelect.value = item.category_id || '';
       meta.textContent = `ID: ${item.id} · 创建 ${formatRelative(item.created_at)} · 更新 ${formatRelative(item.updated_at)}`;
       drawer.dataset.itemId = itemId;
@@ -358,11 +440,14 @@
       titleInput.value = '';
       bodyInput.value = '';
       tagsInput.value = '';
-      catSelect.value = state.currentKbCategoryId || state.kbCategories[0]?.id || '';
+      scenarioSelect.value = state.kbScenarioId || state.kbScenarios[0]?.id || '';
+      renderKBCatSelectForScenario(scenarioSelect.value);
+      catSelect.value = state.currentKbCategoryId || catSelect.querySelector('option')?.value || '';
       meta.textContent = '新建后保存';
       delete drawer.dataset.itemId;
       if (delBtn) delBtn.style.display = 'none';
     }
+    renderKBTagSuggestions();
     openDrawer('kb-drawer');
     setTimeout(() => titleInput?.focus(), 100);
   }
@@ -372,10 +457,12 @@
     const title = document.getElementById('kb-drawer-title-input').value.trim();
     const body = document.getElementById('kb-drawer-body-input').value.trim();
     const tagsRaw = document.getElementById('kb-drawer-tags-input').value.trim();
+    const scenario_id = document.getElementById('kb-drawer-scenario-select').value;
     const category_id = document.getElementById('kb-drawer-cat-select').value;
 
     if (!title) return showNotification('❌ 标题必填', 'error');
     if (!body) return showNotification('❌ 正文必填', 'error');
+    if (!scenario_id) return showNotification('❌ 请选择场景', 'error');
     if (!category_id) return showNotification('❌ 请选择分类', 'error');
 
     const tags = tagsRaw
@@ -390,13 +477,13 @@
       if (drawer.dataset.itemId) {
         await api(`/api/kb/items/${drawer.dataset.itemId}`, {
           method: 'PATCH',
-          body: { title, body, category_id, tags }
+          body: { title, body, scenario_id, category_id, tags }
         });
         showNotification('✓ 已更新', 'success');
       } else {
         await api('/api/kb/items', {
           method: 'POST',
-          body: { title, body, category_id, tags }
+          body: { title, body, scenario_id, category_id, tags }
         });
         showNotification('✓ 已创建', 'success');
       }
@@ -440,7 +527,9 @@
         })
         .catch((e) => showNotification(`❌ ${e.message}`, 'error'));
     } else {
-      api('/api/kb/categories', { method: 'POST', body: { name, icon } })
+      const body = { name, icon };
+      if (state.kbScenarioId) body.scenario_id = state.kbScenarioId;
+      api('/api/kb/categories', { method: 'POST', body })
         .then(() => {
           showNotification('✓ 分类已创建', 'success');
           loadKB();
@@ -457,7 +546,7 @@
       input.value = item.body || item.title || '';
       input.disabled = false;
       if (global.Tasks) global.Tasks.autoResizeInput();
-      if (global.Main) global.Main.switchTab('chat');
+      switchTab('chat');
       showNotification(`📖 已填入条目: ${item.title}`, 'info');
     }
   }
@@ -740,6 +829,133 @@
         btn2.disabled = false;
         btn2.innerHTML = old2 || '🎁 一键加载演示数据';
       }
+    }
+  }
+
+  // v5.6.0: 来源/索引状态展示
+  function getKBSourceLabel(sourceType) {
+    const map = {
+      manual: '✍️ 手动',
+      chat: '💬 对话',
+      file: '📄 文件',
+      url: '🌐 URL',
+      repository: '📦 仓库'
+    };
+    return map[sourceType] || '✍️ 手动';
+  }
+
+  function getKBIndexBadge(status) {
+    const map = {
+      pending: '⏳',
+      indexing: '🔄',
+      indexed: '✅',
+      failed: '❌'
+    };
+    const icon = map[status] || '⏳';
+    return `<span class="kb-source-badge" title="索引状态: ${status || 'pending'}">${icon}</span>`;
+  }
+
+  async function loadKBBuiltinTags() {
+    try {
+      const { data } = await api('/api/kb/tags');
+      state.kbBuiltinTags = data || [];
+    } catch (e) {
+      console.warn('loadKBBuiltinTags:', e);
+      state.kbBuiltinTags = [];
+    }
+  }
+
+  function renderKBTagSuggestions() {
+    const container = document.getElementById('kb-tag-suggestions');
+    if (!container) return;
+    if (!state.kbBuiltinTags.length) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = state.kbBuiltinTags
+      .map(
+        (t) =>
+          `<span class="kb-tag" data-tag="${escapeHtml(t.name)}" title="${escapeHtml(t.description || '')}">${escapeHtml(t.icon || '')} ${escapeHtml(t.name)}</span>`
+      )
+      .join('');
+    container.querySelectorAll('[data-tag]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const input = document.getElementById('kb-drawer-tags-input');
+        if (!input) return;
+        const tag = el.dataset.tag;
+        const existing = input.value
+          .split(/[,，]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (existing.includes(tag)) return;
+        if (existing.length >= 8) {
+          showNotification('最多 8 个标签', 'warning');
+          return;
+        }
+        input.value = existing.length ? `${input.value.replace(/[,，]\s*$/, '')}, ${tag}` : tag;
+      });
+    });
+  }
+
+  // v5.6.0: 文件上传导入
+  async function handleKBFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // 允许重复选择同一文件
+    const categoryId = state.currentKbCategoryId || '__orphan__';
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category_id', categoryId);
+    if (state.kbScenarioId) formData.append('scenario_id', state.kbScenarioId);
+    try {
+      const { data } = await api('/api/kb/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {} // 让浏览器自动设置 multipart boundary
+      });
+      showNotification(`✓ 已导入「${data.title}」，${data.chunks} 个 chunks`, 'success');
+      await loadKB();
+    } catch (err) {
+      showNotification(`❌ 导入失败: ${err.message}`, 'error');
+    }
+  }
+
+  // v5.6.0: URL 导入
+  async function handleKBUrlImport() {
+    const url = prompt('请输入要抓取的网页 URL（需以 http/https 开头）：');
+    if (!url) return;
+    const categoryId = state.currentKbCategoryId || '__orphan__';
+    const body = { url, category_id: categoryId };
+    if (state.kbScenarioId) body.scenario_id = state.kbScenarioId;
+    try {
+      const { data } = await api('/api/kb/ingest-url', {
+        method: 'POST',
+        body
+      });
+      showNotification(`✓ 已抓取「${data.title}」，${data.chunks} 个 chunks`, 'success');
+      await loadKB();
+    } catch (err) {
+      showNotification(`❌ 抓取失败: ${err.message}`, 'error');
+    }
+  }
+
+  // v5.6.0: 代码仓库导入
+  async function handleKBRepoImport() {
+    const repoUrl = prompt('请输入 Git 仓库地址（https:// 或 git@）：');
+    if (!repoUrl) return;
+    const branch = prompt('指定分支（可选，留空使用默认分支）：') || undefined;
+    const categoryId = state.currentKbCategoryId || '__orphan__';
+    const repoBody = { repo_url: repoUrl, branch, category_id: categoryId };
+    if (state.kbScenarioId) repoBody.scenario_id = state.kbScenarioId;
+    try {
+      const { data } = await api('/api/kb/ingest-repo', {
+        method: 'POST',
+        body: repoBody
+      });
+      showNotification(`✓ 已克隆「${data.title}」，${data.file_count} 个文件 / ${data.chunks} 个 chunks`, 'success');
+      await loadKB();
+    } catch (err) {
+      showNotification(`❌ 仓库导入失败: ${err.message}`, 'error');
     }
   }
 
