@@ -1,11 +1,11 @@
-# AI 智能体桥接器 (ai-bridge) v6.0.0
+# 鹤仙人 (ai-bridge) v6.0.0
 
 [![Version](https://img.shields.io/badge/version-v6.0.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases/v6.0.0)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
 [![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](./docker-compose.yml)
 
-> Trae IDE / 微信 ClawBot 与 AI 智能体之间的**通用中间层**：任务队列 + 执行依据 (evidence) + Web 工作台 + 微信适配 + 知识图谱 + 一键周报。
+> 鹤仙人 ai-bridge 是 Trae IDE / 微信 ClawBot 与 AI 智能体之间的**通用中间层**：任务队列 + 执行依据 (evidence) + Web 工作台 + 微信适配 + 知识图谱 + 一键周报。
 
 ---
 
@@ -46,7 +46,7 @@
 ## ✨ 核心特性
 
 ### v6.0.0（当前）
-- **🤖 AI Bridge Skill 统一**：将 `docs/weixin-agent.skill.md` 替换为 `docs/ai-bridge.skill.md`，与项目同名
+- **🤖 鹤仙人 Skill 统一**：将 `docs/weixin-agent.skill.md` 替换为 `docs/ai-bridge.skill.md`，与项目同名
 - **📐 明确中间程序定位**：skill 中弱化执行细节，强调 `/home/kali/ai-bridge` 作为 Trae Agent 与外部系统（微信、Web 工作台）的通信媒介
 - **🧾 Evidence 协议对齐**：保留心跳保活、长轮询、任务执行、执行依据提交的完整规范
 - **🛠️ Skill 一键安装**：系统设置页支持选择 Trae / Trae CN / 自定义环境，将 skill 文件安装到指定路径，并读取内容给出最佳实践指南
@@ -121,7 +121,7 @@ npm run smoke
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Web 工作台（端口 4567）                                 │
+│  鹤仙人 Web 工作台（端口 4567）                          │
 │  ├─ 💬 聊天      三栏：会话 / 任务 / 详情                │
 │  ├─ 📖 知识库    分类树 / 列表 / 图谱 / 导入 / embedding │
 │  ├─ ⚙️ 工作流    模板 / 步骤 / 执行                     │
