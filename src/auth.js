@@ -93,13 +93,13 @@ export function requireAdmin(req, res, next) {
 }
 
 /**
- * Agent 凭证中间件。agent_id + token 来自 query 或 body。
+ * Agent 凭证中间件。凭证来源优先级：X-Agent-Id/X-Agent-Token 请求头 > query > body。
  * opts.allowPending=true 时放行非 active 状态（heartbeat 用），其余情况 403。
  */
 export function requireAgent(opts = {}) {
   return (req, res, next) => {
-    const agent_id = req.query.agent_id || req.body?.agent_id;
-    const token = req.query.token || req.body?.token;
+    const agent_id = req.get('X-Agent-Id') || req.query.agent_id || req.body?.agent_id;
+    const token = req.get('X-Agent-Token') || req.query.token || req.body?.token;
     if (!agent_id || !token) return res.status(401).json({ error: 'agent credentials required' });
     const agent = findAgent(agent_id);
     if (!agent || !verifySecret(token, agent.token_hash)) {

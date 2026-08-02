@@ -77,6 +77,8 @@ export async function createServer(store) {
   await mountIfExists(app, 'chat.js', '/api/chat', ctx);
   await mountIfExists(app, 'kb.js', '/api/kb', ctx);
   await mountIfExists(app, 'prompts.js', '/api/prompts', ctx);
+  await mountIfExists(app, 'skills.js', '/api/skills', ctx);
+  await mountIfExists(app, 'mcp-registry.js', '/api/mcp-registry', ctx);
   await mountIfExists(app, 'workflows.js', '/api/workflows', ctx);
   await mountIfExists(app, 'schedules.js', '/api/schedules', ctx);
   await mountIfExists(app, 'claw.js', '/api/claw', ctx);

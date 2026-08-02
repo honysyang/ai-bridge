@@ -203,11 +203,11 @@ function verifyAgent(ctx, agentId, token) {
   return agent;
 }
 
-/** 鉴权中间件：Bearer 用户 或 query 的 agent_id+token（agent 须 active）。 */
+/** 鉴权中间件：Bearer 用户 或 agent 凭证（头 X-Agent-Id/X-Agent-Token 优先，回退 query/body；agent 须 active）。 */
 function kbAuth(ctx) {
   return (req, res, next) => {
-    const agentId = req.query.agent_id || req.body?.agent_id;
-    const token = req.query.token || req.body?.token;
+    const agentId = req.get('X-Agent-Id') || req.query.agent_id || req.body?.agent_id;
+    const token = req.get('X-Agent-Token') || req.query.token || req.body?.token;
     const agent = verifyAgent(ctx, agentId, token);
     if (agent) {
       if (agent.review_status !== 'active') return res.status(403).json({ error: agent.review_status });

@@ -150,18 +150,20 @@ POST $BASE/api/task/complete
       "read_files": ["src/index.js", "/etc/hosts"],
       "searches": ["web: ai-bridge 文档"],
       "tool_calls": ["bridge_create_task(...)"],
+      "mcp_tool_calls": ["filesystem.read_file(/etc/hosts)", "brave-search.brave_web_search(端口排查)"],
       "thinking": "关键推理过程简述"
     }
   }
 }
 ```
 
-evidence 五个字段**全部可选**，但规范要求：
+evidence 六个字段**全部可选**，但规范要求：
 
 - `summary` 必填，中文一句话，让调度者不点开详情也知道结果。summary 支持 Markdown（代码块、列表、粗体等），前端会渲染为富文本。
 - 失败（`status:"failed"`）时 summary 必须写清失败原因；evidence 中保留已执行过的步骤，便于重试时续作。
-- `executed_commands` / `read_files` / `searches` / `tool_calls` 为字符串数组，按执行顺序记录真实发生的动作，**不要编造**。
+- `executed_commands` / `read_files` / `searches` / `tool_calls` / `mcp_tool_calls` 为字符串数组，按执行顺序记录真实发生的动作，**不要编造**。
 - `thinking` 只写关键判断，一两句即可，不要粘贴完整思考链。
+- `mcp_tool_calls` 记录通过 MCP 协议调用的外部工具，格式建议 `服务名.工具名(参数摘要)`，便于区分本地命令与 MCP 工具调用。
 - **知识库检索留痕**：执行专业任务前，应优先调用 `bridge_kb_search`（MCP）或 `GET /api/kb/search` 检索知识库；检索到的相关条目可作为背景知识辅助回答。无论通过 MCP 还是 REST 检索，都应在 `evidence.searches` 中记录检索关键词与命中条目数，例如 `searches: ["端口占用排查 (命中 2 条)"]`。这会让前端在对话气泡中展示「🔍 参考了知识库（N 条）」折叠条，增强可信度。
 
 **evidence 是 ai-bridge 的差异化体验：不要只返回 summary。** 前端会在对话气泡下方折叠展示一条「🔍 查看执行过程（X 条命令 / Y 个文件 / …）」的展开条，用户点击即可看到真实执行痕迹。这能显著增强可信度，也方便调试。因此 agent 应尽可能把真实动作写进 `executed_commands` / `read_files` / `searches` / `tool_calls` 中。

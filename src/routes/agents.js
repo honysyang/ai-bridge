@@ -70,6 +70,7 @@ export default function (ctx) {
       last_heartbeat_at: null,
       mcp_session_at: null,
       stats: { total: 0, success: 0 },
+      installed_skills: [],
     };
     store.coll('agents').insert(agent);
     store.log('info', 'agents', `新 agent 注册：${agent.name} (${agent.id})，等待审核`);
@@ -113,6 +114,7 @@ export default function (ctx) {
       last_heartbeat_at: null,
       mcp_session_at: null,
       stats: { total: 0, success: 0 },
+      installed_skills: [],
     };
     store.coll('agents').insert(agent);
     store.log('info', 'agents', `admin 创建 MCP 预发 agent：${agent.name} (${agent.id})`);
@@ -181,6 +183,55 @@ export default function (ctx) {
     events.emit('agent:changed', { ...publicAgent(agent), deleted: true });
     store.log('info', 'agents', `agent ${agent.id} (${agent.name}) 已删除`);
     res.json({ ok: true });
+  });
+
+  // ---- POST /api/agents/:id/install-skill（admin：为 agent 安装技能，固化到 installed_skills）----
+  router.post('/agents/:id/install-skill', auth.requireUser, auth.requireAdmin, (req, res) => {
+    const coll = store.coll('agents');
+    const agent = coll.get(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'agent not found' });
+    const skillId = req.body?.skill_id;
+    if (!skillId) return res.status(400).json({ error: 'skill_id required' });
+    const skill = store.coll('skills').get(skillId);
+    if (!skill) return res.status(404).json({ error: 'skill not found' });
+    if (skill.status !== 'active') return res.status(400).json({ error: 'skill is not active' });
+
+    const installed = agent.installed_skills || [];
+    if (installed.some((s) => s.skill_id === skillId)) {
+      return res.status(409).json({ error: 'skill already installed' });
+    }
+    installed.push({
+      skill_id: skillId,
+      skill_name: skill.name,
+      display_name: skill.display_name,
+      installed_at: util.now(),
+    });
+    const updated = coll.update(agent.id, { installed_skills: installed });
+
+    // 技能安装计数 +1
+    const skillColl = store.coll('skills');
+    const sc = skillColl.get(skillId);
+    if (sc) skillColl.update(skillId, { install_count: (sc.install_count || 0) + 1 });
+
+    store.log('info', 'agents', `agent ${agent.name} 安装技能 ${skill.name}`);
+    res.json({ ...publicAgent(updated), presence: presenceOf(updated, store.coll('tasks'), util.now()) });
+  });
+
+  // ---- DELETE /api/agents/:id/install-skill/:skill_id（admin：卸载技能）----
+  router.delete('/agents/:id/install-skill/:skill_id', auth.requireUser, auth.requireAdmin, (req, res) => {
+    const coll = store.coll('agents');
+    const agent = coll.get(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'agent not found' });
+    const installed = (agent.installed_skills || []).filter((s) => s.skill_id !== req.params.skill_id);
+    const updated = coll.update(agent.id, { installed_skills: installed });
+
+    // 技能安装计数 -1（不低于 0）
+    const skillColl = store.coll('skills');
+    const sc = skillColl.get(req.params.skill_id);
+    if (sc && sc.install_count > 0) skillColl.update(req.params.skill_id, { install_count: sc.install_count - 1 });
+
+    store.log('info', 'agents', `agent ${agent.name} 卸载技能 ${req.params.skill_id}`);
+    res.json({ ...publicAgent(updated), presence: presenceOf(updated, store.coll('tasks'), util.now()) });
   });
 
   return router;

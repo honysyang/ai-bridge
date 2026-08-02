@@ -12,6 +12,23 @@ export default function (ctx) {
   const { store, util } = ctx;
   const ru = ctx.auth.requireUser;
 
+  /** 能力仓库统计：技能/MCP 总数、能力分布、安装总数 */
+  function computeCapabilityStats() {
+    const skills = store.coll('skills').all().filter((s) => s.status === 'active');
+    const mcps = store.coll('mcp_services').all().filter((s) => s.status === 'active');
+    const capDist = {};
+    for (const s of skills) for (const c of (s.capabilities || [])) capDist[c] = (capDist[c] || 0) + 1;
+    const skillInstalls = skills.reduce((n, s) => n + (s.install_count || 0), 0);
+    const mcpInstalls = mcps.reduce((n, s) => n + (s.install_count || 0), 0);
+    return {
+      skills_total: skills.length,
+      mcps_total: mcps.length,
+      capability_distribution: capDist,
+      skill_installs: skillInstalls,
+      mcp_installs: mcpInstalls,
+    };
+  }
+
   function presenceOf(agent, processingAgentIds, nowSec) {
     if (processingAgentIds.has(agent.id)) return 'busy';
     const last = Math.max(agent.last_heartbeat_at || 0, agent.mcp_session_at || 0);
@@ -69,6 +86,7 @@ export default function (ctx) {
       agents: agentCounts,
       trend,
       queue_depth: tasks.filter((t) => t.status === 'pending').length,
+      capabilities: computeCapabilityStats(),
     });
   });
 

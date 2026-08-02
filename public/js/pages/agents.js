@@ -1,5 +1,5 @@
 /* ============================================================
-   pages/agents.js — 智能体：列表（审核/改名/测试/token/禁用/删除）｜ 接入
+   pages/agents.js — 智能体：列表（审核/改名/测试/token/禁用/删除）｜ 接入 ｜ 能力仓库
    ============================================================ */
 import {
   api, toast, escapeHtml, fmtTime, emptyHTML, openModal, confirmBox,
@@ -10,6 +10,7 @@ export async function render(el, ctx) {
   el.innerHTML = `
     <div class="tabs">
       <div class="tab active" data-tab="list">智能体列表</div>
+      <div class="tab" data-tab="warehouse">能力仓库</div>
       <div class="tab" data-tab="onboard">接入智能体</div>
     </div>
     <div id="tabBody"><div class="loading-line"><span class="spinner"></span> 加载中…</div></div>`;
@@ -17,6 +18,7 @@ export async function render(el, ctx) {
   const renderTab = (tab) => {
     el.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
     if (tab === 'list') renderList(body, ctx);
+    else if (tab === 'warehouse') renderWarehouse(body, ctx);
     else renderOnboard(body);
   };
   el.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => renderTab(t.dataset.tab)));
@@ -380,6 +382,318 @@ function openNewMcp(done) {
   // 保留为兼容入口：直接打开 MCP 通道面板并提示用户填表
   toast('请到「接入智能体」页签切到 🔌 MCP 通道填写名称与能力', 'info');
   done?.();
+}
+
+/* ==================== 能力仓库 ==================== */
+const REVIEW_BADGE = {
+  passed: '<span class="badge badge-green">✔ 审查通过</span>',
+  warning: '<span class="badge badge-yellow">⚠ 有提示</span>',
+  blocked: '<span class="badge badge-red">✘ 风险拦截</span>',
+};
+const CAT_LABEL = {
+  system: '系统', devops: '运维', research: '调研', writing: '写作',
+  security: '安全', integration: '集成', filesystem: '文件', search: '搜索',
+  database: '数据库', communication: '通信', utility: '工具',
+};
+
+async function renderWarehouse(box, ctx) {
+  box.innerHTML = `
+    <div class="tabs" style="margin-bottom:14px">
+      <div class="tab active" data-sub="skills">🧩 技能（常驻自动型）</div>
+      <div class="tab" data-sub="mcps">🔌 MCP 服务（会话驱动型）</div>
+    </div>
+    <div id="whBody"><div class="loading-line"><span class="spinner"></span> 加载中…</div></div>`;
+
+  const whBody = box.querySelector('#whBody');
+  const renderSub = async (sub) => {
+    box.querySelectorAll('[data-sub]').forEach((t) => t.classList.toggle('active', t.dataset.sub === sub));
+    if (sub === 'skills') await renderSkillsTab(whBody);
+    else await renderMcpsTab(whBody);
+  };
+  box.querySelectorAll('[data-sub]').forEach((t) => t.addEventListener('click', () => renderSub(t.dataset.sub)));
+  renderSub('skills');
+}
+
+async function renderSkillsTab(el) {
+  el.innerHTML = '<div class="loading-line"><span class="spinner"></span> 加载技能列表…</div>';
+  let skills = [];
+  try { skills = await api.get('/api/skills'); } catch (err) {
+    el.innerHTML = emptyHTML('🧩', '加载失败', err.message); return;
+  }
+  el.innerHTML = `
+    <div class="flex-between mb8">
+      <div class="muted" style="font-size:13px">共 ${skills.length} 个技能（内置 ${skills.filter((s) => s.builtin).length} · 自定义 ${skills.filter((s) => !s.builtin).length}）</div>
+      <button class="btn btn-primary" id="whAddSkill">＋ 新建技能</button>
+    </div>
+    <div class="kpi-grid" id="skillGrid"></div>`;
+
+  const grid = el.querySelector('#skillGrid');
+  if (!skills.length) {
+    grid.innerHTML = emptyHTML('🧩', '暂无技能', '点击右上角新建');
+  } else {
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
+    grid.innerHTML = skills.map((s) => `
+      <div class="kpi-card" style="padding:16px" data-id="${s.id}">
+        <div class="flex-between mb8">
+          <div style="font-size:15px;font-weight:700">${escapeHtml(s.display_name)} ${s.builtin ? '<span class="badge badge-blue">内置</span>' : '<span class="badge">自定义</span>'}</div>
+          <span class="badge">${CAT_LABEL[s.category] || s.category}</span>
+        </div>
+        <p class="muted" style="font-size:12px;margin-bottom:8px;line-height:1.5">${escapeHtml(s.description || '')}</p>
+        <div class="mb8">${(s.capabilities || []).map((c) => `<span class="tag">${escapeHtml(c)}</span>`).join('') || '<span class="faint">无能力标签</span>'}</div>
+        <div class="flex-between" style="font-size:12px;color:var(--text-light)">
+          <span>v${escapeHtml(s.version || '1.0.0')} · 安装 ${s.install_count || 0} 次</span>
+        </div>
+        <div class="flex mt8" style="gap:6px">
+          <button class="btn btn-sm" data-sk="doc" data-id="${s.id}">📄 文档</button>
+          <button class="btn btn-sm btn-primary" data-sk="install" data-id="${s.id}">📥 安装到智能体</button>
+          ${!s.builtin ? `<button class="btn btn-sm btn-danger" data-sk="del" data-id="${s.id}">删除</button>` : ''}
+        </div>
+      </div>`).join('');
+
+    grid.querySelectorAll('[data-sk]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.sk;
+        const skill = skills.find((s) => s.id === btn.dataset.id);
+        if (act === 'doc') openSkillDoc(skill);
+        else if (act === 'install') openInstallSkill(skill, () => renderSkillsTab(el));
+        else if (act === 'del') deleteSkill(skill, () => renderSkillsTab(el));
+      });
+    });
+  }
+
+  el.querySelector('#whAddSkill').addEventListener('click', () => openAddSkill(() => renderSkillsTab(el)));
+}
+
+async function renderMcpsTab(el) {
+  el.innerHTML = '<div class="loading-line"><span class="spinner"></span> 加载 MCP 服务列表…</div>';
+  let mcps = [];
+  try { mcps = await api.get('/api/mcp-registry'); } catch (err) {
+    el.innerHTML = emptyHTML('🔌', '加载失败', err.message); return;
+  }
+  el.innerHTML = `
+    <div class="flex-between mb8">
+      <div class="muted" style="font-size:13px">共 ${mcps.length} 个 MCP 服务（内置 ${mcps.filter((s) => s.builtin).length} · 自定义 ${mcps.filter((s) => !s.builtin).length}）</div>
+      <button class="btn btn-primary" id="whAddMcp">＋ 新建 MCP 服务</button>
+    </div>
+    <div class="kpi-grid" id="mcpGrid"></div>`;
+
+  const grid = el.querySelector('#mcpGrid');
+  if (!mcps.length) {
+    grid.innerHTML = emptyHTML('🔌', '暂无 MCP 服务', '点击右上角新建');
+  } else {
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
+    grid.innerHTML = mcps.map((s) => `
+      <div class="kpi-card" style="padding:16px" data-id="${s.id}">
+        <div class="flex-between mb8">
+          <div style="font-size:15px;font-weight:700">${escapeHtml(s.display_name)} ${s.builtin ? '<span class="badge badge-blue">内置</span>' : '<span class="badge">自定义</span>'}</div>
+          <span class="badge">${CAT_LABEL[s.category] || s.category}</span>
+        </div>
+        <p class="muted" style="font-size:12px;margin-bottom:8px;line-height:1.5">${escapeHtml(s.description || '')}</p>
+        <div class="mb8">
+          <span class="badge badge-accent">${s.transport === 'stdio' ? '🖥 stdio' : s.transport === 'sse' ? '📡 SSE' : '🌐 HTTP'}</span>
+          ${(s.tools || []).length ? `<span class="badge">${(s.tools || []).length} 个工具</span>` : ''}
+          ${REVIEW_BADGE[s.security_review?.status] || ''}
+        </div>
+        <div class="flex-between" style="font-size:12px;color:var(--text-light)">
+          <span>v${escapeHtml(s.version || '1.0.0')} · ${escapeHtml(s.command || s.url || '')}</span>
+        </div>
+        <div class="flex mt8" style="gap:6px">
+          <button class="btn btn-sm" data-mc="config" data-id="${s.id}">⚙ 配置</button>
+          <button class="btn btn-sm" data-mc="review" data-id="${s.id}">🔍 审查</button>
+          ${!s.builtin ? `<button class="btn btn-sm btn-danger" data-mc="del" data-id="${s.id}">删除</button>` : ''}
+        </div>
+      </div>`).join('');
+
+    grid.querySelectorAll('[data-mc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const act = btn.dataset.mc;
+        const mcp = mcps.find((s) => s.id === btn.dataset.id);
+        if (act === 'config') openMcpConfig(mcp);
+        else if (act === 'review') reviewMcp(mcp, () => renderMcpsTab(el));
+        else if (act === 'del') deleteMcp(mcp, () => renderMcpsTab(el));
+      });
+    });
+  }
+
+  el.querySelector('#whAddMcp').addEventListener('click', () => openAddMcp(() => renderMcpsTab(el)));
+}
+
+function openSkillDoc(skill) {
+  openModal({
+    title: `📄 ${skill.display_name} · 接入文档`,
+    body: `<div id="docBody"><div class="loading-line"><span class="spinner"></span> 加载文档…</div></div>`,
+    okText: '关 闭',
+    showCancel: false,
+  });
+  api.get(`/api/skills/${skill.id}/doc`).then((d) => {
+    const body = document.querySelector('#docBody');
+    if (body) body.innerHTML = d.skill_doc?.trim() ? renderMarkdown(d.skill_doc) : '<p class="faint">该技能暂无接入文档</p>';
+  }).catch((err) => {
+    const body = document.querySelector('#docBody');
+    if (body) body.innerHTML = emptyHTML('⚠️', '加载失败', err.message);
+  });
+}
+
+async function openInstallSkill(skill, done) {
+  let agents = [];
+  try { agents = await api.get('/api/agents'); } catch (err) { toast(err.message, 'error'); return; }
+  const active = agents.filter((a) => a.review_status === 'active');
+  if (!active.length) { toast('暂无可用的智能体，请先注册并审核通过', 'error'); return; }
+  openModal({
+    title: `📥 安装技能「${skill.display_name}」`,
+    body: `<p class="muted mb8" style="font-size:13px">选择要安装此技能的智能体：</p>
+      <div style="max-height:320px;overflow-y:auto">
+        ${active.map((a) => {
+          const installed = (a.installed_skills || []).some((s) => s.skill_id === skill.id);
+          return `<label class="field" style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;cursor:${installed ? 'not-allowed' : 'pointer'}">
+            <input type="radio" name="ag" value="${a.id}" ${installed ? 'disabled' : ''}>
+            <div><b>${escapeHtml(a.name)}</b> ${installed ? '<span class="badge badge-green">已安装</span>' : ''}<br><span class="faint" style="font-size:11px">${escapeHtml((a.capabilities || []).join(', ') || '无能力标签')}</span></div>
+          </label>`;
+        }).join('')}
+      </div>`,
+    okText: '安 装',
+    onOk: async (modal) => {
+      const checked = modal.querySelector('input[name="ag"]:checked');
+      if (!checked) { toast('请选择一个智能体', 'error'); return false; }
+      try {
+        await api.post(`/api/agents/${checked.value}/install-skill`, { skill_id: skill.id });
+        toast(`已安装到智能体`, 'success');
+        done?.();
+      } catch (err) { toast(err.message, 'error'); return false; }
+    },
+  });
+}
+
+function deleteSkill(skill, done) {
+  openModal({
+    title: `⚠️ 删除技能「${skill.display_name}」`,
+    body: '<p>确认删除此自定义技能？已安装的智能体不受影响，但将无法再安装。</p>',
+    okText: '删 除',
+    onOk: async () => {
+      try { await api.del(`/api/skills/${skill.id}`); toast('已删除', 'success'); done?.(); }
+      catch (err) { toast(err.message, 'error'); }
+    },
+  });
+}
+
+function openAddSkill(done) {
+  openModal({
+    title: '＋ 新建技能',
+    body: `
+      <label class="field"><span>名称（唯一标识，英文 kebab-case）</span><input type="text" id="skName" placeholder="my-custom-skill"></label>
+      <label class="field"><span>显示名称</span><input type="text" id="skDisp" placeholder="自定义技能"></label>
+      <label class="field"><span>描述</span><textarea id="skDesc" placeholder="技能用途说明"></textarea></label>
+      <div class="form-row">
+        <label class="field"><span>分类</span><select id="skCat">
+          ${Object.entries(CAT_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+        </select></label>
+        <label class="field"><span>能力标签（逗号分隔）</span><input type="text" id="skCaps" placeholder="shell, search"></label>
+      </div>
+      <label class="field"><span>接入文档（Markdown）</span><textarea id="skDoc" style="min-height:120px" placeholder="# 技能接入说明&#10;## 能力声明..."></textarea></label>`,
+    okText: '创 建',
+    onOk: async (modal) => {
+      const name = modal.querySelector('#skName').value.trim();
+      const display_name = modal.querySelector('#skDisp').value.trim();
+      const description = modal.querySelector('#skDesc').value.trim();
+      if (!name || !display_name || !description) { toast('名称、显示名称、描述必填', 'error'); return false; }
+      const capabilities = modal.querySelector('#skCaps').value.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+      const skill_doc = modal.querySelector('#skDoc').value.trim();
+      try {
+        await api.post('/api/skills', { name, display_name, description, capabilities, skill_doc, category: modal.querySelector('#skCat').value });
+        toast('技能已创建', 'success'); done?.();
+      } catch (err) { toast(err.message, 'error'); return false; }
+    },
+  });
+}
+
+async function openMcpConfig(mcp) {
+  openModal({
+    title: `⚙️ ${mcp.display_name} · MCP 配置`,
+    body: `<div id="cfgBody"><div class="loading-line"><span class="spinner"></span> 生成配置…</div></div>`,
+    okText: '📋 复制配置',
+    showCancel: true,
+    onOk: async () => {
+      try {
+        const d = await api.get(`/api/mcp-registry/${mcp.id}/config`);
+        copyText(JSON.stringify(d.mcpServers, null, 2), 'mcp_config 已复制');
+      } catch (err) { toast(err.message, 'error'); }
+    },
+  });
+  try {
+    const d = await api.get(`/api/mcp-registry/${mcp.id}/config`);
+    const body = document.querySelector('#cfgBody');
+    if (body) body.innerHTML = `
+      ${d.config_note ? `<div class="card" style="box-shadow:none;background:var(--yellow-soft);padding:10px 12px;margin-bottom:12px;font-size:13px">💡 ${escapeHtml(d.config_note)}</div>` : ''}
+      <p class="muted mb8" style="font-size:13px">合并到客户端 MCP 配置文件：</p>
+      <pre class="json-view" style="max-height:280px;overflow:auto">${jsonHighlight(d.mcpServers)}</pre>
+      ${d.tools?.length ? `<div class="mt8"><div class="muted mb8" style="font-size:13px">提供的工具（${d.tools.length} 个）：</div>${d.tools.map((t) => `<span class="tag">${escapeHtml(t.name)}</span>`).join(' ')}</div>` : ''}
+      ${d.security_review?.notes?.length ? `<div class="mt8"><div class="muted mb8" style="font-size:13px">安全审查提示：</div><ul style="font-size:12px;padding-left:18px">${d.security_review.notes.map((n) => `<li style="color:${n.risk === 'high' ? 'var(--red)' : 'var(--yellow)'}">${escapeHtml(n.msg)}</li>`).join('')}</ul></div>` : ''}`;
+  } catch (err) {
+    const body = document.querySelector('#cfgBody');
+    if (body) body.innerHTML = emptyHTML('⚠️', '加载失败', err.message);
+  }
+}
+
+async function reviewMcp(mcp, done) {
+  try {
+    const updated = await api.post(`/api/mcp-registry/${mcp.id}/review`);
+    const r = updated.security_review;
+    if (!r.notes.length) toast(`✅ 审查通过，无风险提示`, 'success');
+    else toast(`审查完成：${r.status}（${r.notes.length} 条提示）`, r.status === 'blocked' ? 'error' : 'info');
+    done?.();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+function deleteMcp(mcp, done) {
+  openModal({
+    title: `⚠️ 删除 MCP 服务「${mcp.display_name}」`,
+    body: '<p>确认删除此自定义 MCP 服务？</p>',
+    okText: '删 除',
+    onOk: async () => {
+      try { await api.del(`/api/mcp-registry/${mcp.id}`); toast('已删除', 'success'); done?.(); }
+      catch (err) { toast(err.message, 'error'); }
+    },
+  });
+}
+
+function openAddMcp(done) {
+  openModal({
+    title: '＋ 新建 MCP 服务',
+    body: `
+      <label class="field"><span>名称（唯一标识）</span><input type="text" id="mcName" placeholder="my-mcp"></label>
+      <label class="field"><span>显示名称</span><input type="text" id="mcDisp" placeholder="自定义 MCP"></label>
+      <label class="field"><span>描述</span><textarea id="mcDesc" placeholder="服务用途说明"></textarea></label>
+      <div class="form-row">
+        <label class="field"><span>分类</span><select id="mcCat">
+          ${Object.entries(CAT_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}
+        </select></label>
+        <label class="field"><span>传输方式</span><select id="mcTrans">
+          <option value="stdio">stdio（本地进程）</option>
+          <option value="sse">SSE（远程）</option>
+          <option value="http">HTTP（远程）</option>
+        </select></label>
+      </div>
+      <label class="field"><span>命令（stdio 必填）</span><input type="text" id="mcCmd" placeholder="npx"></label>
+      <label class="field"><span>参数（空格分隔）</span><input type="text" id="mcArgs" placeholder="-y @modelcontextprotocol/server-xxx"></label>
+      <label class="field"><span>URL（SSE/HTTP 必填）</span><input type="text" id="mcUrl" placeholder="https://..."></label>`,
+    okText: '创 建',
+    onOk: async (modal) => {
+      const name = modal.querySelector('#mcName').value.trim();
+      const display_name = modal.querySelector('#mcDisp').value.trim();
+      const description = modal.querySelector('#mcDesc').value.trim();
+      if (!name || !display_name || !description) { toast('名称、显示名称、描述必填', 'error'); return false; }
+      const transport = modal.querySelector('#mcTrans').value;
+      const command = modal.querySelector('#mcCmd').value.trim();
+      const url = modal.querySelector('#mcUrl').value.trim();
+      if (transport === 'stdio' && !command) { toast('stdio 需要填写命令', 'error'); return false; }
+      if ((transport === 'sse' || transport === 'http') && !url) { toast('SSE/HTTP 需要填写 URL', 'error'); return false; }
+      const args = modal.querySelector('#mcArgs').value.split(/\s+/).filter(Boolean);
+      try {
+        await api.post('/api/mcp-registry', { name, display_name, description, transport, command, args, url, category: modal.querySelector('#mcCat').value });
+        toast('MCP 服务已创建', 'success'); done?.();
+      } catch (err) { toast(err.message, 'error'); return false; }
+    },
+  });
 }
 
 /* ==================== 接入智能体 ==================== */

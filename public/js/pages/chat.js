@@ -323,7 +323,7 @@ function buildEvidenceBar(t) {
   const thinking = ev.thinking ? String(ev.thinking).trim() : '';
   if (!counts.length && !thinking) return '';
   const total = exec + files + searches + tools;
-  const summary = total ? `🔍 查看执行过程（${counts.join(' / ')}）` : `🔍 查看思考过程`;
+  const summary = total ? `查看执行过程（${counts.join(' / ')}）` : `查看思考过程`;
   const evId = 'ev-' + (t.id || Math.random().toString(36).slice(2, 8));
   const detail = [
     exec ? `<div class="evidence-section"><div class="evidence-title">已执行命令（${exec}）</div>${ev.executed_commands.map((c) => `<div class="evidence-item"><code>${escapeHtml(String(c))}</code></div>`).join('')}</div>` : '',

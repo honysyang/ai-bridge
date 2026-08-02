@@ -17,6 +17,13 @@
 
 零构建步骤、原生 ESM、前端无框架/CDN，唯一运行时依赖 `express`，持久化为 append-only JSONL 事件流。
 
+
+
+---
+## 系统架构
+
+![ai-bridge 架构](docs/imges/ai-bridge.png)
+
 ---
 
 ## 界面预览
@@ -28,7 +35,7 @@
 | 概览 | `#/overview` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
 | 任务中心 | `#/tasks` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
 | 对话 | `#/chat` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
-| 智能体 | `#/agents` | 智能体列表（presence 徽章、审核、token 重置）/ 接入智能体（skill 文档、MCP 配置） |
+| 智能体 | `#/agents` | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
 | 知识库 | `#/kb` | 知识条目 / 知识图谱 / 提示词 / 导入 |
 | 工作流 | `#/workflows` | 模板 / 执行记录 |
 | 消息通信 | `#/claw` | 连接 / 联系人 / 推送订阅 / 消息记录 |
@@ -46,6 +53,9 @@
 - **双通道接入**
   **Skill 通道**：常驻自动型 agent，心跳保活，长轮询 `GET /api/task/poll` 自动领任务。
   **MCP 通道**：会话驱动型，通过 `POST /mcp` JSON-RPC 在 Claude Code / Cursor / Trae 中暴露 `bridge_*` 工具。
+
+- **能力仓库（技能 + MCP 服务）**
+  内置 6 个技能（shell-executor / web-searcher / code-reviewer / port-scanner / doc-writer / kb-curator）和 4 个 MCP 服务（filesystem / brave-search / git / sqlite），首次访问自动播种。管理员可新建自定义技能或 MCP 服务、把技能安装到指定智能体（`installed_skills` + `install_count` 联动）、一键生成 `mcp_config`、对 MCP 配置做静态安全审查（密钥 / 危险命令 / 路径覆盖），审查状态分为 `passed / warning / blocked`。
 
 - **任务三级路由**
   派发优先级：指定 `target_agent` > 匹配 `required_capability` > 通用任务；支持定向派发验证与委派子任务。
@@ -120,11 +130,6 @@ npm start              # node src/index.js
 
 ---
 
-## 架构
-
-![ai-bridge 架构](docs/imges/ai-bridge.png)
-
----
 
 ## 目录结构
 
@@ -173,9 +178,11 @@ ai-bridge/
 │   │   ├── dedup.js           # 消息去重
 │   │   └── ilink/             # iLink 协议辅助模块
 │   └── routes/                # 功能路由模块
-│       ├── agents.js          # Agent 注册、心跳、CRUD、审核、token 重置
+│       ├── agents.js          # Agent 注册、心跳、CRUD、审核、token 重置、install-skill
 │       ├── tasks.js           # 任务队列、长轮询、完成、重试、改派、统计
 │       ├── mcp.js             # MCP JSON-RPC 2.0 端点与 bridge_* tools
+│       ├── skills.js          # 技能仓库：CRUD / 文档 / 内置播种
+│       ├── mcp-registry.js    # MCP 服务仓库：CRUD / 安全审查 / mcp_config 生成
 │       ├── sessions.js        # 会话 CRUD
 │       ├── chat.js            # 聊天即任务、AI 路由、上下文压缩
 │       ├── kb.js              # 知识库分类/条目/链接/搜索/分块
@@ -214,7 +221,34 @@ ai-bridge/
 | POST | `/api/agents` | 管理员 | 预创建 MCP Agent，直接 active |
 | PATCH | `/api/agents/:id` | 管理员 | 审核、启用/禁用、修改名称/能力 |
 | POST | `/api/agents/:id/token/reset` | 管理员 | 重置 Agent token |
+| POST | `/api/agents/:id/install-skill` | 管理员 | 为 Agent 安装技能（写入 `installed_skills`，`install_count` +1） |
+| DELETE | `/api/agents/:id/install-skill/:skill_id` | 管理员 | 卸载 Agent 的技能（`install_count` -1，不低于 0） |
 | DELETE | `/api/agents/:id` | 管理员 | 删除 Agent |
+
+### 能力仓库 — 技能
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/skills` | 用户 | 列出全部技能（内置在前），支持 `?category=` 过滤 |
+| GET | `/api/skills/categories` | 用户 | 技能分类列表 |
+| GET | `/api/skills/:id` | 用户 | 技能详情 |
+| GET | `/api/skills/:id/doc` | 用户 | 仅返回技能接入文档（`skill_doc` + `config_example`） |
+| POST | `/api/skills` | 管理员 | 新建自定义技能（`name` 唯一，重复 409） |
+| PATCH | `/api/skills/:id` | 管理员 | 编辑技能（修改后 `updated_at` 刷新） |
+| DELETE | `/api/skills/:id` | 管理员 | 删除自定义技能（内置 403） |
+
+### 能力仓库 — MCP 服务
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/mcp-registry` | 用户 | 列出全部 MCP 服务，支持 `?category=` / `?transport=` 过滤 |
+| GET | `/api/mcp-registry/categories` | 用户 | MCP 服务分类列表 |
+| GET | `/api/mcp-registry/:id` | 用户 | MCP 服务详情 |
+| GET | `/api/mcp-registry/:id/config` | 用户 | 生成 `mcpServers` JSON（含 `tools` 与 `security_review`） |
+| POST | `/api/mcp-registry` | 管理员 | 新建自定义 MCP 服务（自动触发静态安全审查） |
+| PATCH | `/api/mcp-registry/:id` | 管理员 | 编辑 MCP 服务（配置字段变更后自动重审） |
+| POST | `/api/mcp-registry/:id/review` | 管理员 | 手动触发静态安全审查 |
+| DELETE | `/api/mcp-registry/:id` | 管理员 | 删除自定义 MCP 服务（内置 403） |
 
 ### 任务
 
@@ -360,7 +394,7 @@ ai-bridge/
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/api/overview` | 用户 | 总览 KPI 与趋势 |
+| GET | `/api/overview` | 用户 | 总览 KPI 与趋势（含 `capabilities` 能力仓库统计） |
 | GET | `/api/overview/weekly-report` | 用户 | 近 7 天周报 |
 | GET | `/api/settings/ai-models` | 用户 | AI 模型配置 |
 | PATCH | `/api/settings/ai-models` | 用户 | 更新模型配置 |
@@ -479,6 +513,7 @@ npm run smoke      # 等价于 bash scripts/smoke.sh
 | 10 | 周报生成 |
 | 11 | AI 能力包：会话上下文压缩、智能路由、fallback、evidence 不泄露 |
 | 12 | 知识库：分类/条目/搜索/MCP 搜索/分块/from-task/相似 link |
+| 13 | 能力仓库：技能 CRUD / install-skill 联动 / MCP 服务 CRUD / 静态安全审查 / overview 统计 |
 
 ---
 

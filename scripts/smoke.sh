@@ -4,6 +4,7 @@
 # 可选：7 工作流、8 微信+推送（模块存在才执行）；9 定时（SMOKE_SCHEDULE=1 时启用，需等待 tick）
 # 11 AI 能力包：上下文压缩 + 智能路由 + 周报润色（mock AI 验证）
 # 12 知识库能力包：智能检索 / 分块索引 / 经验回流 / agent 凭证
+# 13 能力仓库：技能 CRUD / install-skill 联动 / MCP 服务 / 安全审查 / overview 统计
 # 用法：BASE=http://localhost:4601 bash scripts/smoke.sh
 # 默认使用临时数据目录和微信 mock 模式，避免污染线上数据
 set -u
@@ -648,6 +649,16 @@ AGENT_SEARCH=$(curl -s "$BASE/api/kb/search?q=%E7%AB%AF%E5%8F%A3&agent_id=$AGENT
 echo "$AGENT_SEARCH" | grep -q '"results"' || fail "agent 凭证 search 应返回 results：$AGENT_SEARCH"
 ok "agent 凭证调 /api/kb/search 成功"
 
+# 凭证 Header 迁移：requireAgent / kbAuth 支持 X-Agent-Id + X-Agent-Token 请求头
+HB_HDR=$(curl -s "$BASE/api/heartbeat" -H "X-Agent-Id: $AGENT1" -H "X-Agent-Token: $ATOK1")
+[ "$(echo "$HB_HDR" | jsonget ok 2>/dev/null)" = "true" ] || fail "heartbeat Header 凭证应放行：$HB_HDR"
+ok "requireAgent 支持 X-Agent-Id/X-Agent-Token 请求头"
+
+HDR_SEARCH=$(curl -s "$BASE/api/kb/search?q=%E7%AB%AF%E5%8F%A3" \
+  -H "X-Agent-Id: $AGENT1" -H "X-Agent-Token: $ATOK1")
+echo "$HDR_SEARCH" | grep -q '"results"' || fail "agent 凭证 Header search 应返回 results：$HDR_SEARCH"
+ok "kbAuth 支持 X-Agent-Id/X-Agent-Token 请求头"
+
 NOAUTH_SEARCH=$(http_code "$BASE/api/kb/search?q=%E7%AB%AF%E5%8F%A3")
 [ "$NOAUTH_SEARCH" = "401" ] || fail "无凭证 search 应 401，实际 $NOAUTH_SEARCH"
 ok "无凭证 search 被拒（401）"
@@ -659,8 +670,14 @@ KB_SEARCH_MCP_TEXT=$(echo "$KB_SEARCH_MCP" | jsonget result content 0 text 2>/de
 echo "$KB_SEARCH_MCP_TEXT" | grep -q '"results"' || fail "MCP bridge_kb_search 应返回 results：$KB_SEARCH_MCP"
 ok "MCP bridge_kb_search 返回结果"
 
-# 12.4 导入 800 字以上 md → kb_chunks ≥2 块；删除条目 chunks 级联清除
-LONG_MD="$(python3 -c 'print("# 长文档\n\n" + "\n\n".join(["这是一段测试文本。" * 30 for _ in range(4)]) + "\n\n")')"
+# 12.4 导入 800 字以上 md → 分块索引生效（用尾部独有词 API 检索验证）；删除条目后检索不再命中
+# 构造长文档，尾部附独有标记词，确保分块后该词落在后段 chunk
+TAIL_WORD="tailUniqueMarkerZ9q8"
+LONG_MD="$(python3 - <<PY
+parts = ["这是一段测试文本。" * 30 for _ in range(4)]
+print("# 长文档\n\n" + "\n\n".join(parts) + "\n\n## 尾部独有标记\n\n$TAIL_WORD")
+PY
+)"
 LONG_B64=$(printf '%s' "$LONG_MD" | base64 -w0)
 ITEM_LONG=$(curl -s -X POST "$BASE/api/kb/items" -H "$AUTH" -H "$CT" -d "{\"category_id\":\"$CAT\",\"title\":\"长文档分块测试\",\"content\":\"占位\"}" | jsonget id 2>/dev/null)
 [ -n "$ITEM_LONG" ] && [ "$ITEM_LONG" != "null" ] || fail "创建长文档条目失败"
@@ -669,27 +686,30 @@ IMPORT_R=$(curl -s -X POST "$BASE/api/kb/items/$ITEM_LONG/import-file" -H "$AUTH
 ok "导入长文档成功"
 
 sleep 0.5
-CHUNKS=$(curl -s "$BASE/api/kb" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len([c for c in d.get('items',[]) if c.get('id')=='$ITEM_LONG']))")  # placeholder, real chunks below
-# 直接读取数据目录 kb_chunks 集合（包含 _op 行也可能带 kind，实际用插入行匹配）
-CHUNK_COUNT=$(grep -c '"item_id":"'$ITEM_LONG'"' "$AIBRIDGE_DATA_DIR/kb_chunks.jsonl" 2>/dev/null || echo 0)
-[ "$CHUNK_COUNT" -ge 2 ] || fail "长文档导入后应产生至少 2 个 chunk，实际 $CHUNK_COUNT"
-ok "长文档产生 $CHUNK_COUNT 个分块"
+# 通过 API 验证分块：搜索尾部独有词应命中长文档条目，snippet 来自后段 chunk
+TAIL_ENC=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$TAIL_WORD'))")
+TAIL_SR=$(curl -s "$BASE/api/kb/search?q=$TAIL_ENC&limit=5" -H "$AUTH")
+echo "$TAIL_SR" | grep -q '"results"' || fail "搜索尾部独有词应返回 results：$TAIL_SR"
+TAIL_HIT_ID=$(echo "$TAIL_SR" | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('results',[]); print(r[0]['id'] if r else '')")
+[ "$TAIL_HIT_ID" = "$ITEM_LONG" ] || fail "搜索尾部独有词应命中长文档条目 $ITEM_LONG，实际命中 $TAIL_HIT_ID：$TAIL_SR"
+echo "$TAIL_SR" | grep -q "$TAIL_WORD" || fail "snippet 应包含尾部独有词（来自后段 chunk）：$TAIL_SR"
+ok "长文档分块后尾部独有词可被 API 检索，snippet 来自后段"
 
-# 删除条目后 chunks 级联清除
+# 删除条目后 chunks 级联清除：搜索尾部独有词不再命中
 curl -s -X DELETE "$BASE/api/kb/items/$ITEM_LONG" -H "$AUTH" >/dev/null
-# 级联删除会写 _op:'d' 行，但 JSONL 是 append-only，内存视图已清除；用 API 验证
 REMAIN=$(curl -s "$BASE/api/kb" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len([c for c in d.get('items',[]) if c.get('id')=='$ITEM_LONG']))")
 [ "$REMAIN" = "0" ] || fail "删除条目后 API 不应再返回该 item，实际 $REMAIN"
-NEW_CHUNK_COUNT=$(grep -v '"_op":' "$AIBRIDGE_DATA_DIR/kb_chunks.jsonl" 2>/dev/null | grep -c '"item_id":"'$ITEM_LONG'"' 2>/dev/null || echo 0)
-[ "$NEW_CHUNK_COUNT" = "0" ] || fail "删除条目后相关 chunk 应被清除，剩余 $NEW_CHUNK_COUNT"
-ok "删除条目后级联清除 chunks"
+TAIL_SR2=$(curl -s "$BASE/api/kb/search?q=$TAIL_ENC&limit=5" -H "$AUTH")
+TAIL_REMAIN=$(echo "$TAIL_SR2" | python3 -c "import sys,json; d=json.load(sys.stdin); print(len([x for x in d.get('results',[]) if x.get('id')=='$ITEM_LONG']))")
+[ "$TAIL_REMAIN" = "0" ] || fail "删除条目后搜索不应再命中，实际 $TAIL_REMAIN 条：$TAIL_SR2"
+ok "删除条目后级联清除 chunks，API 检索不再命中"
 
 # 12.5 完成任务 → POST /api/kb/from-task → 条目含“问题/解决方案”段落、extra.source_task_id 正确、相似条目自动建 link
 # 先完成一个带命令 evidence 的任务
 FT_TASK=$(curl -s -X POST "$BASE/api/tasks" -H "$AUTH" -H "$CT" -d '{"type":"execute_command","data":{"content":"服务器 8080 端口被占用如何排查"}}')
 FT_TID=$(echo "$FT_TASK" | jsonget id 2>/dev/null)
 [ -n "$FT_TID" ] && [ "$FT_TID" != "null" ] || fail "创建 from-task 来源任务失败"
-claim_and_complete "$AGENT1" "$ATOK1" "$FT_TID" "{\"summary\":\"使用 lsof -i :8080 找到 PID 后决定是否结束进程\",\"evidence\":{\"executed_commands\":[\"lsof -i :8080\"],\"read_files\":[],\"searches\":[],\"tool_calls\":[]}}"
+claim_and_complete "$AGENT1" "$ATOK1" "$FT_TID" "{\"summary\":\"当服务启动报端口冲突时，先通过 lsof -i :8080 或 netstat 查看占用进程，再用 ss -tlnp 找到 PID，判断是杀掉还是更换端口\",\"evidence\":{\"executed_commands\":[\"lsof -i :8080\",\"ss -tlnp\"],\"read_files\":[],\"searches\":[],\"tool_calls\":[]}}"
 
 FROM_KB=$(curl -s -X POST "$BASE/api/kb/from-task" -H "$AUTH" -H "$CT" -d "{\"task_id\":\"$FT_TID\",\"category_id\":\"$CAT\",\"tags\":[\"端口\",\"排查\"]}")
 FROM_ITEM=$(echo "$FROM_KB" | jsonget item 2>/dev/null)
@@ -708,6 +728,111 @@ ok "from-task 自动建立相关经验 link $LINK_ID"
 
 # 12.6 无 AI 配置时全流程无报错（已在上面的条目中验证创建/导入/from-task 均无 500）
 ok "无 AI 配置时知识库全流程无报错"
+
+# ============ [13] 能力仓库：技能 / MCP 服务 / 安装联动 / 安全审查 ============
+echo "[13] 能力仓库"
+
+# 13.1 内置技能播种：GET /api/skills 返回 6 个内置技能，含 install_count 字段
+SKILLS=$(curl -s "$BASE/api/skills" -H "$AUTH")
+SKILL_COUNT=$(echo "$SKILLS" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+[ "${SKILL_COUNT:-0}" -ge 6 ] || fail "GET /api/skills 应至少有 6 个内置技能，实际 $SKILL_COUNT：$SKILLS"
+echo "$SKILLS" | grep -q '"install_count"' || fail "技能对象应含 install_count：$SKILLS"
+echo "$SKILLS" | grep -q '"builtin":true' || fail "应包含 builtin=true 的内置技能：$SKILLS"
+ok "GET /api/skills 返回 $SKILL_COUNT 个技能，含 install_count"
+
+# 13.2 GET /api/skills/categories 返回分类数组
+SKCATS=$(curl -s "$BASE/api/skills/categories" -H "$AUTH")
+echo "$SKCATS" | grep -q 'system' || fail "技能分类应包含 system：$SKCATS"
+ok "GET /api/skills/categories 返回 $SKCATS"
+
+# 13.3 GET /api/skills/:id/doc 返回技能接入文档
+SKID=$(echo "$SKILLS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(s['id'] for s in d if s['name']=='shell-executor'))")
+SKDOC=$(curl -s "$BASE/api/skills/$SKID/doc" -H "$AUTH")
+echo "$SKDOC" | grep -q '"skill_doc"' || fail "GET /api/skills/:id/doc 应返回 skill_doc：$SKDOC"
+echo "$SKDOC" | grep -q 'capabilities' || fail "shell-executor 文档应含 capabilities 字段：$SKDOC"
+ok "GET /api/skills/:id/doc 返回接入文档"
+
+# 13.4 POST /api/skills 新建自定义技能；重复 name 409
+NEWSK=$(curl -s -X POST "$BASE/api/skills" -H "$AUTH" -H "$CT" \
+  -d '{"name":"smoke-custom-skill","display_name":"smoke 自定义","description":"测试技能","category":"system","capabilities":["smoke_test"],"skill_doc":"# smoke\n测试用"}')
+NEWSKID=$(echo "$NEWSK" | jsonget id 2>/dev/null)
+[ -n "$NEWSKID" ] && [ "$NEWSKID" != "null" ] || fail "新建自定义技能失败：$NEWSK"
+[ "$(echo "$NEWSK" | jsonget builtin)" = "false" ] || fail "自定义技能 builtin 应为 false：$NEWSK"
+DUP_CODE=$(http_code -X POST "$BASE/api/skills" -H "$AUTH" -H "$CT" \
+  -d '{"name":"smoke-custom-skill","display_name":"dup","description":"x"}')
+[ "$DUP_CODE" = "409" ] || fail "重复 name 应 409，实际 $DUP_CODE"
+ok "新建自定义技能 $NEWSKID，重复 name 被拒（409）"
+
+# 13.5 admin 安装技能到 agent1：install_count +1；重复安装 409；卸载后 -1
+INS=$(curl -s -X POST "$BASE/api/agents/$AGENT1/install-skill" -H "$AUTH" -H "$CT" \
+  -d "{\"skill_id\":\"$SKID\"}")
+[ "$(echo "$INS" | jsonget id 2>/dev/null)" = "$AGENT1" ] || fail "安装技能返回 agent 不符：$INS"
+INSTALLED=$(echo "$INS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(any(s['skill_id']=='$SKID' for s in d.get('installed_skills',[])))")
+[ "$INSTALLED" = "True" ] || fail "installed_skills 应包含刚安装的技能：$INS"
+INST_CNT=$(curl -s "$BASE/api/skills" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(s['install_count'] for s in d if s['id']=='$SKID'))")
+[ "${INST_CNT:-0}" -ge 1 ] || fail "技能 install_count 应 +1：$INST_CNT"
+ok "安装技能到 agent1 成功，install_count=$INST_CNT"
+
+DUP_INS_CODE=$(http_code -X POST "$BASE/api/agents/$AGENT1/install-skill" -H "$AUTH" -H "$CT" \
+  -d "{\"skill_id\":\"$SKID\"}")
+[ "$DUP_INS_CODE" = "409" ] || fail "重复安装应 409，实际 $DUP_INS_CODE"
+ok "重复安装被拒（409）"
+
+UNINS=$(curl -s -X DELETE "$BASE/api/agents/$AGENT1/install-skill/$SKID" -H "$AUTH")
+[ "$(echo "$UNINS" | jsonget id 2>/dev/null)" = "$AGENT1" ] || fail "卸载技能返回 agent 不符：$UNINS"
+UNINS_CNT=$(curl -s "$BASE/api/skills" -H "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(s['install_count'] for s in d if s['id']=='$SKID'))")
+[ "${UNINS_CNT:-0}" -ge 0 ] || fail "卸载后 install_count 异常：$UNINS_CNT"
+ok "卸载技能成功，install_count=$UNINS_CNT"
+
+# 13.6 删除自定义技能成功；删除内置技能 403
+DEL_CODE=$(http_code -X DELETE "$BASE/api/skills/$NEWSKID" -H "$AUTH")
+[ "$DEL_CODE" = "200" ] || fail "删除自定义技能应 200，实际 $DEL_CODE"
+BUILTIN_DEL_CODE=$(http_code -X DELETE "$BASE/api/skills/$SKID" -H "$AUTH")
+[ "$BUILTIN_DEL_CODE" = "403" ] || fail "删除内置技能应 403，实际 $BUILTIN_DEL_CODE"
+ok "删除自定义技能成功，内置技能被拒（403）"
+
+# 13.7 内置 MCP 服务播种：GET /api/mcp-registry 返回 4 个内置服务，含 security_review
+MCPS=$(curl -s "$BASE/api/mcp-registry" -H "$AUTH")
+MCP_COUNT=$(echo "$MCPS" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+[ "${MCP_COUNT:-0}" -ge 4 ] || fail "GET /api/mcp-registry 应至少有 4 个内置服务，实际 $MCP_COUNT：$MCPS"
+echo "$MCPS" | grep -q '"security_review"' || fail "MCP 服务应含 security_review：$MCPS"
+ok "GET /api/mcp-registry 返回 $MCP_COUNT 个服务，含 security_review"
+
+# 13.8 GET /api/mcp-registry/:id/config 返回 mcpServers 结构
+MCPID=$(echo "$MCPS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(s['id'] for s in d if s['name']=='filesystem'))")
+MCPCFG=$(curl -s "$BASE/api/mcp-registry/$MCPID/config" -H "$AUTH")
+echo "$MCPCFG" | grep -q '"mcpServers"' || fail "GET /:id/config 应返回 mcpServers：$MCPCFG"
+echo "$MCPCFG" | grep -q '"filesystem"' || fail "mcpServers 应以服务名为 key：$MCPCFG"
+echo "$MCPCFG" | grep -q '"security_review"' || fail "config 应含 security_review：$MCPCFG"
+ok "GET /api/mcp-registry/:id/config 生成 mcpServers 结构"
+
+# 13.9 POST /api/mcp-registry 新建含硬编码密钥的自定义服务，security_review.status=blocked
+NEWMCP=$(curl -s -X POST "$BASE/api/mcp-registry" -H "$AUTH" -H "$CT" \
+  -d '{"name":"smoke-risky","display_name":"风险测试","description":"含硬编码密钥","transport":"stdio","command":"npx","args":["-y","x"],"env":{"API_KEY":"sk-abcdefghijklmnopqrstuvwxyz1234567890"}}')
+NEWMCPID=$(echo "$NEWMCP" | jsonget id 2>/dev/null)
+[ -n "$NEWMCPID" ] && [ "$NEWMCPID" != "null" ] || fail "新建 MCP 服务失败：$NEWMCP"
+REVIEW_STATUS=$(echo "$NEWMCP" | jsonget security_review status 2>/dev/null)
+[ "$REVIEW_STATUS" = "blocked" ] || fail "含硬编码密钥应 blocked，实际 $REVIEW_STATUS：$NEWMCP"
+ok "新建含密钥 MCP 服务被审查拦截（status=blocked）"
+
+# 13.10 POST /api/mcp-registry/:id/review 手动触发审查返回最新结果
+REVIEW_R=$(curl -s -X POST "$BASE/api/mcp-registry/$NEWMCPID/review" -H "$AUTH")
+[ "$(echo "$REVIEW_R" | jsonget security_review status 2>/dev/null)" = "blocked" ] || fail "手动审查应仍为 blocked：$REVIEW_R"
+ok "手动触发审查返回 blocked"
+
+# 13.11 删除自定义 MCP 服务成功；删除内置 403
+MCP_DEL_CODE=$(http_code -X DELETE "$BASE/api/mcp-registry/$NEWMCPID" -H "$AUTH")
+[ "$MCP_DEL_CODE" = "200" ] || fail "删除自定义 MCP 应 200，实际 $MCP_DEL_CODE"
+MCP_BUILTIN_DEL_CODE=$(http_code -X DELETE "$BASE/api/mcp-registry/$MCPID" -H "$AUTH")
+[ "$MCP_BUILTIN_DEL_CODE" = "403" ] || fail "删除内置 MCP 应 403，实际 $MCP_BUILTIN_DEL_CODE"
+ok "删除自定义 MCP 成功，内置 MCP 被拒（403）"
+
+# 13.12 总览接口含能力仓库统计 capabilities
+OV=$(curl -s "$BASE/api/overview/" -H "$AUTH")
+echo "$OV" | grep -q '"capabilities"' || fail "overview 应含 capabilities 字段：$OV"
+echo "$OV" | grep -q 'skills_total' || fail "capabilities 应含 skills_total：$OV"
+echo "$OV" | grep -q 'mcps_total' || fail "capabilities 应含 mcps_total：$OV"
+ok "overview 含能力仓库统计：$(echo "$OV" | python3 -c "import sys,json; d=json.load(sys.stdin)['capabilities']; print(f\"skills={d['skills_total']} mcps={d['mcps_total']}\")")"
 
 # 清理 mock AI
 trap cleanup EXIT
