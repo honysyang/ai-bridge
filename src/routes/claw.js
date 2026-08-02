@@ -382,15 +382,25 @@ export default function (ctx) {
         return;
       } catch { /* fallthrough */ }
     }
-    // 2) http(s) URL → 302 重定向
+    // 2) http(s) URL → 服务端生成二维码 PNG（避免前端跨域 fetch 失败）
+    //    iLink 返回的 qrcode_img_content 是微信扫码页面 URL，
+    //    用户用微信扫描该 URL 对应的二维码即可触发登录确认
     if (img && /^https?:\/\//i.test(img)) {
-      return res.redirect(302, img);
+      try {
+        const png = await QRCode.toBuffer(img, { type: 'png', width: 280, margin: 1 });
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'no-store');
+        res.send(png);
+        return;
+      } catch (e) {
+        // URL 生成二维码失败则退化到 token 渲染
+      }
     }
     // 3) 退化：用 qrcode 字符串或 url 渲染二维码
     const payload = qr.qrcode || img;
     if (!payload) return res.status(404).send('no qrcode');
     try {
-      const png = await QRCode.toBuffer(payload, { type: 'png', width: 240, margin: 1 });
+      const png = await QRCode.toBuffer(payload, { type: 'png', width: 280, margin: 1 });
       res.set('Content-Type', 'image/png');
       res.set('Cache-Control', 'no-store');
       res.send(png);

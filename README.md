@@ -1,7 +1,7 @@
 # 鹤仙人 (ai-bridge) v7.0.0
 
 <p align="center">
-  <img src="docs/imges/logo.jpg" width="120" alt="鹤仙人 logo">
+  <img src="docs/images/logo.jpg" width="120" alt="鹤仙人 logo">
 </p>
 
 [![Version](https://img.shields.io/badge/version-v7.0.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases/v7.0.0)
@@ -20,7 +20,7 @@
 ---
 ## 系统架构
 
-![ai-bridge 架构](docs/imges/ai-bridge.png)
+![ai-bridge 架构](docs/images/ai-bridge.png)
 
 ---
 
@@ -28,16 +28,16 @@
 
 前端为 hash 路由 SPA，左侧侧边栏导航，右侧内容区动态渲染。
 
-| 页面 | 路由 | 说明 |
+| 页面 | 截图 | 说明 |
 | --- | --- | --- |
-| 概览 | `docs/imges/overview.png` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
-| 任务中心 | `docs/imges/tasks.png` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
-| 对话 | `docs/imges/chat.png` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
-| 智能体 | `docs/imges/agents.png` | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
-| 知识库 | `docs/imges/kb.png` | 工作台（随手记 / 项目收藏 / 每日订阅）/ 知识条目 / 知识图谱 / 提示词 / 导入 |
-| 工作流 | `docs/imges/workflows.png` | 模板 / 执行记录 |
-| 消息通信 | `#/claw` | 连接（状态机） / 联系人（手动+真实化） / 推送订阅 / 会话消息 |
-| 设置 | `docs/imges/settings.png` | AI 模型 / 用户管理 / 系统 / 日志 |
+| 概览 | `docs/images/overview.png` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
+| 任务中心 | `docs/images/tasks.png` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
+| 对话 | `docs/images/chat.png` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
+| 智能体 | `docs/images/agents.png` | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
+| 知识库 | `docs/images/kb.png` | 工作台（随手记 / 项目收藏 / 每日订阅）/ 知识条目 / 知识图谱 / 提示词 / 导入 |
+| 工作流 | `docs/images/workflows.png` | 模板 / 执行记录 |
+| 消息通信 | `docs/images/claw.png` | 连接（状态机） / 联系人（手动+真实化） / 推送订阅 / 会话消息 |
+| 设置 | `docs/images/settings.png` | AI 模型 / 用户管理 / 系统 / 日志 |
 
 ---
 
