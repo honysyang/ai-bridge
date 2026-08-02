@@ -1,7 +1,7 @@
 # 鹤仙人 (ai-bridge) v7.0.0
 
 <p align="center">
-  <img src="docs/imges/logo.jpg" width="120" alt="鹤仙人 logo">
+  <img src="docs/imges/logo1.png" width="120" alt="鹤仙人 logo">
 </p>
 
 [![Version](https://img.shields.io/badge/version-v7.0.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases/v7.0.0)

@@ -1,0 +1,52 @@
+<svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="logo-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAF8F5"/>
+      <stop offset="100%" stop-color="#EDE5DB"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#4A4A4A" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- 圆角背景 -->
+  <rect width="200" height="200" rx="36" fill="url(#logo-bg)"/>
+
+  <!-- 装饰圆环 -->
+  <circle cx="100" cy="82" r="60" fill="#FFFFFF" fill-opacity="0.6" filter="url(#soft-shadow)"/>
+  <circle cx="100" cy="82" r="54" fill="none" stroke="#B45D35" stroke-width="1.5" stroke-opacity="0.18"/>
+
+  <!-- 仙鹤剪影 -->
+  <g transform="translate(0, -6)">
+    <!-- 身体与翅膀 -->
+    <path d="M74 104
+             C64 104 58 96 60 88
+             C62 80 72 76 80 80
+             C86 83 90 88 92 94
+             C96 84 104 74 116 70
+             C126 66 136 70 140 78
+             C144 86 142 96 134 102
+             L146 96 L140 106 L150 104 L138 112
+             C142 118 138 124 132 126
+             C126 128 118 124 114 118
+             C110 126 100 130 90 130
+             C80 130 72 124 70 116
+             C64 118 58 114 58 108
+             L74 104 Z"
+          fill="#B45D35"/>
+    <!-- 头 -->
+    <circle cx="128" cy="78" r="6.5" fill="#B45D35"/>
+    <!-- 喙 -->
+    <path d="M133 76 L144 73" stroke="#B45D35" stroke-width="3" stroke-linecap="round"/>
+    <!-- 腿 -->
+    <path d="M88 128 L86 146 M106 128 L108 146" stroke="#B45D35" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- 文字 -->
+  <text x="100" y="165" text-anchor="middle"
+        font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        font-size="15" font-weight="700" fill="#2F4F4F" letter-spacing="2">鹤仙人</text>
+  <text x="100" y="183" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        font-size="9" fill="#6B8E8E" letter-spacing="1">AI-BRIDGE v7</text>
+</svg>
