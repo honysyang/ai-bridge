@@ -45,7 +45,7 @@ export function renderSidebar(el, route) {
   el.className = `sidebar${collapsed ? ' collapsed' : ''}`;
   el.innerHTML = `
     <div class="sidebar-brand">
-      <img src="/imges/logo2.png" class="logo" alt="鹤仙人 ai-bridge">
+      <span class="logo">🦩</span>
       <div class="brand-text">鹤仙人<small>ai-bridge v7.0</small></div>
     </div>
     <nav class="sidebar-nav">${MENUS.map((m) => navItemHTML(m, route)).join('')}</nav>
