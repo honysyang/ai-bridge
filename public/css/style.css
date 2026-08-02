@@ -1455,3 +1455,138 @@ mark { background: #fef08a; color: #92400e; padding: 0 2px; border-radius: 2px; 
 .sub-history-item:hover { border-color: var(--accent); }
 
 /* ======== 知识工作台样式结束 ======== */
+
+/* ============================================================
+   消息通信真实闭环（v7.2）—— 连接状态机 / 会话视图 / 联系人卡
+   ============================================================ */
+
+/* mock 模式常驻徽章 */
+.claw-mode-banner {
+  background: var(--yellow-soft); border: 1px solid #ecdfc0;
+  color: var(--yellow); border-radius: var(--radius);
+  padding: 8px 14px; font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+}
+.claw-mode-banner .claw-mode-tag {
+  background: var(--yellow); color: #fff; padding: 1px 8px;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+}
+
+/* 连接状态机：四种状态卡 */
+.claw-state-card {
+  border-radius: var(--radius); padding: 18px 20px; margin-bottom: 14px;
+  border: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.claw-state-card.is-connected { background: var(--green-soft); border-color: #dde6cc; }
+.claw-state-card.is-qrcode    { background: #fdf9f3; border-color: #ecdfc0; }
+.claw-state-card.is-error     { background: var(--red-soft); border-color: #eccfc6; }
+.claw-state-card.is-disconnected { background: var(--bg-soft); border-color: var(--border); }
+.claw-state-icon { font-size: 36px; flex: 0 0 auto; }
+.claw-state-body { flex: 1; min-width: 200px; }
+.claw-state-body .state-title { font-size: 15px; font-weight: 700; }
+.claw-state-body .state-sub { font-size: 12px; color: var(--text-light); margin-top: 3px; }
+.claw-state-body .state-account { font-family: Consolas, Menlo, monospace; font-size: 12px; color: var(--text-light); margin-top: 4px; }
+.claw-state-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 二维码大图区 */
+.claw-qr-large {
+  text-align: center; padding: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 14px;
+}
+.claw-qr-large img { width: 240px; height: 240px; display: block; margin: 0 auto; border-radius: 6px; }
+.claw-qr-large .qr-tip { color: var(--text-light); font-size: 12px; margin-top: 12px; }
+.claw-qr-large .qr-expired { color: var(--red); font-size: 13px; cursor: pointer; text-decoration: underline; }
+
+/* 微信扫码三步指引 */
+.claw-scan-steps {
+  display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px;
+}
+.claw-scan-step {
+  flex: 1; min-width: 140px;
+  background: var(--bg-soft); border-radius: var(--radius);
+  padding: 12px 14px; font-size: 12px; color: var(--text-light);
+}
+.claw-scan-step .step-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700; font-size: 12px;
+  margin-right: 6px;
+}
+
+/* 凭证管理面板（折叠式） */
+.claw-cred-panel {
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-top: 14px;
+}
+.claw-cred-panel summary {
+  cursor: pointer; font-weight: 600; font-size: 13px; color: var(--text-light);
+}
+.claw-cred-panel .cred-row { font-size: 12px; line-height: 1.8; color: var(--text-light); }
+.claw-cred-panel .cred-row b { color: var(--text); font-family: Consolas, Menlo, monospace; }
+
+/* 会话式消息视图：左联系人列表 + 右气泡流 + 底部输入框 */
+.claw-chat-layout { display: flex; gap: 14px; height: 560px; min-height: 420px; }
+.claw-chat-contacts {
+  width: 240px; flex: 0 0 auto; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 8px;
+}
+.claw-chat-contacts .chat-contact {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 6px; cursor: pointer;
+  font-size: 13px; transition: background 0.15s;
+}
+.claw-chat-contacts .chat-contact:hover { background: var(--bg-soft); }
+.claw-chat-contacts .chat-contact.active { background: var(--accent-soft); color: var(--accent-dark); font-weight: 600; }
+.claw-chat-contacts .chat-contact .cc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.claw-chat-contacts .chat-contact .cc-time { font-size: 11px; color: var(--text-faint); }
+.claw-chat-contacts .chat-contact .cc-unread {
+  background: var(--red); color: #fff; font-size: 11px; font-weight: 700;
+  min-width: 18px; height: 18px; border-radius: 999px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.claw-chat-main {
+  flex: 1; display: flex; flex-direction: column; min-width: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.claw-chat-head {
+  padding: 11px 16px; border-bottom: 1px solid var(--border);
+  font-weight: 600; font-size: 14px; flex: 0 0 auto;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.claw-chat-body {
+  flex: 1; overflow-y: auto; padding: 14px 16px; background: var(--bg);
+}
+.claw-chat-input {
+  border-top: 1px solid var(--border); padding: 10px 12px;
+  display: flex; gap: 8px; align-items: flex-end; flex: 0 0 auto;
+}
+.claw-chat-input textarea {
+  flex: 1; min-height: 40px; max-height: 120px; resize: none;
+  padding: 8px 10px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius); font-size: 13px; font-family: inherit;
+  outline: none;
+}
+.claw-chat-input textarea:focus { border-color: var(--accent); }
+
+/* 联系人卡：消息数 + 最近消息时间 */
+.claw-contact-stats {
+  font-size: 11px; color: var(--text-faint); margin-top: 4px;
+  display: flex; gap: 10px;
+}
+.claw-contact-stats .stat-pill {
+  background: var(--bg-soft); padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.claw-contact-stats .stat-pill.unread { background: var(--red-soft); color: var(--red); border-color: #eccfc6; }
+
+/* 移动端会话视图切换 */
+@media (max-width: 768px) {
+  .claw-chat-layout { flex-direction: column; height: auto; }
+  .claw-chat-contacts { width: 100%; max-height: 200px; }
+  .claw-chat-main { min-height: 360px; }
+}
+
+/* ======== 消息通信真实闭环样式结束 ======== */

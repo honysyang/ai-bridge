@@ -12,6 +12,7 @@ class ClawManager {
   constructor() {
     this.adapter = null;
     this.onMessage = null; // (msg) => void，由 routes/claw.js 注入
+    this.lastQrcode = null; // 缓存最近一次 'qrcode' 事件内容 { qrcode, url, expiresAt, img }
   }
 
   /**
@@ -43,6 +44,17 @@ class ClawManager {
     this.adapter.on('status', (s) => {
       if (ctx?.store?.log) ctx.store.log('info', 'claw', `状态变更: ${s.state} ${s.account || ''}`);
     });
+    // 缓存 qrcode 事件内容，供 routes/claw.js 的 GET /status、/qrcode.png 读取
+    this.adapter.on('qrcode', (info) => {
+      this.lastQrcode = {
+        qrcode: info?.qrcode || null,
+        url: info?.url || null,
+        img: info?.img || null,
+        expiresAt: info?.expiresAt || (Date.now() + 180_000),
+        at: Date.now(),
+      };
+      appendLog('info', 'qrcode', '已缓存 qrcode 事件，等待扫码');
+    });
     appendLog('info', 'lifecycle', '启动 iLink adapter');
     try { await this.adapter.start(); }
     catch (e) { appendLog('error', 'lifecycle', `启动失败: ${e.message}`); }
@@ -52,6 +64,7 @@ class ClawManager {
     if (!this.adapter) return;
     try { await this.adapter.stop(); } catch { /* ignore */ }
     this.adapter = null;
+    this.lastQrcode = null;
   }
 
   getStatus() {
@@ -61,16 +74,32 @@ class ClawManager {
     if (!this.adapter) {
       return { state: 'disconnected', adapter: 'ilink', account: null, mock: false, needsQrcode: !hasIlinkCredentials() };
     }
-    return this.adapter.getStatusSync();
+    const s = this.adapter.getStatusSync();
+    // 把最近一次二维码事件附加到状态里，便于前端 /api/claw/status 一次拉到
+    if (this.lastQrcode && s.state === 'qrcode') {
+      s.qrcode = this.lastQrcode.qrcode;
+      s.qrcodeUrl = this.lastQrcode.url || this.lastQrcode.img;
+      s.qrcodeExpiresAt = this.lastQrcode.expiresAt;
+    }
+    return s;
   }
+
+  /** 取最近一次缓存的二维码（供 /qrcode.png 直接绘制） */
+  getQrcode() {
+    return this.lastQrcode ? { ...this.lastQrcode } : null;
+  }
+
+  /** 清除缓存的二维码（用于 connected 后避免残留） */
+  clearQrcode() { this.lastQrcode = null; }
 
   getAdapter() { return this.adapter; }
 
-  /** 触发扫码：先 logout，再 start */
+  /** 触发扫码：先 logout，再 startQrcodeFlow */
   async startQrcode(ctx) {
     if (!this.adapter) await this.startIlink(ctx);
     if (!this.adapter) throw new Error('adapter not initialized');
     await this.adapter.logout();
+    this.lastQrcode = null;
     await this.adapter.startQrcodeFlow();
     return this.adapter.getStatusSync();
   }

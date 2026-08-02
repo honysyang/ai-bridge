@@ -6,6 +6,7 @@
 # 12 知识库能力包：智能检索 / 分块索引 / 经验回流 / agent 凭证
 # 13 能力仓库：技能 CRUD / install-skill 联动 / MCP 服务 / 安全审查 / overview 统计
 # 14 知识工作台：随手记 / 项目收藏（Git 挂载）/ 每日订阅（CRUD+run-now+日报入库+push_rule 联动）
+# 16 消息通信真实闭环：自动回复 / 群聊触发 / 真实模式静态验证 / 联系人真实化 / 会话已读
 # 用法：BASE=http://localhost:4601 bash scripts/smoke.sh
 # 默认使用临时数据目录和微信 mock 模式，避免污染线上数据
 set -u
@@ -949,6 +950,202 @@ RULES_AFTER=$(curl -s "$BASE/api/claw/push-rules" -H "$AUTH" | python3 -c "impor
 RULES_FINAL=$(curl -s "$BASE/api/claw/push-rules" -H "$AUTH")
 echo "$RULES_FINAL" | python3 -c "import sys,json;d=json.load(sys.stdin);r=[x for x in d if x['id']=='$SUB_RULE'];exit(0 if not r else 1)" || fail "删除订阅后对应 push_rule 应已删除"
 ok "删除订阅 → push_rule 联动删除（$RULES_BEFORE → $RULES_AFTER）"
+
+# ============ [16] 消息通信真实闭环：自动回复 + 群聊触发 + 真实模式静态验证 ============
+echo "[16] 消息通信真实闭环（自动回复 / 群聊触发 / 真实模式静态验证）"
+if [ "$(http_code "$BASE/api/claw/status" -H "$AUTH")" = "404" ]; then
+  echo "  – claw 模块未挂载，跳过"
+else
+  # 16.1 真实模式静态验证：源码断言 seedContacts 在真实模式下不自动播种
+  grep -q 'if (!isMock() && !force) return;' "$SCRIPT_DIR/../src/routes/claw.js" \
+    || fail "seedContacts 真实模式应 no-op（源码缺少对应守卫）"
+  ok "seedContacts 真实模式不自动播种（源码静态断言通过）"
+
+  # 16.2 /status 端点结构：mock 模式应返回 mock:true + state∈{disconnected,qrcode,connected}
+  ST=$(curl -s "$BASE/api/claw/status" -H "$AUTH")
+  echo "$ST" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+assert d.get('mock') is True, 'mock 模式应返回 mock=true'
+assert d.get('state') in ('disconnected','qrcode','connected'), f'state 非法: {d.get(\"state\")}'
+assert 'qrcodeExpiresAt' in d or d.get('state')!='qrcode', 'qrcode 状态应附过期时间'
+" || fail "/status 端点结构异常：$ST"
+  ok "/status 端点结构合规（mock/state/qrcodeExpiresAt）"
+
+  # 16.3 mock 模式：先确保已建立连接（避免后续用例受未连接影响）
+  curl -s -X POST "$BASE/api/claw/mock/connect" -H "$AUTH" >/dev/null
+
+  # 16.4 群消息无前缀 → 不建任务（no_trigger）
+  CONTACTS=$(curl -s "$BASE/api/claw/contacts" -H "$AUTH")
+  ROOM_WXID=$(echo "$CONTACTS" | python3 -c "import sys,json;d=json.load(sys.stdin);r=[x for x in d if x.get('type')=='room'];print(r[0]['wxid'] if r else '')")
+  [ -n "$ROOM_WXID" ] || fail "无群联系人可测试群消息触发（请先 mock 模式播种联系人）"
+  R1=$(curl -s -X POST "$BASE/api/claw/mock/incoming" -H "$AUTH" -H "$CT" \
+    -d "{\"wxid\":\"$ROOM_WXID\",\"content\":\"这条消息没有触发前缀\",\"isRoom\":true}")
+  echo "$R1" | grep -q '"reason":"no_trigger"' || fail "群消息无前缀应返回 reason=no_trigger：$R1"
+  R1_TASK=$(echo "$R1" | python3 -c "import sys,json;d=json.load(sys.stdin);t=d.get('task');print(t if t is None else 'HAS_TASK')")
+  [ "$R1_TASK" = "None" ] || fail "群消息无前缀不应建任务：$R1"
+  ok "群消息无前缀 → 不建任务（no_trigger 留痕）"
+
+  # 16.5 群消息带 /ai 前缀 → 建任务且 content 已剥前缀
+  R2=$(curl -s -X POST "$BASE/api/claw/mock/incoming" -H "$AUTH" -H "$CT" \
+    -d "{\"wxid\":\"$ROOM_WXID\",\"content\":\"/ai 群触发任务测试\",\"isRoom\":true}")
+  R2_TASK_ID=$(echo "$R2" | jsonget task id 2>/dev/null)
+  [ -n "$R2_TASK_ID" ] && [ "$R2_TASK_ID" != "null" ] || fail "群消息带 /ai 前缀应建任务：$R2"
+  R2_CONTENT=$(curl -s "$BASE/api/tasks/$R2_TASK_ID" -H "$AUTH" | jsonget data content 2>/dev/null)
+  [ "$R2_CONTENT" = "群触发任务测试" ] || fail "群任务 content 应已剥前缀：实际='$R2_CONTENT'"
+  ok "群消息带 /ai 前缀 → 建任务且 content 已剥前缀（'$R2_CONTENT'）"
+
+  # 16.6 私聊消息 → 建任务 → agent complete → outbox event='reply' + messages direction='out'
+  FRIEND_WXID=$(echo "$CONTACTS" | python3 -c "import sys,json;d=json.load(sys.stdin);r=[x for x in d if x.get('type')=='friend'];print(r[0]['wxid'] if r else '')")
+  [ -n "$FRIEND_WXID" ] || fail "无好友联系人可测试私聊自动回复"
+  R3=$(curl -s -X POST "$BASE/api/claw/mock/incoming" -H "$AUTH" -H "$CT" \
+    -d "{\"wxid\":\"$FRIEND_WXID\",\"content\":\"smoke 自动回复测试\",\"isRoom\":false}")
+  R3_TASK_ID=$(echo "$R3" | jsonget task id 2>/dev/null)
+  [ -n "$R3_TASK_ID" ] && [ "$R3_TASK_ID" != "null" ] || fail "私聊消息应建任务：$R3"
+  # 源码静态断言：任务 data.extra.wxid 应被回填（供自动回复使用）
+  R3_EXTRA=$(curl -s "$BASE/api/tasks/$R3_TASK_ID" -H "$AUTH" | jsonget data extra wxid 2>/dev/null)
+  [ "$R3_EXTRA" = "$FRIEND_WXID" ] || fail "wechat 任务 data.extra.wxid 应为来源 wxid：$R3_EXTRA"
+  ok "私聊任务已携带 extra.wxid（供自动回复定位）"
+  # agent 领取并完成（带 artifacts 验证附件提示）
+  claim_and_complete "$AGENT1" "$ATOK1" "$R3_TASK_ID" '{"summary":"smoke 自动回复结果摘要","artifacts":[{"name":"report.md","size":1024}],"evidence":{"executed_commands":["echo reply"],"read_files":[],"searches":[],"tool_calls":[],"thinking":"完成"}}'
+  # 等 task:changed 异步处理自动回复
+  sleep 1
+  # 验证 outbox 有 event='reply' 记录且 task_id 关联正确
+  REPLY_OB=$(curl -s "$BASE/api/claw/outbox?limit=100" -H "$AUTH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=[x for x in d if x.get('task_id')=='$R3_TASK_ID' and x.get('event')=='reply']
+print(json.dumps(r[0],ensure_ascii=False) if r else '')
+")
+  [ -n "$REPLY_OB" ] || fail "outbox 应有 task_id=$R3_TASK_ID event='reply' 记录"
+  echo "$REPLY_OB" | grep -q 'smoke 自动回复结果摘要' || fail "回复内容应含 result.summary：$REPLY_OB"
+  echo "$REPLY_OB" | grep -q '📎 产出' || fail "回复内容应含 artifacts 附件提示：$REPLY_OB"
+  echo "$REPLY_OB" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+exit(0 if d.get('wxid')=='$FRIEND_WXID' else 1)
+" || fail "回复应发往来源 wxid=$FRIEND_WXID：$REPLY_OB"
+  ok "私聊任务完成 → 自动回复入 outbox（含 summary + 📎 附件提示，wxid 关联正确）"
+  # 验证 messages 含 direction='out' 的回复，task_id 关联正确
+  MSGS_OUT=$(curl -s "$BASE/api/claw/messages?wxid=$FRIEND_WXID&limit=100" -H "$AUTH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=[x for x in d if x.get('direction')=='out' and x.get('task_id')=='$R3_TASK_ID']
+print(json.dumps(r[0],ensure_ascii=False) if r else '')
+")
+  [ -n "$MSGS_OUT" ] || fail "messages 应有 direction='out' task_id=$R3_TASK_ID 的回复记录"
+  ok "messages 已记录自动回复（direction='out' + task_id 关联）"
+
+  # 16.7 任务失败时也回复（含 ❌ 标识）
+  R4=$(curl -s -X POST "$BASE/api/claw/mock/incoming" -H "$AUTH" -H "$CT" \
+    -d "{\"wxid\":\"$FRIEND_WXID\",\"content\":\"smoke 失败回复测试\",\"isRoom\":false}")
+  R4_TASK_ID=$(echo "$R4" | jsonget task id 2>/dev/null)
+  [ -n "$R4_TASK_ID" ] || fail "R4 建任务失败：$R4"
+  # agent 领取并标记失败
+  R4_GOT=""
+  for _ in $(seq 1 20); do
+    R4_GOT=$(curl -s "$BASE/api/task/poll?agent_id=$AGENT1&token=$ATOK1&timeout=1" 2>/dev/null | jsonget task id 2>/dev/null)
+    [ "$R4_GOT" = "$R4_TASK_ID" ] && break
+    sleep 0.3
+  done
+  [ "$R4_GOT" = "$R4_TASK_ID" ] || fail "agent 未领到 R4 任务（期望 $R4_TASK_ID，实际 $R4_GOT）"
+  curl -s -X POST "$BASE/api/task/complete" -H "$CT" \
+    -d "{\"agent_id\":\"$AGENT1\",\"token\":\"$ATOK1\",\"task_id\":\"$R4_TASK_ID\",\"status\":\"failed\",\"result\":{\"summary\":\"测试失败原因摘要\"}}" >/dev/null
+  sleep 1
+  R4_REPLY=$(curl -s "$BASE/api/claw/outbox?limit=100" -H "$AUTH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=[x for x in d if x.get('task_id')=='$R4_TASK_ID' and x.get('event')=='reply']
+print(json.dumps(r[0],ensure_ascii=False) if r else '')
+")
+  [ -n "$R4_REPLY" ] || fail "失败任务应也产生 event='reply' 自动回复记录"
+  echo "$R4_REPLY" | grep -q '❌' || fail "失败回复应含 ❌ 标识：$R4_REPLY"
+  echo "$R4_REPLY" | grep -q '测试失败原因摘要' || fail "失败回复应含失败摘要：$R4_REPLY"
+  ok "失败任务自动回复（含 ❌ 标识 + 失败摘要）"
+
+  # 16.8 联系人手动添加：wxid 格式校验 + 不重复
+  CODE=$(http_code -X POST "$BASE/api/claw/contacts" -H "$AUTH" -H "$CT" \
+    -d '{"wxid":"invalid wxid with space","name":"非法 wxid"}')
+  [ "$CODE" = "400" ] || fail "非法 wxid 应 400，实际 $CODE"
+  ok "wxid 格式校验拦截非法输入"
+  NEW_C=$(curl -s -X POST "$BASE/api/claw/contacts" -H "$AUTH" -H "$CT" \
+    -d '{"wxid":"wxid_smoke_manual","name":"smoke 手动添加","type":"friend","group":"smoke"}')
+  NEW_C_ID=$(echo "$NEW_C" | jsonget id 2>/dev/null)
+  [ -n "$NEW_C_ID" ] || fail "手动添加联系人失败：$NEW_C"
+  CODE=$(http_code -X POST "$BASE/api/claw/contacts" -H "$AUTH" -H "$CT" \
+    -d '{"wxid":"wxid_smoke_manual","name":"重复"}')
+  [ "$CODE" = "409" ] || fail "重复 wxid 应 409，实际 $CODE"
+  ok "联系人手动添加 + 重复 wxid 409 拦截"
+  # PATCH 更新备注名/分组
+  PATCH_R=$(curl -s -X PATCH "$BASE/api/claw/contacts/$NEW_C_ID" -H "$AUTH" -H "$CT" \
+    -d '{"name":"smoke 已改名","group":"smoke 改组"}')
+  [ "$(echo "$PATCH_R" | jsonget name 2>/dev/null)" = "smoke 已改名" ] || fail "PATCH 改名失败：$PATCH_R"
+  ok "联系人 PATCH 改备注名/分组生效"
+
+  # 16.9 联系人消息统计接口（含消息数 + 未读数 + 最近消息时间）
+  STATS=$(curl -s "$BASE/api/claw/contacts/stats" -H "$AUTH")
+  echo "$STATS" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+r=[x for x in d if x.get('wxid')=='$FRIEND_WXID']
+exit(0 if r and r[0].get('count',0)>0 and 'last_at' in r[0] else 1)
+" || fail "contacts/stats 应含 $FRIEND_WXID 的统计字段（count>0 + last_at）：$STATS"
+  ok "联系人消息统计接口正确（含 count + last_at）"
+
+  # 16.10 批量已读：PATCH /api/claw/messages/read 标记该联系人所有 in 未读
+  UNREAD_BEFORE=$(curl -s "$BASE/api/claw/messages/unread" -H "$AUTH" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+  READ_R=$(curl -s -X PATCH "$BASE/api/claw/messages/read" -H "$AUTH" -H "$CT" -d "{\"wxid\":\"$FRIEND_WXID\"}")
+  [ "$(echo "$READ_R" | jsonget ok 2>/dev/null)" = "true" ] || fail "批量已读应返回 ok=true：$READ_R"
+  UNREAD_AFTER=$(curl -s "$BASE/api/claw/messages/unread" -H "$AUTH" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+  [ "$UNREAD_AFTER" -le "$UNREAD_BEFORE" ] || fail "批量已读后未读数不应增加：before=$UNREAD_BEFORE after=$UNREAD_AFTER"
+  ok "批量已读接口生效（未读 $UNREAD_BEFORE → $UNREAD_AFTER）"
+
+  # 16.11 自动回复与推送规则并存：同一任务可产生 event=reply + event=completed 两类出站
+  # 新建推送规则指向另一联系人，触发任务完成，验证 outbox 同时有 reply 和 completed 两条
+  OTHER_WXID="wxid_smoke_push_target"
+  curl -s -X POST "$BASE/api/claw/contacts" -H "$AUTH" -H "$CT" \
+    -d "{\"wxid\":\"$OTHER_WXID\",\"name\":\"smoke 推送目标\",\"type\":\"friend\"}" >/dev/null
+  curl -s -X POST "$BASE/api/claw/push-rules" -H "$AUTH" -H "$CT" \
+    -d "{\"name\":\"smoke 并存测试规则\",\"events\":[\"completed\"],\"source_filter\":[],\"target_wxid\":\"$OTHER_WXID\",\"enabled\":true}" >/dev/null
+  R5=$(curl -s -X POST "$BASE/api/claw/mock/incoming" -H "$AUTH" -H "$CT" \
+    -d "{\"wxid\":\"$FRIEND_WXID\",\"content\":\"smoke 并存测试\",\"isRoom\":false}")
+  R5_TASK_ID=$(echo "$R5" | jsonget task id 2>/dev/null)
+  [ -n "$R5_TASK_ID" ] || fail "R5 建任务失败"
+  claim_and_complete "$AGENT1" "$ATOK1" "$R5_TASK_ID" '{"summary":"smoke 并存测试结果","evidence":{"executed_commands":[],"read_files":[],"searches":[],"tool_calls":[],"thinking":"完成"}}'
+  sleep 1
+  OB_BOTH=$(curl -s "$BASE/api/claw/outbox?limit=200" -H "$AUTH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+reply=[x for x in d if x.get('task_id')=='$R5_TASK_ID' and x.get('event')=='reply']
+pushed=[x for x in d if x.get('task_id')=='$R5_TASK_ID' and x.get('event')=='completed']
+print(f'reply={len(reply)} push={len(pushed)}')
+")
+  # reply 必须恰好 1 条；push>=1（[8]/[14] 早期规则可能也匹配 completed，不严格要求 push=1）
+  echo "$OB_BOTH" | grep -q 'reply=1' || fail "同一任务应产生 event='reply' 回复：$OB_BOTH"
+  echo "$OB_BOTH" | grep -q 'push=' || fail "同一任务应同时有 event='completed' 推送记录：$OB_BOTH"
+  PUSH_N=$(echo "$OB_BOTH" | sed -n 's/.*push=\([0-9]*\).*/\1/p')
+  [ "${PUSH_N:-0}" -ge 1 ] || fail "同一任务应同时有 event='completed' 推送记录：$OB_BOTH"
+  ok "自动回复与推送规则并存（同一任务 reply=1 + push=${PUSH_N} 双出站）"
+
+  # 16.12 防循环：direction='out' 消息永不触发任务（源码静态断言）
+  grep -q "direction: 'out'" "$SCRIPT_DIR/../src/routes/claw.js" || fail "源码缺少 direction='out' 标记"
+  grep -q "adapter 仅 emit 收到的 in 消息" "$SCRIPT_DIR/../src/routes/claw.js" || fail "源码缺少防循环注释"
+  ok "防循环逻辑已落实（direction='out' 不触发任务，源码静态断言）"
+fi
+
+# ===== 人工走查 CHECKLIST（真实微信环境，不起 mock）=====
+# [H1] 扫码登录：浏览器打开 /#/claw → 连接页 → 点击「开始扫码登录」 → 微信扫码 → 2 分钟内状态变为 connected
+# [H2] status 流转：扫码前 state=disconnected → 触发后 qrcode（含 qrcode_img_content）→ 扫码成功 connected
+# [H3] 手机发消息：手机微信向 bot 私聊发送任意消息 → 工作台任务列表出现 source='wechat' 任务（type=reply_message）
+# [H4] 任务完成自动回复：agent complete 后，手机微信应收到回复（含 result.summary；超过 1500 字附「完整结果请登录工作台查看」）
+# [H5] 任务失败自动回复：agent complete(status=failed) 后，手机收到「❌ 任务执行失败：{摘要}」
+# [H6] 群聊 @触发：群内 @机器人 或 /ai 前缀触发，应建任务且剥前缀；不带前缀的群消息不建任务（仅留痕）
+# [H7] 推送规则送达：新建推送规则（target=订阅联系人）→ 触发对应事件 → 订阅联系人真实收到微信消息
+# [H8] 凭证管理：管理员查看/手动填写/清除 iLink 凭证；清除后 status 回到 disconnected，需重新扫码
+# [H9] 重启连接：点击「重启连接」→ adapter 重新初始化，状态从 reconnecting 回到 connected
+# [H10] 会话视图：消息记录页左联系人列表 + 右气泡流 + 底部输入框，可直接回复该联系人
+# [H11] 未读计数：收到新消息时联系人卡片显示未读徽标，打开会话即标记已读
+# [H12] 群消息留痕：群内无前缀消息虽然不建任务，但应出现在消息记录页（direction='in' 留痕）
 
 # 清理 mock AI
 trap cleanup EXIT

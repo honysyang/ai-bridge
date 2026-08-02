@@ -17,8 +17,6 @@
 
 零构建步骤、原生 ESM、前端无框架/CDN，唯一运行时依赖 `express`，持久化为 append-only JSONL 事件流。
 
-
-
 ---
 ## 系统架构
 
@@ -32,16 +30,14 @@
 
 | 页面 | 路由 | 说明 |
 | --- | --- | --- |
-| 概览 | `#/overview` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
-| 任务中心 | `#/tasks` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
-| 对话 | `#/chat` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
-| 智能体 | `#/agents` | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
-| 知识库 | `#/kb` | 工作台（随手记 / 项目收藏 / 每日订阅）/ 知识条目 / 知识图谱 / 提示词 / 导入 |
-| 工作流 | `#/workflows` | 模板 / 执行记录 |
-| 消息通信 | `#/claw` | 连接 / 联系人 / 推送订阅 / 消息记录 |
-| 设置 | `#/settings` | AI 模型 / 用户管理 / 系统 / 日志 |
-
-> 截图资源目录为 `docs/imges/`，包含 `ai-bridge.png`（架构图）、`logo.jpg`、`logo1.png`、`logo2.png`；如需界面截图请自行补充到该目录并在本处引用。
+| 概览 | `docs/imges/overview.png` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
+| 任务中心 | `docs/imges/tasks.png` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
+| 对话 | `docs/imges/chat.png` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
+| 智能体 | `docs/imges/agents.png` | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
+| 知识库 | `docs/imges/kb.png` | 工作台（随手记 / 项目收藏 / 每日订阅）/ 知识条目 / 知识图谱 / 提示词 / 导入 |
+| 工作流 | `docs/imges/workflows.png` | 模板 / 执行记录 |
+| 消息通信 | `#/claw` | 连接（状态机） / 联系人（手动+真实化） / 推送订阅 / 会话消息 |
+| 设置 | `docs/imges/settings.png` | AI 模型 / 用户管理 / 系统 / 日志 |
 
 ---
 
@@ -78,8 +74,14 @@
 - **工作流编排**
   定义带依赖的步骤，支持变量渲染、循环依赖校验、执行记录追踪。
 
-- **模拟微信通信**
-  通过 `ILINK_MOCK=1` 启用 mock 模式，支持扫码登录、联系人、消息记录、推送规则与 outbox，便于没有真实 iLink 硬件时的开发调试。
+- **消息通信真实闭环（自动回复 + 真实扫码 UI + 联系人真实化）**
+  - **自动回复**：`source='wechat'` 任务 `completed/failed` 时，自动把结果摘要回复给来源联系人（>1500 字截断并附「完整结果请登录工作台查看」，artifacts 附「📎 产出 N 个文件」提示；failed 附「❌ 任务执行失败：{摘要}」）；与 `push_rules` 推送并存不冲突，回复发来源人、规则推送发订阅目标，同一任务可产生两类出站消息。
+  - **真实扫码登录**：`ClawManager` 缓存最近一次 `qrcode` 事件（含 `qrcode_img_content`），`GET /api/claw/status` 一次性返回状态 + 二维码 + 过期时间；`GET /api/claw/qrcode.png` 真实模式支持 base64 解码 / URL 302 重定向 / 字符串渲染三种回源；前端连接页按 `state` 渲染 disconnected / qrcode / connected / reconnecting 四态卡片，二维码每 2s 轮询刷新，过期可点击重扫。
+  - **群聊触发规则**：群消息（`extra.isRoom=true`）仅当内容以 `@机器人` 或 `settings.claw.room_trigger`（默认 `/ai `）开头才建任务，建任务时剥掉前缀；私聊全部响应；无前缀群消息仅 `messages` 留痕不建任务。防循环：`direction='out'` 消息永不触发任务。
+  - **联系人真实化**：`seedContacts` 仅在 mock 模式自动播种；真实模式联系人只来自消息流自动累积（`onMessage` upsert）+ 手动 `POST /api/claw/contacts`（wxid 格式校验）+ `PATCH` 改备注名/分组；联系人卡片显示消息数、未读数、最近消息时间。
+  - **会话式消息视图**：消息记录页改为左联系人列表 + 右气泡流 + 底部输入框的会话布局，支持未读徽标、批量已读 `PATCH /api/claw/messages/read`、Enter 发送 / Shift+Enter 换行。
+  - **凭证管理**：管理员可查看 / 手动填写 / 清除 iLink 凭证（`ILINK_BOT_TOKEN / ILINK_BOT_ID / ILINK_USER_ID` 等），凭证写入后自动启动 adapter；清除后状态回到 `disconnected` 需重新扫码。
+  - **mock 模式**：`ILINK_MOCK=1` 启用演示适配器，界面顶部常驻「🧪 演示模式」徽章，支持演示二维码生成、扫码回调、模拟 incoming（含 `isRoom` 群消息触发测试）等全套流程，便于没有真实 iLink 硬件时的开发调试。
 
 - **AI 模型配置**
   模型用途绑定（chat/router/report/...）、上下文压缩摘要、周报自动生成与润色。
@@ -385,40 +387,45 @@ ai-bridge/
 | DELETE | `/api/schedules/:id` | 用户 | 删除规则 |
 | POST | `/api/schedules/:id/run-now` | 用户 | 立即触发 |
 
-### 消息通信（模拟微信 / iLink）
+### 消息通信（自动回复 / 真实扫码 / iLink）
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| GET | `/api/claw/status` | 用户 | 连接状态 |
-| POST | `/api/claw/login/start` | 用户 | 触发扫码登录（mock 可 skip） |
+| GET | `/api/claw/status` | 用户 | 连接状态（含 state / qrcode / qrcodeExpiresAt，前端轮询推进） |
+| POST | `/api/claw/login/start` | 用户 | 触发扫码登录（mock 可 skip 直接连；真实模式 startQrcodeFlow） |
 | POST | `/api/claw/logout` | 用户 | 退出登录 |
 | POST | `/api/claw/restart` | 用户 | 重启 iLink adapter |
-| POST | `/api/claw/diagnose` | 用户 | 连接诊断 |
-| GET | `/api/claw/qrcode.png` | 用户 | 登录二维码图片 |
+| POST | `/api/claw/diagnose` | 用户 | 连接诊断（ping 平台 / 检查凭证） |
+| GET | `/api/claw/qrcode.png` | 用户 | 登录二维码图片（mock 渲染 token URL；真实模式 base64 解码 / URL 302 / 字符串渲染） |
 | GET | `/api/claw/qrcode-scan` | 开放 | mock 扫码回调页面 |
-| GET | `/api/claw/credentials` | 管理员 | iLink 凭证状态 |
-| POST | `/api/claw/credentials` | 管理员 | 写入 iLink 凭证 |
+| GET | `/api/claw/credentials` | 管理员 | iLink 凭证状态（不返回明文 token） |
+| POST | `/api/claw/credentials` | 管理员 | 写入 iLink 凭证并启动 adapter |
 | DELETE | `/api/claw/credentials` | 管理员 | 清除 iLink 凭证 |
-| GET | `/api/claw/contacts` | 用户 | 联系人列表 |
+| GET | `/api/claw/contacts` | 用户 | 联系人列表（支持 ?q=&group=&type= 过滤） |
 | GET | `/api/claw/contacts/groups` | 用户 | 分组统计 |
-| POST | `/api/claw/contacts` | 用户 | 新增联系人 |
-| PUT | `/api/claw/contacts/:id` | 用户 | 更新联系人 |
+| GET | `/api/claw/contacts/stats` | 用户 | 联系人消息数 + 未读数 + 最近消息时间 |
+| POST | `/api/claw/contacts` | 用户 | 新增联系人（wxid 格式校验，重复 409） |
+| PUT | `/api/claw/contacts/:id` | 用户 | 更新联系人（向后兼容） |
+| PATCH | `/api/claw/contacts/:id` | 用户 | 改备注名 / 分组 / 备注 |
 | DELETE | `/api/claw/contacts/:id` | 用户 | 删除联系人 |
-| POST | `/api/claw/contacts/seed` | 用户 | 播种默认联系人 |
+| POST | `/api/claw/contacts/seed` | 用户 | 播种默认联系人（仅 mock 模式有效，真实模式 400） |
 | GET | `/api/claw/rooms` | 用户 | 群聊列表 |
-| GET | `/api/claw/messages` | 用户 | 消息历史 |
+| GET | `/api/claw/messages` | 用户 | 消息历史（支持 ?wxid=&q=&limit=&before=&after=） |
 | GET | `/api/claw/messages/unread` | 用户 | 未读消息列表 |
-| POST | `/api/claw/messages/:id/read` | 用户 | 标记消息已读 |
-| POST | `/api/claw/send` | 用户 | 发送消息 |
-| POST | `/api/claw/mock/incoming` | 用户 | 模拟收到微信消息并生成任务 |
+| POST | `/api/claw/messages/:id/read` | 用户 | 标记单条消息已读 |
+| PATCH | `/api/claw/messages/read` | 用户 | 批量标记已读（body: {wxid} 标记该联系人所有 in 未读） |
+| POST | `/api/claw/send` | 用户 | 发送消息（写 messages out + 真实模式 sendText） |
+| POST | `/api/claw/mock/incoming` | 用户 | 模拟收到微信消息并生成任务（支持 isRoom 群消息触发测试） |
 | POST | `/api/claw/mock/connect` | 用户 | mock 模式：直接建立连接 |
 | POST | `/api/claw/mock/disconnect` | 用户 | mock 模式：断开连接 |
 | GET | `/api/claw/push-rules` | 用户 | 推送规则列表 |
 | POST | `/api/claw/push-rules` | 用户 | 新增推送规则 |
 | PATCH | `/api/claw/push-rules/:id` | 用户 | 更新规则 |
 | DELETE | `/api/claw/push-rules/:id` | 用户 | 删除规则 |
-| POST | `/api/claw/push-rules/:id/test` | 用户 | 测试规则 |
-| GET | `/api/claw/outbox` | 用户 | 推送记录列表 |
+| POST | `/api/claw/push-rules/:id/test` | 用户 | 测试规则（触发 outbox + 尝试发送） |
+| GET | `/api/claw/outbox` | 用户 | 推送记录列表（含 event=reply 自动回复记录） |
+
+> **自动回复闭环**：`task:changed` 事件订阅中，`source='wechat'` 任务 `completed/failed` 且 `data.extra.wxid` 存在时，自动调 `clawManager.sendText` 回复来源联系人，同时写 `messages(direction='out', task_id)` 与 `outbox(event='reply')`；未连接时降级仅写 outbox（`sent=false`）。与 `push_rules` 推送并存不冲突：回复发给任务来源人，规则推送发给订阅目标，同一任务可产生两类出站消息。
 
 ### 总览与设置
 
@@ -545,6 +552,7 @@ npm run smoke      # 等价于 bash scripts/smoke.sh
 | 12 | 知识库：分类/条目/搜索/MCP 搜索/分块/from-task/相似 link |
 | 13 | 能力仓库：技能 CRUD / install-skill 联动 / MCP 服务 CRUD / 静态安全审查 / overview 统计 |
 | 14 | 知识工作台：随手记快捷接口 + 分类自动创建 / 最近条目 / Git 项目收藏挂载（⭐ + 备注）/ 每日订阅 CRUD + run-now + 日报自动入库 + push_rule 联动 + 删除订阅联动删除规则 |
+| 16 | 消息通信真实闭环：seedContacts 真实模式静态断言 / status 端点结构 / 群消息无前缀不建任务 / 群消息带 /ai 前缀剥前缀建任务 / 私聊任务完成自动回复（summary+📎附件提示）/ messages direction='out' 关联 / 失败任务自动回复（❌ 标识）/ wxid 格式校验 + 重复 409 / PATCH 改名 / 联系人消息统计 / 批量已读 / 自动回复与推送规则并存（reply+completed 双出站）/ 防循环源码断言 |
 
 ---
 
@@ -598,7 +606,7 @@ PORT=5567 npm start
 
 以下功能在代码中存在预留位置或部分实现，尚未完全落地：
 
-- **真实微信适配器**：当前 `claw` 模块提供 iLink mock 模式与真实 iLink 启动入口，真实协议对接需外部 iLink 服务与凭证。
+- **真实微信适配器**：`claw` 模块已落地 iLink 协议适配（`ilink-adapter.js` 状态机 + `qrcode` 事件缓存 + `sendText` 真实发送 + 凭证持久化），支持扫码登录、自动回复闭环、推送规则真实送达；真实环境需配置 `ILINK_BOT_TOKEN / ILINK_BOT_ID / ILINK_USER_ID` 凭证并部署外部 iLink 服务。
 - **Embedding 检索**：知识库当前为关键词搜索，`kb_chunks` 集合与摘要生成逻辑已预留向量检索扩展点。
 - **工作流条件分支**：当前步骤依赖为线性/并行，循环依赖已校验，条件分支与循环步骤待实现。
 - **MCP 客户端示例**：`/mcp` 端点已就绪，配套 `bridge-mcp-server.js` 示例尚未入库。

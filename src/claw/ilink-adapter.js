@@ -82,13 +82,14 @@ export class IlinkAdapter extends EventEmitter {
     const baseUrl = resolveBaseUrl();
     try {
       const r = await getBotQrcode(baseUrl, 3, 10000);
+      const img = r.qrcode_img_content || null; // 可能是 base64 data URI 或 http(s) URL
       this.setStatus({
         qrcode: r.qrcode,
-        qrcodeUrl: r.qrcode_img_content || r.qrcode,
+        qrcodeUrl: img || r.qrcode,
         qrcodeExpiresAt: r.expires_at || (Date.now() + 180_000),
       });
       appendLog('info', 'qrcode', `已获取二维码 qrcode=${r.qrcode?.slice(0, 8)}…`);
-      this.emit('qrcode', { qrcode: r.qrcode, url: r.qrcode_img_content || r.qrcode, expiresAt: r.expires_at });
+      this.emit('qrcode', { qrcode: r.qrcode, url: img || r.qrcode, img, expiresAt: r.expires_at });
       this._pollQrcodeStatus(baseUrl, r.qrcode);
     } catch (e) {
       this.setStatus({ state: 'disconnected', error: e.message });
