@@ -41,3 +41,14 @@ if (fs.existsSync(schedFile)) {
     }, 30_000);
   }
 }
+
+// 每日订阅调度器：每 30s 检查到点订阅（模块存在才启用，复用同一 tick 体系）
+const subFile = path.join(__dirname, 'routes', 'subscriptions.js');
+if (fs.existsSync(subFile)) {
+  const subMod = await import('./routes/subscriptions.js');
+  if (typeof subMod.tick === 'function') {
+    setInterval(() => {
+      try { subMod.tick(ctx); } catch (e) { store.log('error', 'subscriptions', e.message); }
+    }, 30_000);
+  }
+}

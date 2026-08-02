@@ -36,7 +36,7 @@
 | 任务中心 | `#/tasks` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
 | 对话 | `#/chat` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
 | 智能体 | `#/agents` | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
-| 知识库 | `#/kb` | 知识条目 / 知识图谱 / 提示词 / 导入 |
+| 知识库 | `#/kb` | 工作台（随手记 / 项目收藏 / 每日订阅）/ 知识条目 / 知识图谱 / 提示词 / 导入 |
 | 工作流 | `#/workflows` | 模板 / 执行记录 |
 | 消息通信 | `#/claw` | 连接 / 联系人 / 推送订阅 / 消息记录 |
 | 设置 | `#/settings` | AI 模型 / 用户管理 / 系统 / 日志 |
@@ -68,6 +68,12 @@
 
 - **知识库赋能**
   分类/条目/关联链接、关键词搜索、长文档分块、任务结果回流为条目、agent 凭证检索与 MCP 检索。
+
+- **知识工作台（随手记 / 项目收藏 / 每日订阅）**
+  - **工作台首页**：知识库页签新增「工作台」并设为默认页签，2×2 入口卡片（随手记 / 项目收藏 / 研究专题 / 每日订阅），下方「最近知识」区展示最近 10 条条目（标题 + 来源徽章 + 相对时间）。
+  - **随手记双入口**：工作台内嵌快速输入框（占位符"随手记一条… 回车即存"），回车即创建条目（`title` 取内容前 20 字、`content` 全文、自动归入"随手记"分类，不存在则自动创建）；对话页支持 `记一下：` 或 `/note ` 前缀指令，前端拦截直接调用 `POST /api/kb/items/quick-note`，不创建任务，气泡回复"📝 已记入知识库「随手记」"。
+  - **项目收藏（Git 挂载）**：`POST /api/kb-sources` 接收 Git 仓库地址 + 备注，执行 `git clone --depth 1`（30s 超时、50MB 上限）到 `data/repos/`，自动入库 `README.md` 与 `docs/` 下的 md/txt 文件，主条目（README 对应条目）写入 `extra.favorite=true` 与 `extra.note`；条目详情抽屉顶部展示备注卡（赭石浅底），列表中收藏条目带 ⭐ 标识。
+  - **每日订阅**：`/api/subscriptions` 提供 CRUD + `POST /:id/run-now`；调度器每 60s 检查到点且 `enabled` 的订阅，自动派发 `source='scheduled'`、`type='generate_content'` 的任务，`data.content` 由 `prompt_template` 渲染（含主题与"输出 markdown 日报，含 3-5 条要点及来源说明"要求）；订阅 `task:changed` 事件，任务 `completed` 后自动调 `from-task` 等价逻辑生成日报条目（标题 `{topic} 日报 {YYYY-MM-DD}`、存入 `save_to_category`、`extra.subscription_id` 溯源）；创建订阅时自动同步创建/更新一条匹配 `source_filter=['scheduled']` 的 `push_rule`（`events=['completed']`、`target_wxid=订阅的 push_wxid`），删除订阅时联动删除该规则。
 
 - **工作流编排**
   定义带依赖的步骤，支持变量渲染、循环依赖校验、执行记录追踪。
@@ -185,7 +191,9 @@ ai-bridge/
 │       ├── mcp-registry.js    # MCP 服务仓库：CRUD / 安全审查 / mcp_config 生成
 │       ├── sessions.js        # 会话 CRUD
 │       ├── chat.js            # 聊天即任务、AI 路由、上下文压缩
-│       ├── kb.js              # 知识库分类/条目/链接/搜索/分块
+│       ├── kb.js              # 知识库分类/条目/链接/搜索/分块/随手记/最近/收藏
+│       ├── kb-sources.js      # 知识源：Git 挂载（项目收藏，clone --depth 1 + README/docs 入库）
+│       ├── subscriptions.js   # 每日订阅：CRUD + run-now + 调度 tick + 日报入库 + push_rule 联动
 │       ├── prompts.js         # 提示词模板
 │       ├── workflows.js       # 工作流定义与执行
 │       ├── schedules.js       # 定时规则与触发
@@ -320,6 +328,28 @@ ai-bridge/
 | POST | `/api/kb/search` | 用户 / Agent | 兼容旧版的 POST 搜索 |
 | POST | `/api/kb/items/:id/import-file` | 用户 | 导入文件到条目 |
 | POST | `/api/kb/from-task` | 用户 | 将任务结果回流为知识条目 |
+| POST | `/api/kb/items/quick-note` | 用户 | 随手记快捷接口（自动归入"随手记"分类） |
+| GET | `/api/kb/recent?limit=` | 用户 | 最近更新/创建的条目 |
+| GET | `/api/kb/favorites` | 用户 | 收藏条目列表（`extra.favorite=true`） |
+
+### 知识源（项目收藏）
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/kb-sources` | 用户 | 列出全部已挂载的 Git 知识源 |
+| POST | `/api/kb-sources` | 用户 | 挂载 Git 仓库（`url` + `note`，浅克隆并入库 README/docs 下的 md/txt，主条目写 `extra.favorite`） |
+| DELETE | `/api/kb-sources/:id` | 用户 | 删除知识源（含其条目） |
+
+### 每日订阅
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/subscriptions` | 用户 | 列出全部订阅 |
+| POST | `/api/subscriptions` | 用户 | 创建订阅（自动创建对应 `push_rule`） |
+| GET | `/api/subscriptions/:id` | 用户 | 订阅详情（含历史日报条目列表） |
+| PATCH | `/api/subscriptions/:id` | 用户 | 更新订阅（启停、改时间/agent/wxid 等） |
+| DELETE | `/api/subscriptions/:id` | 用户 | 删除订阅（联动删除对应 `push_rule`） |
+| POST | `/api/subscriptions/:id/run-now` | 用户 | 立即派发一次订阅任务 |
 
 ### 提示词
 
@@ -514,6 +544,7 @@ npm run smoke      # 等价于 bash scripts/smoke.sh
 | 11 | AI 能力包：会话上下文压缩、智能路由、fallback、evidence 不泄露 |
 | 12 | 知识库：分类/条目/搜索/MCP 搜索/分块/from-task/相似 link |
 | 13 | 能力仓库：技能 CRUD / install-skill 联动 / MCP 服务 CRUD / 静态安全审查 / overview 统计 |
+| 14 | 知识工作台：随手记快捷接口 + 分类自动创建 / 最近条目 / Git 项目收藏挂载（⭐ + 备注）/ 每日订阅 CRUD + run-now + 日报自动入库 + push_rule 联动 + 删除订阅联动删除规则 |
 
 ---
 

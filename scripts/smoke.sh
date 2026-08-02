@@ -5,6 +5,7 @@
 # 11 AI 能力包：上下文压缩 + 智能路由 + 周报润色（mock AI 验证）
 # 12 知识库能力包：智能检索 / 分块索引 / 经验回流 / agent 凭证
 # 13 能力仓库：技能 CRUD / install-skill 联动 / MCP 服务 / 安全审查 / overview 统计
+# 14 知识工作台：随手记 / 项目收藏（Git 挂载）/ 每日订阅（CRUD+run-now+日报入库+push_rule 联动）
 # 用法：BASE=http://localhost:4601 bash scripts/smoke.sh
 # 默认使用临时数据目录和微信 mock 模式，避免污染线上数据
 set -u
@@ -833,6 +834,121 @@ echo "$OV" | grep -q '"capabilities"' || fail "overview 应含 capabilities 字�
 echo "$OV" | grep -q 'skills_total' || fail "capabilities 应含 skills_total：$OV"
 echo "$OV" | grep -q 'mcps_total' || fail "capabilities 应含 mcps_total：$OV"
 ok "overview 含能力仓库统计：$(echo "$OV" | python3 -c "import sys,json; d=json.load(sys.stdin)['capabilities']; print(f\"skills={d['skills_total']} mcps={d['mcps_total']}\")")"
+
+# ============ [14] 知识工作台：随手记 / 项目收藏 / 每日订阅 ============
+echo "[14] 知识工作台"
+
+# 14.1 随手记快捷接口 → "随手记"分类自动创建，条目可检索
+NOTE=$(curl -s -X POST "$BASE/api/kb/items/quick-note" -H "$AUTH" -H "$CT" \
+  -d '{"content":"smoke 随手记：测试快速笔记功能"}')
+NOTE_ID=$(echo "$NOTE" | jsonget id 2>/dev/null)
+[ -n "$NOTE_ID" ] && [ "$NOTE_ID" != "null" ] || fail "随手记创建失败：$NOTE"
+NOTE_TITLE=$(echo "$NOTE" | jsonget title 2>/dev/null)
+echo "$NOTE_TITLE" | grep -q "smoke 随手记" || fail "随手记标题应含内容前20字：$NOTE_TITLE"
+NOTE_CAT=$(echo "$NOTE" | jsonget category_id 2>/dev/null)
+[ -n "$NOTE_CAT" ] && [ "$NOTE_CAT" != "null" ] || fail "随手记应有分类：$NOTE"
+# 验证"随手记"分类存在
+KB_DATA=$(curl -s "$BASE/api/kb" -H "$AUTH")
+echo "$KB_DATA" | python3 -c "import sys,json;d=json.load(sys.stdin);cats=[c for c in d['categories'] if c['name']=='随手记'];exit(0 if cats else 1)" || fail "知识库应含"随手记"分类"
+# 验证可检索
+NOTE_ENC=$(python3 -c "import urllib.parse;print(urllib.parse.quote('smoke 随手记'))")
+SR=$(curl -s "$BASE/api/kb/search?q=$NOTE_ENC&limit=5" -H "$AUTH")
+echo "$SR" | grep -q '"results"' || fail "随手记应可检索：$SR"
+ok "随手记快捷接口：分类自动创建且条目可检索"
+
+# 14.2 最近条目接口
+RECENT=$(curl -s "$BASE/api/kb/recent?limit=10" -H "$AUTH")
+RECENT_COUNT=$(echo "$RECENT" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+[ "${RECENT_COUNT:-0}" -ge 1 ] || fail "最近条目应至少有1条：$RECENT"
+ok "GET /api/kb/recent 返回 $RECENT_COUNT 条最近条目"
+
+# 14.3 收藏列表接口（此时应为空或仅有非 favorite 条目）
+FAV_BEFORE=$(curl -s "$BASE/api/kb/favorites" -H "$AUTH" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+
+# 14.4 项目收藏：挂载 Git 仓库（使用 ai-bridge 自身仓库，浅克隆）
+echo "  尝试挂载 Git 仓库（可能需要数秒）..."
+FAV_R=$(curl -s -X POST "$BASE/api/kb-sources" -H "$AUTH" -H "$CT" \
+  -d '{"url":"https://gitee.com/yzj1/ai-bridge.git","note":"smoke 测试收藏：多智能体协作中枢"}')
+FAV_SRC_ID=$(echo "$FAV_R" | jsonget id 2>/dev/null)
+FAV_STATUS=$(echo "$FAV_R" | jsonget status 2>/dev/null)
+if [ -z "$FAV_SRC_ID" ] || [ "$FAV_SRC_ID" = "null" ]; then
+  echo "  – Git 挂载失败（网络/超时），跳过收藏相关断言：$(echo "$FAV_R" | jsonget error 2>/dev/null)"
+else
+  [ "$FAV_STATUS" = "synced" ] || fail "Git 挂载后状态应为 synced，实际 $FAV_STATUS：$FAV_R"
+  FAVItemCount=$(echo "$FAV_R" | jsonget item_count 2>/dev/null)
+  [ "${FAVItemCount:-0}" -ge 1 ] || fail "挂载后应至少有1条条目：$FAV_R"
+  # 主条目应有 extra.favorite=true 和 extra.note
+  FAV_MAIN=$(echo "$FAV_R" | jsonget main_item_id 2>/dev/null)
+  if [ -n "$FAV_MAIN" ] && [ "$FAV_MAIN" != "null" ]; then
+    MAIN_ITEM=$(curl -s "$BASE/api/kb/$FAV_MAIN" -H "$AUTH" 2>/dev/null)
+    # 直接从 KB 数据中找
+    KB_DATA2=$(curl -s "$BASE/api/kb" -H "$AUTH")
+    echo "$KB_DATA2" | python3 -c "import sys,json;d=json.load(sys.stdin);its=[i for i in d['items'] if i['id']=='$FAV_MAIN'];exit(0 if its and its[0].get('extra',{}).get('favorite')==True else 1)" || fail "主条目应有 extra.favorite=true"
+    echo "$KB_DATA2" | python3 -c "import sys,json;d=json.load(sys.stdin);its=[i for i in d['items'] if i['id']=='$FAV_MAIN'];exit(0 if its and 'smoke' in its[0].get('extra',{}).get('note','') else 1)" || fail "主条目应含 extra.note"
+  fi
+  # favorites 列表应增加
+  FAV_AFTER=$(curl -s "$BASE/api/kb/favorites" -H "$AUTH" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+  [ "$FAV_AFTER" -gt "$FAV_BEFORE" ] || fail "收藏后 favorites 列表应增加：before=$FAV_BEFORE after=$FAV_AFTER"
+  # 收藏条目应可检索
+  FAV_SEARCH=$(curl -s "$BASE/api/kb/search?q=ai-bridge&limit=5" -H "$AUTH")
+  echo "$FAV_SEARCH" | grep -q '"results"' || fail "收藏条目应可检索"
+  ok "Git 项目收藏成功：$FAVItemCount 条入库，⭐标识+备注已写入"
+  # 清理：删除收藏源
+  curl -s -X DELETE "$BASE/api/kb-sources/$FAV_SRC_ID" -H "$AUTH" >/dev/null
+fi
+
+# 14.5 每日订阅 CRUD + run-now + 任务完成 → 日报入库 + push_rule 联动
+# 先确保 claw mock 已连接（触发联系人播种）
+curl -s -X POST "$BASE/api/claw/login/start" -H "$AUTH" >/dev/null 2>&1
+WXID=$(curl -s "$BASE/api/claw/contacts" -H "$AUTH" | jsonget 0 wxid 2>/dev/null)
+SUB_R=$(curl -s -X POST "$BASE/api/subscriptions" -H "$AUTH" -H "$CT" \
+  -d "{\"topic\":\"smoke 订阅测试\",\"schedule_time\":\"09:00\",\"push_wxid\":\"$WXID\",\"prompt_template\":\"采集 smoke 测试内容\",\"save_to_category\":\"smoke 订阅分类\"}")
+SUB_ID=$(echo "$SUB_R" | jsonget id 2>/dev/null)
+[ -n "$SUB_ID" ] && [ "$SUB_ID" != "null" ] || fail "创建订阅失败：$SUB_R"
+SUB_RULE=$(echo "$SUB_R" | jsonget push_rule_id 2>/dev/null)
+[ -n "$SUB_RULE" ] && [ "$SUB_RULE" != "null" ] || fail "创建订阅应自动创建 push_rule：$SUB_R"
+# 验证 push_rule 存在且配置正确
+RULES=$(curl -s "$BASE/api/claw/push-rules" -H "$AUTH")
+echo "$RULES" | python3 -c "import sys,json;d=json.load(sys.stdin);r=[x for x in d if x['id']=='$SUB_RULE'];exit(0 if r and 'completed' in r[0]['events'] and 'scheduled' in r[0].get('source_filter',[]) else 1)" || fail "push_rule 应 events=['completed'] source_filter=['scheduled']：$RULES"
+ok "创建订阅 + 自动创建 push_rule（events=completed, source_filter=scheduled）"
+
+# 14.6 run-now → 产生任务 → agent 完成 → 日报自动入库
+RUN_R=$(curl -s -X POST "$BASE/api/subscriptions/$SUB_ID/run-now" -H "$AUTH")
+SUB_TASK_ID=$(echo "$RUN_R" | python3 -c "import sys,json;print(json.load(sys.stdin)['task']['id'])" 2>/dev/null)
+[ -n "$SUB_TASK_ID" ] || fail "run-now 应返回 task.id：$RUN_R"
+# agent 领取并完成
+claim_and_complete "$AGENT1" "$ATOK1" "$SUB_TASK_ID" '{"summary":"smoke 订阅日报：今日 AI 安全领域有 3 条重要动态。","evidence":{"executed_commands":["echo search"],"read_files":[],"searches":[],"tool_calls":[],"thinking":"分析完成"}}'
+# 等待 task:changed 事件处理（异步）
+sleep 1
+# 验证日报条目已入库
+SUB_DETAIL=$(curl -s "$BASE/api/subscriptions/$SUB_ID" -H "$AUTH")
+SUB_ITEMS_COUNT=$(echo "$SUB_DETAIL" | python3 -c "import sys,json;d=json.load(sys.stdin);print(len(d.get('items',[])))" 2>/dev/null)
+[ "${SUB_ITEMS_COUNT:-0}" -ge 1 ] || fail "订阅任务完成后应自动创建日报条目：$SUB_DETAIL"
+# 验证日报标题格式
+SUB_FIRST_TITLE=$(echo "$SUB_DETAIL" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['items'][0]['title'])" 2>/dev/null)
+echo "$SUB_FIRST_TITLE" | grep -q "smoke 订阅测试 日报" || fail "日报标题应为「{topic} 日报 {日期}」：$SUB_FIRST_TITLE"
+# 验证日报存入了正确分类
+SUB_ITEM_CAT=$(echo "$SUB_DETAIL" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['items'][0].get('category_id',''))" 2>/dev/null)
+KB_DATA3=$(curl -s "$BASE/api/kb" -H "$AUTH")
+echo "$KB_DATA3" | python3 -c "import sys,json;d=json.load(sys.stdin);c=[x for x in d['categories'] if x['id']=='$SUB_ITEM_CAT'];exit(0 if c and c[0]['name']=='smoke 订阅分类' else 1)" || fail "日报应存入「smoke 订阅分类」分类"
+ok "订阅 run-now → 任务完成 → 日报自动入库（标题/分类正确）"
+
+# 14.7 验证 outbox 有推送记录（claw 推送引擎处理了 completed 事件）
+sleep 1
+OB=$(curl -s "$BASE/api/claw/outbox?limit=50" -H "$AUTH")
+echo "$OB" | grep -q "$SUB_TASK_ID" || fail "outbox 应有该任务的推送记录：$OB"
+ok "claw 推送引擎已处理订阅任务 completed 事件（outbox 有记录）"
+
+# 14.8 删除订阅 → push_rule 联动删除
+RULES_BEFORE=$(echo "$RULES" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+DEL_R=$(curl -s -X DELETE "$BASE/api/subscriptions/$SUB_ID" -H "$AUTH")
+[ "$(echo "$DEL_R" | jsonget ok 2>/dev/null)" = "true" ] || fail "删除订阅失败：$DEL_R"
+RULES_AFTER=$(curl -s "$BASE/api/claw/push-rules" -H "$AUTH" | python3 -c "import sys,json;print(len(json.load(sys.stdin)))")
+[ "$RULES_AFTER" -lt "$RULES_BEFORE" ] || fail "删除订阅后 push_rule 应减少：before=$RULES_BEFORE after=$RULES_AFTER"
+# 验证该 push_rule 已不存在
+RULES_FINAL=$(curl -s "$BASE/api/claw/push-rules" -H "$AUTH")
+echo "$RULES_FINAL" | python3 -c "import sys,json;d=json.load(sys.stdin);r=[x for x in d if x['id']=='$SUB_RULE'];exit(0 if not r else 1)" || fail "删除订阅后对应 push_rule 应已删除"
+ok "删除订阅 → push_rule 联动删除（$RULES_BEFORE → $RULES_AFTER）"
 
 # 清理 mock AI
 trap cleanup EXIT

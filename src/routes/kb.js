@@ -259,6 +259,41 @@ async function aiSuggestLinks(ctx, item) {
   } catch { /* 可降级 */ }
 }
 
+/* ==================== 可复用导出 helper（供 subscriptions / kb-sources 等模块复用） ==================== */
+
+/** 按名称查找分类，不存在则创建。返回分类对象。 */
+export function findOrCreateCategoryByName(ctx, name) {
+  const kb = ctx.store.coll('kb');
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return null;
+  const exist = kb.find((x) => x.kind === 'category' && x.name === trimmed);
+  if (exist) return exist;
+  const cat = kb.insert({
+    id: ctx.util.uid('kbc'), kind: 'category', name: trimmed,
+    created_at: ctx.util.now(),
+  });
+  return cat;
+}
+
+/** 统一建条目：插入 kb item + 分块索引 + 异步摘要/AI 建议关联。返回 item。 */
+export function createItem(ctx, { category_id, title, content, tags, extra }) {
+  const kb = ctx.store.coll('kb');
+  const item = kb.insert({
+    id: ctx.util.uid('kbi'), kind: 'item',
+    category_id: category_id || undefined,
+    title: String(title || ''),
+    content: String(content || ''),
+    tags: Array.isArray(tags) ? tags.map(String) : [],
+    extra: extra && typeof extra === 'object' ? extra : {},
+    created_at: ctx.util.now(),
+    updated_at: ctx.util.now(),
+  });
+  reindexChunks(ctx, item);
+  summarizeChunks(ctx, item.id).catch(() => {});
+  aiSuggestLinks(ctx, item).catch(() => {});
+  return item;
+}
+
 export default function (ctx) {
   const router = express.Router();
   const { store, util } = ctx;
@@ -337,6 +372,40 @@ export default function (ctx) {
     summarizeChunks(ctx, item.id).catch(() => {});
     aiSuggestLinks(ctx, item).catch(() => {});
     res.status(201).json(item);
+  });
+
+  // ---- POST /items/quick-note 随手记快捷接口（自动归入"随手记"分类）----
+  router.post('/items/quick-note', ru, (req, res) => {
+    const content = String(req.body?.content || '').trim();
+    if (!content) return res.status(400).json({ error: 'content required' });
+    const cat = findOrCreateCategoryByName(ctx, '随手记');
+    const title = content.slice(0, 20) + (content.length > 20 ? '…' : '');
+    const item = createItem(ctx, {
+      category_id: cat?.id,
+      title,
+      content,
+      tags: ['随手记'],
+      extra: { quick_note: true },
+    });
+    res.status(201).json(item);
+  });
+
+  // ---- GET /recent 最近更新的条目（工作台首页用）----
+  router.get('/recent', ru, (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 50);
+    const list = kb().all()
+      .filter((x) => x.kind === 'item')
+      .sort((a, b) => (b.updated_at || b.created_at) - (a.updated_at || a.created_at))
+      .slice(0, limit);
+    res.json(list);
+  });
+
+  // ---- GET /favorites 收藏条目列表（extra.favorite=true）----
+  router.get('/favorites', ru, (req, res) => {
+    const list = kb().all()
+      .filter((x) => x.kind === 'item' && x.extra?.favorite === true)
+      .sort((a, b) => b.created_at - a.created_at);
+    res.json(list);
   });
 
   router.patch('/items/:id', ru, (req, res) => {

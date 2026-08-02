@@ -35,7 +35,7 @@ export async function render(el, ctx) {
           <div class="chat-input-wrap">
             <div id="chatHint" class="chat-hint" style="display:none"></div>
             <div id="routeHint" class="route-hint" style="display:none"></div>
-            <textarea id="chatInput" placeholder="输入消息，Enter 发送（Shift+Enter 换行）\n支持 /prompt /workflow /kb 和 @agentName"></textarea>
+            <textarea id="chatInput" placeholder="输入消息，Enter 发送（Shift+Enter 换行）\n支持 /prompt /workflow /kb /note 和 @agentName"></textarea>
           </div>
           <button class="btn btn-primary" id="chatSend">发 送</button>
         </div>
@@ -362,6 +362,25 @@ async function sendMessage(el, ctx) {
     return useKb(el, ctx, content.slice('/kb '.length).trim());
   }
 
+  // 随手记指令：记一下：xxx 或 /note xxx → 不建任务，直接存知识库
+  let noteContent = '';
+  if (content.startsWith('记一下：') || content.startsWith('记一下:')) {
+    noteContent = content.slice(content.indexOf('：') + 1).trim();
+  } else if (content.startsWith('/note ')) {
+    noteContent = content.slice('/note '.length).trim();
+  }
+  if (noteContent) {
+    input.value = '';
+    try {
+      const item = await api.post('/api/kb/items/quick-note', { content: noteContent });
+      // 直接在消息流追加用户消息 + 系统确认（不建任务，不入会话历史）
+      appendNoteMessages(el, content, item);
+      toast('已记入知识库「随手记」', 'success');
+    } catch (err) { toast(err.message, 'error'); }
+    input.focus();
+    return;
+  }
+
   // @ 指派智能体
   const { text, target } = parseAgentMention(content);
   if (target) {
@@ -417,6 +436,7 @@ async function updateInputHint(el) {
       { type: 'cmd', text: '/prompt', desc: '使用提示词模板', run: 'prompt' },
       { type: 'cmd', text: '/workflow', desc: '触发工作流', run: 'workflow' },
       { type: 'cmd', text: '/kb', desc: '搜索知识库', run: 'kb' },
+      { type: 'cmd', text: '/note', desc: '随手记到知识库', run: 'note' },
     ].filter((c) => c.text.includes(prefix));
   } else if (prefix.startsWith('@')) {
     const name = prefix.slice(1).toLowerCase();
@@ -449,6 +469,41 @@ async function updateInputHint(el) {
       input.focus();
     });
   });
+}
+
+/** 随手记指令：在消息流追加用户消息 + 系统确认气泡（不建任务） */
+function appendNoteMessages(el, userContent, item) {
+  const flow = el.querySelector('#msgFlow');
+  if (!flow) return;
+  // 清除空状态
+  const empty = flow.querySelector('.empty-state');
+  if (empty) empty.remove();
+  const ts = fmtTime(Math.floor(Date.now() / 1000));
+  const userHtml = `
+    <div class="msg-row user">
+      <div>
+        <div class="msg-bubble">${escapeHtml(userContent)}</div>
+        <div class="msg-meta" style="text-align:right">我 · ${ts}</div>
+      </div>
+    </div>`;
+  const botHtml = `
+    <div class="msg-row sys">
+      <div>
+        <div class="msg-bubble">📝 已记入知识库「随手记」${item?.id ? `（<a href="#/kb" style="color:var(--accent)" data-kb-item="${item.id}">可点查看条目</a>）` : ''}</div>
+        <div class="msg-meta">系统 · ${ts}</div>
+      </div>
+    </div>`;
+  flow.insertAdjacentHTML('beforeend', userHtml + botHtml);
+  flow.scrollTop = flow.scrollHeight;
+  // 点击「查看条目」跳转知识库
+  const link = flow.querySelector(`[data-kb-item="${item?.id}"]`);
+  if (link) {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.location.hash = '#/kb';
+      setTimeout(() => window.dispatchEvent(new CustomEvent('open-kb-item', { detail: item.id })), 300);
+    });
+  }
 }
 
 function showRouteHint(el, task) {

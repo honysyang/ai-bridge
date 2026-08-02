@@ -14,7 +14,8 @@ let allItems = [];
 export async function render(el, ctx) {
   el.innerHTML = `
     <div class="tabs">
-      <div class="tab active" data-tab="items">知识条目</div>
+      <div class="tab active" data-tab="workbench">工作台</div>
+      <div class="tab" data-tab="items">知识条目</div>
       <div class="tab" data-tab="graph">知识图谱</div>
       <div class="tab" data-tab="prompts">提示词</div>
       <div class="tab" data-tab="import">导入</div>
@@ -24,7 +25,8 @@ export async function render(el, ctx) {
   const renderTab = (tab) => {
     el.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
     closeDrawer();
-    if (tab === 'items') renderItems(body, ctx);
+    if (tab === 'workbench') renderWorkbench(body, ctx, renderTab);
+    else if (tab === 'items') renderItems(body, ctx);
     else if (tab === 'graph') renderGraph(body, ctx);
     else if (tab === 'prompts') renderPrompts(body, ctx);
     else renderImport(body, ctx);
@@ -51,7 +53,7 @@ export async function render(el, ctx) {
   window.addEventListener('open-kb-item', onOpenItemFromExternal);
   ctx.onCleanup(() => window.removeEventListener('open-kb-item', onOpenItemFromExternal));
 
-  renderTab('items');
+  renderTab('workbench');
 }
 
 async function loadKB() {
@@ -77,6 +79,435 @@ function itemByTaskId(taskId) {
   return KB.items.find((i) => i.extra?.source_task_id === taskId);
 }
 
+/* ==================== 工作台 ==================== */
+async function renderWorkbench(box, ctx, renderTab) {
+  box.innerHTML = '<div class="loading-line"><span class="spinner"></span> 加载工作台…</div>';
+  let recentItems = [];
+  let favCount = 0;
+  let subCount = 0;
+  try {
+    [recentItems, favCount, subCount] = await Promise.all([
+      api.get('/api/kb/recent?limit=10').catch(() => []),
+      api.get('/api/kb/favorites').then((d) => d.length).catch(() => 0),
+      api.get('/api/subscriptions').then((d) => d.filter((s) => s.enabled).length).catch(() => 0),
+    ]);
+  } catch { /* ignore */ }
+
+  box.innerHTML = `
+    <div class="kb-workbench">
+      <div class="wb-card-grid">
+        <div class="wb-card wb-card-note" data-action="note">
+          <div class="wb-card-icon">✏️</div>
+          <div class="wb-card-body">
+            <div class="wb-card-title">随手记</div>
+            <div class="wb-card-sub">快速记录，随时检索</div>
+            <input type="text" class="wb-quick-input" id="wbQuickInput" placeholder="随手记一条… 回车即存" autocomplete="off">
+          </div>
+        </div>
+        <div class="wb-card wb-card-fav" data-action="favorites">
+          <div class="wb-card-icon">⭐</div>
+          <div class="wb-card-body">
+            <div class="wb-card-title">项目收藏</div>
+            <div class="wb-card-sub">挂载 Git 仓库，备注学习要点</div>
+            <div class="wb-card-stat">收藏总数：<b>${favCount}</b></div>
+          </div>
+        </div>
+        <div class="wb-card wb-card-research" data-action="research">
+          <div class="wb-card-icon">🔬</div>
+          <div class="wb-card-body">
+            <div class="wb-card-title">研究专题</div>
+            <div class="wb-card-sub">沿着思路，持续展开</div>
+            <span class="badge badge-gray">即将上线</span>
+          </div>
+        </div>
+        <div class="wb-card wb-card-sub" data-action="subscriptions">
+          <div class="wb-card-icon">📮</div>
+          <div class="wb-card-body">
+            <div class="wb-card-title">每日订阅</div>
+            <div class="wb-card-sub">定时采集，微信送达</div>
+            <div class="wb-card-stat">活跃订阅：<b>${subCount}</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="wb-recent-section">
+        <div class="flex-between mb8">
+          <div class="card-title" style="margin:0">📚 最近知识</div>
+          <button class="btn btn-sm btn-ghost" id="wbViewAll">查看全部 →</button>
+        </div>
+        <div id="wbRecentList"></div>
+      </div>
+    </div>`;
+
+  // 最近知识列表
+  const recentList = box.querySelector('#wbRecentList');
+  if (!recentItems || !recentItems.length) {
+    recentList.innerHTML = emptyHTML('📚', '暂无知识条目', '去「知识条目」页签新建，或用随手记快速记录');
+  } else {
+    recentList.innerHTML = `<div class="wb-recent-grid">${recentItems.map((item) => {
+      const cat = KB.categories.find((c) => c.id === item.category_id);
+      const isFav = item.extra?.favorite;
+      const isNote = item.extra?.quick_note;
+      const badge = isFav ? '<span class="wb-badge wb-badge-fav">⭐ 收藏</span>'
+        : isNote ? '<span class="wb-badge wb-badge-note">随手记</span>'
+        : cat ? `<span class="wb-badge">${escapeHtml(cat.name)}</span>` : '';
+      return `<div class="wb-recent-item" data-id="${item.id}">
+        <div class="wb-recent-title">${isFav ? '⭐ ' : ''}${escapeHtml(item.title)}</div>
+        <div class="wb-recent-meta">${badge} <span class="faint">${fmtTime(item.updated_at || item.created_at)}</span></div>
+      </div>`;
+    }).join('')}</div>`;
+    recentList.querySelectorAll('.wb-recent-item').forEach((el2) => {
+      el2.addEventListener('click', async () => {
+        await loadKB();
+        renderTab('items');
+        setTimeout(() => openItemDrawer(el2.dataset.id, null, ctx), 200);
+      });
+    });
+  }
+
+  // 随手记快捷输入
+  const quickInput = box.querySelector('#wbQuickInput');
+  quickInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const val = quickInput.value.trim();
+      if (!val) return;
+      try {
+        const item = await api.post('/api/kb/items/quick-note', { content: val });
+        quickInput.value = '';
+        toast('已记入知识库「随手记」', 'success', 4000);
+        await loadKB();
+        renderWorkbench(box, ctx, renderTab);
+      } catch (err) { toast(err.message, 'error'); }
+    }
+  });
+
+  // 卡片点击
+  box.querySelectorAll('.wb-card').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      // 点击输入框时不触发卡片跳转
+      if (e.target.tagName === 'INPUT') return;
+      const action = card.dataset.action;
+      if (action === 'note') renderTab('items');
+      else if (action === 'favorites') renderFavorites(box, ctx, renderTab);
+      else if (action === 'research') toast('研究专题将在下一期开放', 'info');
+      else if (action === 'subscriptions') renderSubscriptions(box, ctx, renderTab);
+    });
+  });
+
+  box.querySelector('#wbViewAll').addEventListener('click', () => renderTab('items'));
+}
+
+/* ==================== 项目收藏 ==================== */
+async function renderFavorites(box, ctx, renderTab) {
+  box.innerHTML = '<div class="loading-line"><span class="spinner"></span> 加载收藏…</div>';
+  let sources = [];
+  try { sources = await api.get('/api/kb-sources'); } catch (err) {
+    box.innerHTML = emptyHTML('⭐', '收藏加载失败', err.message);
+    return;
+  }
+
+  function renderList() {
+    box.innerHTML = `
+      <div class="card">
+        <div class="flex-between mb8">
+          <div class="card-title" style="margin:0">⭐ 项目收藏 <span class="sub">挂载 Git 仓库，自动入库</span></div>
+          <div class="flex">
+            <button class="btn btn-sm btn-ghost" id="favBack">← 返回工作台</button>
+            <button class="btn btn-sm btn-green" id="favNew">⭐ 收藏 Git 项目</button>
+          </div>
+        </div>
+        <div id="favList"></div>
+      </div>`;
+
+    const list = box.querySelector('#favList');
+    if (!sources.length) {
+      list.innerHTML = emptyHTML('⭐', '暂无收藏项目', '点击「收藏 Git 项目」挂载一个仓库');
+    } else {
+      list.innerHTML = `<div class="fav-grid">${sources.map((s) => `
+        <div class="fav-card" data-id="${s.id}">
+          <div class="flex-between">
+            <b>${escapeHtml(s.name)}</b>
+            <span class="badge ${s.status === 'synced' ? 'badge-green' : s.status === 'failed' ? 'badge-red' : 'badge-yellow'}">${escapeHtml(s.status)}</span>
+          </div>
+          <div class="fav-note">${escapeHtml(s.note || '（无备注）')}</div>
+          <div class="fav-url mono faint">${escapeHtml(s.url)}</div>
+          <div class="fav-meta">
+            <span>📦 ${s.item_count || 0} 条目</span>
+            <span>⏱ ${s.last_sync_at ? fmtTime(s.last_sync_at) : '未同步'}</span>
+          </div>
+          <div class="fav-actions">
+            <button class="btn btn-sm btn-ghost" data-act="view">查看条目</button>
+            <button class="btn btn-sm btn-ghost" data-act="sync">同步</button>
+            <button class="btn btn-sm btn-danger" data-act="del">删除</button>
+          </div>
+        </div>`).join('')}</div>`;
+    }
+
+    box.querySelector('#favBack').addEventListener('click', () => renderWorkbench(box, ctx, renderTab));
+    box.querySelector('#favNew').addEventListener('click', () => openFavModal());
+
+    list.querySelectorAll('.fav-card').forEach((card) => {
+      const s = sources.find((x) => x.id === card.dataset.id);
+      card.querySelectorAll('[data-act]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const act = btn.dataset.act;
+          if (act === 'view') {
+            // 跳到条目页签并打开该源的条目
+            await loadKB();
+            renderTab('items');
+            // TODO: 可加筛选，暂用 toast 提示
+            toast(`已切换到知识条目，可在分类「${s.name}」中查看`, 'info');
+          } else if (act === 'sync') {
+            try {
+              toast('正在同步…', 'info');
+              const r = await api.post(`/api/kb-sources/${s.id}/sync`);
+              toast(`同步完成：${r.item_count} 条`, 'success');
+              sources = await api.get('/api/kb-sources');
+              renderList();
+            } catch (err) { toast(err.message, 'error'); }
+          } else if (act === 'del') {
+            confirmBox(`确定删除收藏「${s.name}」吗？关联条目将一并删除。`, async () => {
+              await api.del(`/api/kb-sources/${s.id}`);
+              toast('已删除', 'success');
+              sources = await api.get('/api/kb-sources');
+              renderList();
+            });
+          }
+        });
+      });
+    });
+  }
+
+  function openFavModal() {
+    openModal({
+      title: '⭐ 收藏 Git 项目',
+      body: `
+        <label class="field"><span>仓库地址 *</span>
+          <input type="text" id="favUrl" placeholder="https://gitee.com/xxx/xxx.git"></label>
+        <label class="field"><span>备注（为什么收藏 / 学什么 / 复用点）*</span>
+          <textarea id="favNote" style="min-height:80px" placeholder="如：多智能体协作中枢的参考实现，学习其任务路由设计"></textarea></label>
+        <label class="field"><span>分支（可选）</span>
+          <input type="text" id="favBranch" placeholder="默认主分支"></label>
+        <p class="faint" style="font-size:12px">将执行 git clone --depth 1（30s 超时，50MB 上限），README.md + docs/ 下的 md/txt 自动入库。</p>`,
+      okText: '挂 载 并 收 藏',
+      onOk: async (modal) => {
+        const url = modal.querySelector('#favUrl').value.trim();
+        const note = modal.querySelector('#favNote').value.trim();
+        if (!url || !note) { toast('请填写仓库地址和备注', 'error'); return false; }
+        const branch = modal.querySelector('#favBranch').value.trim();
+        try {
+          toast('正在克隆仓库…', 'info', 6000);
+          const r = await api.post('/api/kb-sources', { url, note, branch: branch || undefined });
+          if (r.error) { toast(r.error, 'error'); return false; }
+          toast(`收藏成功：${r.item_count} 条已入库`, 'success');
+          sources = await api.get('/api/kb-sources');
+          renderList();
+        } catch (err) { toast(err.message, 'error'); return false; }
+      },
+    });
+  }
+
+  renderList();
+}
+
+/* ==================== 每日订阅 ==================== */
+async function renderSubscriptions(box, ctx, renderTab) {
+  box.innerHTML = '<div class="loading-line"><span class="spinner"></span> 加载订阅…</div>';
+  let subs = [];
+  let agents = [];
+  let contacts = [];
+  try {
+    [subs, agents, contacts] = await Promise.all([
+      api.get('/api/subscriptions'),
+      api.get('/api/agents').catch(() => []),
+      api.get('/api/claw/contacts').catch(() => []),
+    ]);
+  } catch (err) {
+    box.innerHTML = emptyHTML('📮', '订阅加载失败', err.message);
+    return;
+  }
+  const activeAgents = (agents || []).filter((a) => a.review_status === 'active');
+
+  function renderList() {
+    box.innerHTML = `
+      <div class="card">
+        <div class="flex-between mb8">
+          <div class="card-title" style="margin:0">📮 每日订阅 <span class="sub">每天到点自动派任务给智能体采集整理</span></div>
+          <div class="flex">
+            <button class="btn btn-sm btn-ghost" id="subBack">← 返回工作台</button>
+            <button class="btn btn-sm btn-green" id="subNew">＋ 新建订阅</button>
+          </div>
+        </div>
+        <div id="subList"></div>
+      </div>`;
+
+    const list = box.querySelector('#subList');
+    if (!subs.length) {
+      list.innerHTML = emptyHTML('📮', '暂无订阅', '点击「新建订阅」创建一个每日采集任务');
+    } else {
+      list.innerHTML = subs.map((s) => {
+        const agentName = s.target_agent ? (agents.find((a) => a.id === s.target_agent)?.name || '未知') : '🎯 自动分配';
+        const contactName = s.push_wxid ? (contacts.find((c) => c.wxid === s.push_wxid)?.name || s.push_wxid) : '未设置';
+        const statusBadge = s.enabled
+          ? (s.last_status === 'completed' ? '<span class="badge badge-green">已完成</span>'
+            : s.last_status === 'processing' ? '<span class="badge badge-yellow">执行中</span>'
+            : s.last_status === 'failed' ? '<span class="badge badge-red">失败</span>'
+            : '<span class="badge">待执行</span>')
+          : '<span class="badge badge-gray">已停用</span>';
+        return `<div class="sub-card" data-id="${s.id}">
+          <div class="flex-between">
+            <div>
+              <b>${escapeHtml(s.topic)}</b>
+              ${statusBadge}
+            </div>
+            <div class="sub-actions">
+              <label class="sub-toggle"><input type="checkbox" data-act="toggle" ${s.enabled ? 'checked' : ''}> 启用</label>
+              <button class="btn btn-sm btn-ghost" data-act="run">立即执行</button>
+              <button class="btn btn-sm btn-ghost" data-act="edit">编辑</button>
+              <button class="btn btn-sm btn-ghost" data-act="history">历史</button>
+              <button class="btn btn-sm btn-danger" data-act="del">删除</button>
+            </div>
+          </div>
+          <div class="sub-meta">
+            <span>⏰ ${escapeHtml(s.schedule_time)}</span>
+            <span>🤖 ${escapeHtml(agentName)}</span>
+            <span>📮 ${escapeHtml(contactName)}</span>
+            <span>📁 ${escapeHtml(s.save_to_category || '每日订阅')}</span>
+            ${s.last_run_at ? `<span class="faint">上次：${fmtTime(s.last_run_at)}</span>` : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    box.querySelector('#subBack').addEventListener('click', () => renderWorkbench(box, ctx, renderTab));
+    box.querySelector('#subNew').addEventListener('click', () => openSubModal());
+
+    list.querySelectorAll('.sub-card').forEach((card) => {
+      const s = subs.find((x) => x.id === card.dataset.id);
+      card.querySelectorAll('[data-act]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const act = btn.dataset.act;
+          if (act === 'toggle') {
+            const enabled = btn.checked;
+            await api.patch(`/api/subscriptions/${s.id}`, { enabled });
+            toast(enabled ? '已启用' : '已停用', 'success');
+            subs = await api.get('/api/subscriptions');
+            renderList();
+          } else if (act === 'run') {
+            try {
+              const r = await api.post(`/api/subscriptions/${s.id}/run-now`);
+              toast(`已派发任务 ${r.task.id}`, 'success');
+              subs = await api.get('/api/subscriptions');
+              renderList();
+            } catch (err) { toast(err.message, 'error'); }
+          } else if (act === 'edit') {
+            openSubModal(s);
+          } else if (act === 'history') {
+            openSubHistory(s);
+          } else if (act === 'del') {
+            confirmBox(`确定删除订阅「${s.topic}」吗？关联推送规则将一并删除。`, async () => {
+              await api.del(`/api/subscriptions/${s.id}`);
+              toast('已删除', 'success');
+              subs = await api.get('/api/subscriptions');
+              renderList();
+            });
+          }
+        });
+      });
+    });
+  }
+
+  function openSubModal(editing) {
+    const isEdit = !!editing;
+    openModal({
+      title: isEdit ? '编辑订阅' : '新建订阅',
+      wide: true,
+      body: `
+        <label class="field"><span>主题描述 *</span>
+          <input type="text" id="subTopic" value="${escapeHtml(editing?.topic || '')}" placeholder="如：AI 安全行业动态"></label>
+        <label class="field"><span>采集指令模板</span>
+          <textarea id="subPrompt" style="min-height:80px" placeholder="如：采集今日 AI 安全领域的重要漏洞、工具更新、行业新闻">${escapeHtml(editing?.prompt_template || '')}</textarea></label>
+        <div class="form-row">
+          <label class="field"><span>推送时间（HH:MM）*</span>
+            <input type="time" id="subTime" value="${escapeHtml(editing?.schedule_time || '09:00')}"></label>
+          <label class="field"><span>执行 agent</span>
+            <select id="subAgent">
+              <option value="">🎯 自动分配</option>
+              ${activeAgents.map((a) => `<option value="${a.id}" ${editing?.target_agent === a.id ? 'selected' : ''}>${escapeHtml(a.name)}</option>`).join('')}
+            </select></label>
+        </div>
+        <div class="form-row">
+          <label class="field"><span>推送目标（微信）</span>
+            <select id="subWxid">
+              <option value="">不推送</option>
+              ${(contacts || []).map((c) => `<option value="${c.wxid}" ${editing?.push_wxid === c.wxid ? 'selected' : ''}>${escapeHtml(c.name)} (${escapeHtml(c.wxid)})</option>`).join('')}
+            </select></label>
+          <label class="field"><span>保存分类</span>
+            <input type="text" id="subCat" value="${escapeHtml(editing?.save_to_category || '每日订阅')}" placeholder="默认：每日订阅"></label>
+        </div>
+        <p class="faint" style="font-size:12px">每天到点自动派任务给智能体采集整理，结果存知识库并推送到微信。</p>`,
+      okText: isEdit ? '保 存' : '创 建',
+      onOk: async (modal) => {
+        const topic = modal.querySelector('#subTopic').value.trim();
+        const schedule_time = modal.querySelector('#subTime').value;
+        if (!topic) { toast('请填写主题', 'error'); return false; }
+        if (!/^\d{2}:\d{2}$/.test(schedule_time)) { toast('时间格式应为 HH:MM', 'error'); return false; }
+        const body = {
+          topic,
+          prompt_template: modal.querySelector('#subPrompt').value.trim(),
+          schedule_time,
+          target_agent: modal.querySelector('#subAgent').value || undefined,
+          push_wxid: modal.querySelector('#subWxid').value,
+          save_to_category: modal.querySelector('#subCat').value.trim() || '每日订阅',
+        };
+        try {
+          if (isEdit) {
+            await api.patch(`/api/subscriptions/${editing.id}`, body);
+            toast('已保存', 'success');
+          } else {
+            await api.post('/api/subscriptions', body);
+            toast('订阅已创建', 'success');
+          }
+          subs = await api.get('/api/subscriptions');
+          renderList();
+        } catch (err) { toast(err.message, 'error'); return false; }
+      },
+    });
+  }
+
+  async function openSubHistory(s) {
+    try {
+      const data = await api.get(`/api/subscriptions/${s.id}`);
+      const items = data.items || [];
+      if (!items.length) {
+        toast('暂无历史日报', 'info');
+        return;
+      }
+      openModal({
+        title: `「${s.topic}」历史日报（${items.length} 篇）`,
+        wide: true,
+        hideFoot: true,
+        body: `<div class="sub-history-list">${items.map((it) => `
+          <div class="sub-history-item" data-id="${it.id}">
+            <b>${escapeHtml(it.title)}</b>
+            <span class="faint" style="font-size:12px">${fmtTime(it.created_at)}</span>
+          </div>`).join('')}</div>`,
+      });
+      document.querySelectorAll('.sub-history-item').forEach((el2) => {
+        el2.addEventListener('click', async () => {
+          closeDrawer();
+          await loadKB();
+          renderTab('items');
+          setTimeout(() => openItemDrawer(el2.dataset.id, null, ctx), 200);
+        });
+      });
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
+  renderList();
+}
+
 /* ==================== 知识条目 ==================== */
 async function renderItems(box, ctx) {
   box.innerHTML = '<div class="loading-line"><span class="spinner"></span> 加载知识库…</div>';
@@ -100,6 +531,9 @@ async function renderItems(box, ctx) {
         <div id="catTree"></div>
       </div>
       <div class="kb-main">
+        <div class="kb-quick-note-bar">
+          <input type="text" id="kbQuickNote" placeholder="随手记一条… 回车即存" autocomplete="off">
+        </div>
         <div class="kb-toolbar flex-between mb8">
           <div class="kb-search">
             <span class="kb-search-icon">⌕</span>
@@ -116,6 +550,24 @@ async function renderItems(box, ctx) {
     </div>`;
 
   const itemBody = box.querySelector('#itemBody');
+
+  // 随手记快捷输入（条目页顶部同款式）
+  const quickInput = box.querySelector('#kbQuickNote');
+  quickInput.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const val = quickInput.value.trim();
+      if (!val) return;
+      try {
+        await api.post('/api/kb/items/quick-note', { content: val });
+        quickInput.value = '';
+        toast('已记入随手记', 'success');
+        await loadKB();
+        renderTree();
+        renderItemList();
+      } catch (err) { toast(err.message, 'error'); }
+    }
+  });
 
   function renderTree() {
     box.querySelector('#cntAll').textContent = KB.items.length;
@@ -340,13 +792,18 @@ async function openItemDrawer(itemId, refreshAll, ctx) {
 
     bodyEl.innerHTML = `
       <div class="kb-drawer-head">
-        <div class="kb-drawer-title" id="drawerTitle">${escapeHtml(cur.title)}</div>
+        <div class="kb-drawer-title" id="drawerTitle">${cur.extra?.favorite ? '⭐ ' : ''}${escapeHtml(cur.title)}</div>
         <div class="kb-drawer-meta">📁 ${escapeHtml(cat?.name || '未分类')} · 更新于 ${fmtTime(cur.updated_at || cur.created_at)}</div>
         <div class="kb-tags-edit" id="tagBox">
           ${(cur.tags || []).map((t) => `<span class="tag">${escapeHtml(t)} <button data-tag="${escapeHtml(t)}" class="kb-tag-del">×</button></span>`).join('')}
           <button class="btn btn-sm btn-ghost" id="addTag">＋</button>
         </div>
       </div>
+      ${cur.extra?.note ? `
+      <div class="kb-drawer-note">
+        <div class="kb-note-label">📝 收藏备注</div>
+        <div class="kb-note-text">${escapeHtml(cur.extra.note)}</div>
+      </div>` : ''}
       <div class="kb-drawer-content">
         ${renderMarkdown(cur.content || '（无内容）')}
       </div>
