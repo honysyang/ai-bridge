@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 鹤仙人 ai-bridge</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-logo">🦩</div>
+      <h1>鹤仙人 <span>ai-bridge</span></h1>
+      <p class="login-sub">多智能体协作中枢</p>
+    </div>
+    <form id="loginForm" autocomplete="off">
+      <label class="field">
+        <span>用户名</span>
+        <input type="text" id="username" placeholder="admin" required autofocus>
+      </label>
+      <label class="field">
+        <span>密码</span>
+        <input type="password" id="password" placeholder="admin123" required>
+      </label>
+      <div id="loginError" class="login-error" hidden></div>
+      <button type="submit" class="btn btn-primary btn-block" id="loginBtn">登 录</button>
+      <p class="login-hint">默认账号 admin / admin123</p>
+    </form>
+  </div>
+<script>
+(function () {
+  if (localStorage.getItem('ab_token')) { location.href = '/'; return; }
+  var form = document.getElementById('loginForm');
+  var errBox = document.getElementById('loginError');
+  var btn = document.getElementById('loginBtn');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errBox.hidden = true;
+    btn.disabled = true;
+    btn.textContent = '登录中…';
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value
+      })
+    }).then(function (res) {
+      return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (r) {
+      if (!r.ok) throw new Error((r.data && r.data.error) || '登录失败');
+      localStorage.setItem('ab_token', r.data.token);
+      localStorage.setItem('ab_user', JSON.stringify(r.data.user || {}));
+      location.href = '/';
+    }).catch(function (err) {
+      errBox.textContent = err.message || '网络错误';
+      errBox.hidden = false;
+      btn.disabled = false;
+      btn.textContent = '登 录';
+    });
+  });
+})();
+</script>
+</body>
+</html>

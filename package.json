@@ -1,0 +1,23 @@
+{
+  "name": "ai-bridge",
+  "version": "7.0.0",
+  "description": "鹤仙人 ai-bridge —— 多智能体协作中枢：任务队列 + Agent 注册中心 + MCP 接入 + 消息通信 + 知识库 + 工作流",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "smoke": "bash scripts/smoke.sh"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "qrcode": "^1.5.4"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
