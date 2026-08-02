@@ -1,17 +1,40 @@
-# 鹤仙人 ai-bridge
+# 鹤仙人 (ai-bridge) v7.0.0
 
-![version](https://img.shields.io/badge/version-7.0.0-blue)
-![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-![Docker](https://img.shields.io/badge/Docker-Ready-blue)
+<p align="center">
+  <img src="docs/imges/logo.jpg" width="120" alt="鹤仙人 logo">
+</p>
 
-多智能体协作中枢。把分布在多台主机、不同形态的 AI 智能体（Trae / Qcody / Claude Code / Cursor 等）统一接入一个平台，通过任务队列、委派链、会话、工作流、定时规则与模拟微信通道进行编排与协作。
+[![Version](https://img.shields.io/badge/version-v7.0.0-blue.svg)](https://gitee.com/yzj1/ai-bridge/releases/v7.0.0)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org)
+[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](./docker-compose.yml)
+
+> 鹤仙人 ai-bridge 是多智能体协作中枢。把分布在多台主机、不同形态的 AI 智能体（Trae / Qcody / Claude Code / Cursor 等）统一接入一个平台，通过任务队列、委派链、会话、工作流、定时规则与模拟微信通道进行编排与协作。
 
 - **用户侧**：Web 控制台、聊天会话、模拟微信消息都可以创建任务。
 - **平台侧**：负责任务三级路由（target → capability → general）、委派链、证据留痕、知识库与模型配置。
 - **智能体侧**：Agent 通过 **Skill 自动通道** 或 **MCP 会话通道** 两种模式接入，长轮询领任务、提交结果与证据。
 
-> 零构建步骤、原生 ESM、前端无框架/CDN，唯一运行时依赖 `express`，持久化为 append-only JSONL 事件流。
+零构建步骤、原生 ESM、前端无框架/CDN，唯一运行时依赖 `express`，持久化为 append-only JSONL 事件流。
+
+---
+
+## 界面预览
+
+前端为 hash 路由 SPA，左侧侧边栏导航，右侧内容区动态渲染。
+
+| 页面 | 路由 | 说明 |
+| --- | --- | --- |
+| 概览 | `#/overview` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
+| 任务中心 | `#/tasks` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
+| 对话 | `#/chat` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
+| 智能体 | `#/agents` | 智能体列表（presence 徽章、审核、token 重置）/ 接入智能体（skill 文档、MCP 配置） |
+| 知识库 | `#/kb` | 知识条目 / 知识图谱 / 提示词 / 导入 |
+| 工作流 | `#/workflows` | 模板 / 执行记录 |
+| 消息通信 | `#/claw` | 连接 / 联系人 / 推送订阅 / 消息记录 |
+| 设置 | `#/settings` | AI 模型 / 用户管理 / 系统 / 日志 |
+
+> 截图资源目录为 `docs/imges/`，包含 `ai-bridge.png`（架构图）、`logo.jpg`、`logo1.png`、`logo2.png`；如需界面截图请自行补充到该目录并在本处引用。
 
 ---
 
@@ -47,33 +70,20 @@
 
 ---
 
-## 界面预览
-
-前端为 hash 路由 SPA，左侧侧边栏导航，右侧内容区动态渲染。
-
-| 页面 | 路由 | 说明 |
-| --- | --- | --- |
-| 概览 | `#/overview` | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
-| 任务中心 | `#/tasks` | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
-| 对话 | `#/chat` | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
-| 智能体 | `#/agents` | 智能体列表（presence 徽章、审核、token 重置）/ 接入智能体（skill 文档、MCP 配置） |
-| 知识库 | `#/kb` | 知识条目 / 知识图谱 / 提示词 / 导入 |
-| 工作流 | `#/workflows` | 模板 / 执行记录 |
-| 消息通信 | `#/claw` | 连接 / 联系人 / 推送订阅 / 消息记录 |
-| 设置 | `#/settings` | AI 模型 / 用户管理 / 系统 / 日志 |
-
-> 截图资源目录为 `docs/imges/`，包含 `logo.jpg`、`logo1.png`、`logo2.png`、`ai-bridge.png`；如需界面截图请自行补充到该目录并在本处引用。
-
----
-
 ## 快速开始
 
-### 方式一：Docker Compose
+### 方式一：Docker Compose（推荐）
 
 ```bash
+git clone https://gitee.com/yzj1/ai-bridge.git
+cd ai-bridge
+# 复制环境变量示例并编辑（可选，默认 PORT=4567）
+cp .env.example .env
+# 启动（首次会自动构建镜像）
 docker compose up -d --build
-# 默认端口 4567，数据挂载到 ./data
 ```
+
+访问 http://localhost:4567，默认管理员账号 `admin` / `admin123`（首次启动自动播种，请尽快修改）。
 
 `docker-compose.yml` 实际内容：
 
@@ -94,22 +104,19 @@ services:
 ### 方式二：本地 Node.js
 
 ```bash
+# 克隆
+git clone https://gitee.com/yzj1/ai-bridge.git
+cd ai-bridge
+
+# 安装依赖（需要 Node.js >= 20）
 npm install --no-bin-links
-cp .env.example .env   # 可选，默认 PORT=4567
+
+# 启动
+cp .env.example .env   # 可选
 npm start              # node src/index.js
 ```
 
-打开 http://localhost:4567 ，默认管理员账号 `admin` / `admin123`（首次启动自动播种，请尽快修改）。
-
-### 环境变量
-
-`.env.example` 内容：
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `PORT` | `4567` | HTTP 服务端口 |
-| `AIBRIDGE_DATA_DIR` | `./data` | 数据目录（jsonl 事件流 + settings/secrets） |
-| `ILINK_MOCK` | 未设置 | 设为 `1` 开启微信 mock 模式，无需真实 iLink 硬件 |
+默认端口 `4567`，启动后访问：http://localhost:4567 。
 
 ---
 
@@ -129,11 +136,13 @@ ai-bridge/
 │   └── imges/                 # 项目图片资源
 ├── public/                    # 原生前端（hash 路由 SPA）
 │   ├── index.html             # 应用挂载点
+│   ├── login.html             # 登录页
 │   ├── style.css              # 全局样式
 │   ├── js/
-│   │   ├── core.js            # 公共 API 封装、通知、工具函数
+│   │   ├── api.js             # 公共 API 封装、通知、工具函数
+│   │   ├── main.js            # SPA 路由与初始化
 │   │   ├── nav.js             # 侧边栏菜单配置
-│   │   ├── task-drawer.js     # 任务详情抽屉公共模块
+│   │   ├── workflow-canvas.js # 工作流画布
 │   │   └── pages/             # 各页面模块
 │   │       ├── overview.js    # 概览页
 │   │       ├── tasks.js       # 任务中心
@@ -145,19 +154,24 @@ ai-bridge/
 │   │       └── settings.js    # 设置页
 │   └── img/                   # 前端图标资源
 ├── scripts/
-│   └── smoke.sh               # 冒烟测试脚本
+│   ├── smoke.sh               # 端到端冒烟测试
+│   └── test-*.mjs / debug*.sh # 调试与测试脚本
 ├── src/
 │   ├── index.js               # 入口：loadAll → initAuth → createServer → listen → 调度器 tick
 │   ├── server.js              # Express 装配与路由挂载
 │   ├── storage.js             # JSONL append-only 存储 + 内存索引 + settings + 日志
 │   ├── auth.js                # JWT / PBKDF2 / requireUser / requireAdmin / requireAgent
+│   ├── ai.js                  # AI 模型调用与配置
+│   ├── ai-chat.js             # 聊天 AI 路由与上下文压缩
+│   ├── util.js                # 通用工具函数
 │   ├── lib/
-│   │   ├── users.js           # 用户数据管理
-│   │   └── utils.js           # 通用工具函数
+│   │   └── users.js           # 用户数据管理
 │   ├── claw/                  # iLink 适配器与凭证管理
 │   │   ├── ilink-adapter.js   # iLink 协议适配
 │   │   ├── index.js           # adapter 生命周期管理
-│   │   └── secrets.js         # 凭证读写
+│   │   ├── secrets.js         # 凭证读写
+│   │   ├── dedup.js           # 消息去重
+│   │   └── ilink/             # iLink 协议辅助模块
 │   └── routes/                # 功能路由模块
 │       ├── agents.js          # Agent 注册、心跳、CRUD、审核、token 重置
 │       ├── tasks.js           # 任务队列、长轮询、完成、重试、改派、统计
@@ -468,11 +482,49 @@ npm run smoke      # 等价于 bash scripts/smoke.sh
 
 ---
 
-## 数据与备份
+## 环境变量
 
-- 所有运行时数据保存在 `AIBRIDGE_DATA_DIR`（默认 `./data`）下，使用 append-only JSONL 事件流，启动时回放重建内存索引。
-- 备份即复制整个 `data/` 目录：`cp -r data data-backup-$(date +%Y%m%d)`。
-- 恢复时停止服务，替换 `data/` 目录后重启即可。
+`.env.example` 内容：
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PORT` | `4567` | HTTP 服务端口 |
+| `AIBRIDGE_DATA_DIR` | `./data` | 数据目录（jsonl 事件流 + settings/secrets） |
+| `ILINK_MOCK` | 未设置 | 设为 `1` 开启微信 mock 模式，无需真实 iLink 硬件 |
+
+---
+
+## 常见问题
+
+### 端口被占用
+```bash
+lsof -ti:4567 | xargs -r kill -9
+# 或换端口
+PORT=5567 npm start
+```
+
+### 微信无法连接
+- 检查 `/api/claw/status`
+- 重新扫码：`POST /api/claw/login/start` → 打开 `/api/claw/qrcode.png`
+- mock 模式：`ILINK_MOCK=1 npm start`
+
+### 数据迁移
+所有运行时数据保存在 `AIBRIDGE_DATA_DIR`（默认 `./data`）下，使用 append-only JSONL 事件流，启动时回放重建内存索引。
+- 备份：`cp -r data data-backup-$(date +%Y%m%d)`
+- 恢复：停止服务，替换 `data/` 目录后重启
+
+---
+
+## 版本历史
+
+- **v7.0.0**：多智能体协作中枢重构 — 双通道接入（Skill / MCP）、任务三级路由、委派链、证据留痕、原生 ESM、无构建步骤
+- **v6.0.0**：统一 skill 为 `ai-bridge`，明确中间程序定位
+- **v5.5.5**：产品化基础：Docker 部署、统一版本号、受信代理、权限校验、依赖清理、.env.example
+- **v5.0.0**：多面板工作台、知识库 2.0、工作流、微信 Claw 适配层
+- **v4.0.0**：聊天即任务、evidence 协议、侧滑抽屉
+- **v3.0.0**：三栏工作台、JSONL 持久化
+- **v2.0.0**：心跳保活 + 长轮询、URL hash 路由
+- **v1.0.0**：初始版本，基础任务队列
 
 ---
 
@@ -485,9 +537,19 @@ npm run smoke      # 等价于 bash scripts/smoke.sh
 - **工作流条件分支**：当前步骤依赖为线性/并行，循环依赖已校验，条件分支与循环步骤待实现。
 - **MCP 客户端示例**：`/mcp` 端点已就绪，配套 `bridge-mcp-server.js` 示例尚未入库。
 - **审计与 RBAC**：已有用户管理，更细粒度的角色权限与审计日志待完善。
+- **高可用 / 集群**：当前为单进程架构，未来可考虑 Redis 任务队列 + 多实例负载均衡。
+
+---
+
+## 贡献
+
+欢迎 PR / Issue！
+
+- 仓库：https://gitee.com/yzj1/ai-bridge
+- 反馈：在 Gitee Issues 中提交
 
 ---
 
 ## License
 
-MIT
+[MIT](./LICENSE)
