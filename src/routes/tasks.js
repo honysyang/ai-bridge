@@ -52,10 +52,12 @@ export function claimTask(ctx, task, agent) {
 /** 汇报完成/失败：更新任务 + agent.stats 并发射事件 */
 export function completeTask(ctx, task, agent, status, result) {
   const coll = ctx.store.coll('tasks');
+  // artifacts 宽松校验：非法项剔除记日志，不拒绝整体
+  const cleaned = result ? sanitizeResult(ctx, result) : result;
   const updated = coll.update(task.id, {
     status,
     completed_at: ctx.util.now(),
-    result: result || null,
+    result: cleaned || null,
   });
   // stats 累计：优先凭证 agent，否则按 assigned_to 找
   const agents = ctx.store.coll('agents');
@@ -68,6 +70,44 @@ export function completeTask(ctx, task, agent, status, result) {
   }
   ctx.events.emit('task:changed', updated);
   return updated;
+}
+
+/** 成果（artifacts）宽松校验：非法项剔除记日志，不拒绝整体 */
+const ARTIFACT_MAX_BYTES = 50 * 1024; // 50KB（code/markdown content）
+function sanitizeResult(ctx, result) {
+  if (!result || typeof result !== 'object') return result;
+  const artifacts = Array.isArray(result.artifacts) ? result.artifacts : null;
+  if (!artifacts || !artifacts.length) return result;
+  const valid = [];
+  for (const a of artifacts) {
+    if (!a || typeof a !== 'object') continue;
+    const type = String(a.type || '');
+    const name = String(a.name || 'untitled');
+    if (type === 'code') {
+      const content = typeof a.content === 'string' ? a.content : '';
+      if (!content) { ctx.store.log('warn', 'tasks', `artifacts 剔除：code 无 content（task）`); continue; }
+      if (Buffer.byteLength(content, 'utf8') > ARTIFACT_MAX_BYTES) {
+        ctx.store.log('warn', 'tasks', `artifacts 剔除：code 超过 50KB（${name}）`);
+        continue;
+      }
+      valid.push({ name, type: 'code', language: String(a.language || 'text'), content });
+    } else if (type === 'markdown') {
+      const content = typeof a.content === 'string' ? a.content : '';
+      if (!content) { ctx.store.log('warn', 'tasks', `artifacts 剔除：markdown 无 content（${name}）`); continue; }
+      if (Buffer.byteLength(content, 'utf8') > ARTIFACT_MAX_BYTES) {
+        ctx.store.log('warn', 'tasks', `artifacts 剔除：markdown 超过 50KB（${name}）`);
+        continue;
+      }
+      valid.push({ name, type: 'markdown', content });
+    } else if (type === 'file') {
+      const fileId = String(a.file_id || '');
+      if (!fileId) { ctx.store.log('warn', 'tasks', `artifacts 剔除：file 无 file_id（${name}）`); continue; }
+      valid.push({ name, type: 'file', file_id: fileId, size: a.size || null });
+    } else {
+      ctx.store.log('warn', 'tasks', `artifacts 剔除：未知 type=${type}（${name}）`);
+    }
+  }
+  return { ...result, artifacts: valid };
 }
 
 /** 建任务（REST 与 MCP 共用） */

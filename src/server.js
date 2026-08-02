@@ -84,6 +84,7 @@ export async function createServer(store) {
   await mountIfExists(app, 'schedules.js', '/api/schedules', ctx);
   await mountIfExists(app, 'subscriptions.js', '/api/subscriptions', ctx);
   await mountIfExists(app, 'claw.js', '/api/claw', ctx);
+  await mountIfExists(app, 'files.js', '/api', ctx);
   await mountIfExists(app, 'overview.js', '/api/overview', ctx);
   await mountIfExists(app, 'settings.js', '/api', ctx);
 

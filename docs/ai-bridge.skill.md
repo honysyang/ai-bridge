@@ -166,6 +166,69 @@ evidence 六个字段**全部可选**，但规范要求：
 - `mcp_tool_calls` 记录通过 MCP 协议调用的外部工具，格式建议 `服务名.工具名(参数摘要)`，便于区分本地命令与 MCP 工具调用。
 - **知识库检索留痕**：执行专业任务前，应优先调用 `bridge_kb_search`（MCP）或 `GET /api/kb/search` 检索知识库；检索到的相关条目可作为背景知识辅助回答。无论通过 MCP 还是 REST 检索，都应在 `evidence.searches` 中记录检索关键词与命中条目数，例如 `searches: ["端口占用排查 (命中 2 条)"]`。这会让前端在对话气泡中展示「🔍 参考了知识库（N 条）」折叠条，增强可信度。
 
+### 成果（artifacts）提交规范
+
+除 `summary` 文字说明外，agent 可在 `result.artifacts` 数组中提交结构化成果卡片，前端会在对话气泡和任务详情抽屉中渲染为可交互的卡片（展开/复制/下载/阅读）。
+
+**三种卡片类型：**
+
+| type | 必填字段 | 说明 | 限制 |
+| --- | --- | --- | --- |
+| `code` | `name`, `language`, `content` | 代码片段，前端等宽字体+简单着色+前5行预览+展开+复制+下载 | content ≤ 50KB |
+| `markdown` | `name`, `content` | 文档卡片，前端渲染 Markdown 预览+「阅读」开抽屉看全文+下载 .md | content ≤ 50KB |
+| `file` | `name`, `file_id` | 大文件引用（先上传再引用），前端显示大小+下载 | file_id 须有效 |
+
+**完整 JSON 示例：**
+
+```json
+{
+  "summary": "已生成用户认证模块，包含登录接口和 JWT 中间件",
+  "evidence": {
+    "executed_commands": ["cat package.json", "npm test"],
+    "read_files": ["src/auth.js"],
+    "thinking": "采用 JWT 无状态方案，适合微服务架构"
+  },
+  "artifacts": [
+    {
+      "name": "auth.js",
+      "type": "code",
+      "language": "javascript",
+      "content": "import jwt from 'jsonwebtoken';\n\nexport function authMiddleware(req, res, next) {\n  const token = req.headers.authorization?.replace('Bearer ', '');\n  if (!token) return res.status(401).json({ error: 'no token' });\n  try {\n    req.user = jwt.verify(token, process.env.JWT_SECRET);\n    next();\n  } catch {\n    res.status(401).json({ error: 'invalid token' });\n  }\n}"
+    },
+    {
+      "name": "接口文档.md",
+      "type": "markdown",
+      "content": "## 认证接口\n\n### POST /api/login\n- 请求体：`{username, password}`\n- 响应：`{token}`\n\n### 鉴权\n所有需认证的接口在 Header 中携带 `Authorization: Bearer <token>`"
+    },
+    {
+      "name": "test-report.html",
+      "type": "file",
+      "file_id": "file-abc123",
+      "size": 128000
+    }
+  ]
+}
+```
+
+**大文件处理（>50KB）：**
+
+代码或文档超过 50KB 时，先上传文件再以 `type: 'file'` 引用：
+
+```
+POST $BASE/api/files
+{ "agent_id": "...", "token": "...",
+  "name": "大文件.js",
+  "content_base64": "<base64 编码内容>" }
+→ 201 { "file_id": "file-...", "name": "大文件.js", "size": 80000 }
+
+# 再在 artifacts 中引用
+{ "name": "大文件.js", "type": "file", "file_id": "file-...", "size": 80000 }
+```
+
+文件上传限制 2MB。任务删除不级联删文件（人工管理）。
+
+**校验规则：** 后端对 artifacts 做宽松校验——非法项（无 content、超 50KB、无 file_id、未知 type）会被剔除并记日志，但不会拒绝整个 complete 请求。
+
 **evidence 是 ai-bridge 的差异化体验：不要只返回 summary。** 前端会在对话气泡下方折叠展示一条「🔍 查看执行过程（X 条命令 / Y 个文件 / …）」的展开条，用户点击即可看到真实执行痕迹。这能显著增强可信度，也方便调试。因此 agent 应尽可能把真实动作写进 `executed_commands` / `read_files` / `searches` / `tool_calls` 中。
 
 ### 长任务中间进展（可选）

@@ -6,12 +6,13 @@ import {
   api, toast, escapeHtml, fmtTime, truncate, emptyHTML,
   jsonHighlight, openModal, confirmBox, statusBadge, safeText, renderMarkdown,
 } from '../api.js';
+import { openTaskDrawer } from '../task-drawer.js';
+import { renderArtifactCards, bindArtifactCards } from '../artifact-cards.js';
 
 const state = {
   sessions: [],
   current: null,       // 当前会话 id
   messages: [],        // 当前会话任务列表
-  detailTask: null,    // 右侧详情任务
   agents: [],
   sending: false,
 };
@@ -30,7 +31,6 @@ export async function render(el, ctx) {
         </div>
         <div class="chat-col-body" id="msgFlow"></div>
         <div class="chat-input-area">
-          <button class="btn btn-sm btn-ghost chat-mobile-only" id="chatDetailToggle" title="查看任务详情" style="margin-right:6px">🔍</button>
           <select id="chatTarget" style="width:130px; flex:0 0 auto" title="指定智能体（可选）"></select>
           <div class="chat-input-wrap">
             <div id="chatHint" class="chat-hint" style="display:none"></div>
@@ -39,13 +39,6 @@ export async function render(el, ctx) {
           </div>
           <button class="btn btn-primary" id="chatSend">发 送</button>
         </div>
-      </div>
-      <div class="chat-col detail-col">
-        <div class="chat-col-head">
-          <button class="btn btn-sm btn-ghost chat-mobile-only" id="chatCloseDetail" title="返回消息" style="margin-right:6px">←</button>
-          任务详情
-        </div>
-        <div class="chat-col-body" id="taskDetail">${emptyHTML('🔍', '点击消息查看对应任务详情')}</div>
       </div>
     </div>`;
 
@@ -85,30 +78,14 @@ export async function render(el, ctx) {
     setTimeout(() => el.querySelector('#chatHint')?.style.setProperty('display', 'none'), 180);
   });
 
-  // 移动端：会话列 / 详情列 切换
+  // 移动端：会话列切换
   el.querySelector('#chatBack')?.addEventListener('click', () => {
-    document.body.classList.remove('chat-show-detail');
     document.body.classList.add('chat-show-sessions');
-  });
-  el.querySelector('#chatDetailToggle')?.addEventListener('click', () => {
-    document.body.classList.remove('chat-show-sessions');
-    document.body.classList.add('chat-show-detail');
-  });
-  el.querySelector('#chatCloseDetail')?.addEventListener('click', () => {
-    document.body.classList.remove('chat-show-detail');
   });
   // 点击会话项后回到消息视图
   el.querySelector('#sessionList')?.addEventListener('click', () => {
     document.body.classList.remove('chat-show-sessions');
   }, true);
-  // 点击消息气泡展示详情（移动端）
-  el.addEventListener('click', (e) => {
-    const t = e.target.closest('[data-task]');
-    if (t && window.matchMedia('(max-width: 768px)').matches) {
-      document.body.classList.remove('chat-show-sessions');
-      document.body.classList.add('chat-show-detail');
-    }
-  });
 }
 
 async function loadSessions(el, ctx) {
@@ -154,9 +131,7 @@ function renderSessionList(el, ctx) {
     item.addEventListener('click', async (e) => {
       if (e.target.closest('[data-op]')) return;
       state.current = id;
-      state.detailTask = null;
       renderSessionList(el, ctx);
-      el.querySelector('#taskDetail').innerHTML = emptyHTML('🔍', '点击消息查看对应任务详情');
       await loadMessages(el, ctx);
     });
     item.querySelectorAll('[data-op]').forEach((btn) => {
@@ -229,14 +204,22 @@ function renderMessages(el, ctx, keepScroll = false) {
     const isSystem = t.source === 'system' || t.source === 'kb' || t.type === 'system_note';
     const agent = state.agents.find((a) => a.id === (t.assigned_to || t.target_agent));
     const elapsed = processing && t.started_at ? Math.max(0, Math.round(now - t.started_at)) : 0;
+    const dur = t.started_at && t.completed_at ? Math.max(0, t.completed_at - t.started_at) : 0;
     const agentName = escapeHtml(agent?.name || '智能体');
     const evidence = buildEvidenceBar(t);
     const hasEvidence = !!evidence;
+    const artifacts = done && Array.isArray(t.result?.artifacts) ? t.result.artifacts : null;
+    const artHTML = artifacts && artifacts.length ? renderArtifactCards(artifacts) : '';
     const failedActions = failed ? `
         <div class="msg-actions" style="margin-top:8px;display:flex;gap:8px">
           <button class="btn btn-sm btn-danger btn-retry" data-task="${t.id}">🔄 重试</button>
           <button class="btn btn-sm btn-ghost btn-reassign" data-task="${t.id}">↪ 改派给其他 agent</button>
         </div>` : '';
+    // 任务状态条（执行中/已完成/失败）
+    const statusBar = isSystem ? '' : `
+      <div class="task-status-bar ${done ? 'is-done' : failed ? 'is-failed' : 'is-running'}" data-task="${t.id}" title="点击查看任务详情">
+        ${done ? `✅ 已完成 · 用时 ${dur}s · ${agentName}` : failed ? `❌ 失败 · ${agentName}` : processing ? `⏳ 执行中 · 已用时 ${elapsed}s · ${agentName}${t.progress ? ` · ${safeText(t.progress)}` : ''}` : `⏳ 等待分配智能体…`}
+      </div>`;
     if (isSystem) {
       return `
     <div class="msg-row sys">
@@ -261,7 +244,8 @@ function renderMessages(el, ctx, keepScroll = false) {
             : processing
               ? `<span class="spinner"></span> <b>${agentName}</b> 已接单，执行中…（已用时 ${elapsed}s）${t.progress ? `<div class="msg-progress">⏳ ${safeText(t.progress)}</div>` : ''}`
               : `<span class="spinner"></span> 等待分配智能体…`
-        }</div>
+        }${artHTML}</div>
+        ${statusBar}
         ${hasEvidence ? evidence : ''}
         ${renderKbReferences(t)}
         <div class="msg-meta">${done || failed ? agentName : processing ? agentName : '等待执行'} · ${fmtTime(t.completed_at || t.progress_at || t.created_at)}</div>
@@ -269,9 +253,12 @@ function renderMessages(el, ctx, keepScroll = false) {
     </div>`;
   }).join('')}</div>`;
 
+  // 点击气泡/状态条 → 打开任务详情抽屉
   flow.querySelectorAll('[data-task]').forEach((b) => {
-    b.addEventListener('click', () => showTaskDetail(el, b.dataset.task));
+    b.addEventListener('click', () => openTaskDrawer(b.dataset.task, { agents: state.agents, onRefresh: () => loadMessages(el, ctx) }));
   });
+  // 绑定 artifacts 卡片交互
+  bindArtifactCards(flow);
   // 绑定重试/改派按钮
   flow.querySelectorAll('.btn-retry').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -656,7 +643,6 @@ function pollTask(el, ctx, taskId, count = 0) {
       const t = await api.get(`/api/tasks/${taskId}`);
       if (t.status === 'completed' || t.status === 'failed') {
         await loadMessages(el, ctx);
-        if (state.detailTask?.id === taskId) showTaskDetail(el, taskId);
         toast(t.status === 'completed' ? '智能体已回复' : '任务执行失败', t.status === 'completed' ? 'success' : 'error');
         return;
       }
@@ -669,56 +655,4 @@ function pollTask(el, ctx, taskId, count = 0) {
     }
   }, 2000);
   ctx.onCleanup(() => clearTimeout(timer));
-}
-
-async function showTaskDetail(el, taskId) {
-  const box = el.querySelector('#taskDetail');
-  box.innerHTML = '<div class="loading-line"><span class="spinner"></span></div>';
-  let t;
-  try {
-    t = await api.get(`/api/tasks/${taskId}`);
-  } catch (err) {
-    box.innerHTML = emptyHTML('⚠️', '加载失败', err.message);
-    return;
-  }
-  state.detailTask = t;
-  const agent = state.agents.find((a) => a.id === (t.assigned_to || t.target_agent));
-  const isRunning = t.status === 'processing' || t.status === 'pending';
-  box.innerHTML = `
-    <div class="mb8 flex-between">
-      <div>${statusBadge(t.status)} <span class="faint mono" style="font-size:11px">${escapeHtml(t.id)}</span></div>
-      ${isRunning ? '<button class="btn btn-sm btn-danger" id="tCancel" title="删除此任务（包括执行中的）">⛔ 中断</button>' : ''}
-    </div>
-    <p class="mb8" style="font-size:13px"><b>执行者：</b>${escapeHtml(agent?.name || '自动分配')}</p>
-    <p class="mb8" style="font-size:13px"><b>创建：</b><span class="mono">${fmtTime(t.created_at, true)}</span></p>
-    ${t.started_at ? `<p class="mb8" style="font-size:13px"><b>开始：</b><span class="mono">${fmtTime(t.started_at, true)}</span></p>` : ''}
-    ${t.completed_at ? `<p class="mb8" style="font-size:13px"><b>完成：</b><span class="mono">${fmtTime(t.completed_at, true)}</span></p>` : ''}
-    ${t.started_at ? `<p class="mb8" style="font-size:13px"><b>耗时：</b><span class="mono">${(() => { const secs = Math.max(0, (t.completed_at || Math.floor(Date.now()/1000)) - t.started_at); if (secs<60) return secs+'s'; if (secs<3600) return Math.floor(secs/60)+'m'+(secs%60)+'s'; return Math.floor(secs/3600)+'h'+Math.floor((secs%3600)/60)+'m'; })()}</span></p>` : ''}
-    <p class="mb8" style="font-size:13px"><b>内容：</b></p>
-    <p class="mb16" style="font-size:13px;white-space:pre-wrap;word-break:break-word">${escapeHtml(t.data?.content || '（无内容）')}</p>
-    <p class="mb8" style="font-size:13px"><b>结果 / 证据：</b></p>
-    ${t.result
-      ? `<pre class="json-view" style="max-height:240px;overflow:auto">${jsonHighlight(t.result)}</pre>`
-      : '<p class="faint" style="font-size:12px">任务未完成，暂无结果</p>'}
-    ${(t.children || []).length ? `<p class="mt8 mb8" style="font-size:13px"><b>子任务（${t.children.length}）：</b></p>` +
-      `<div style="max-height:160px;overflow:auto">${t.children.map((c) => `<div class="flex mb8" style="gap:6px">
-          ${statusBadge(c.status)}<a href="javascript:void 0" class="child-jump" data-id="${c.id}" style="font-size:12px;color:var(--primary);cursor:pointer">${escapeHtml(truncate(c.data?.content, 30))}</a>
-        </div>`).join('')}</div>` : ''}
-    ${isRunning ? '<p class="faint mt8" style="font-size:11px">💡 中断将删除任务（不可恢复）。智能体若已领取，下次心跳会发现任务不存在。</p>' : ''}`;
-
-  // 中断（删除）
-  box.querySelector('#tCancel')?.addEventListener('click', () => {
-    confirmBox(`确定中断（删除）任务「${truncate(t.data?.content, 30)}」吗？执行中的智能体下次心跳会放弃该任务。`, async () => {
-      try {
-        await api.del(`/api/tasks/${taskId}`);
-        toast('任务已中断', 'success');
-        await loadMessages(el, state);
-        box.innerHTML = emptyHTML('🚫', '任务已中断');
-      } catch (err) { toast(err.message, 'error'); }
-    }, { title: '中断任务', okText: '中 断', danger: true });
-  });
-  // 子任务跳转
-  box.querySelectorAll('.child-jump').forEach((a) => {
-    a.addEventListener('click', () => showTaskDetail(el, a.dataset.id));
-  });
 }

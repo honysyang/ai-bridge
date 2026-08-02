@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | 概览 | ![概览](docs/images/overview.png) | 今日任务、成功率、Agent 在线、队列深度、7 天趋势、周报入口 |
 | 任务中心 | ![任务中心](docs/images/tasks.png) | 全部任务 / 定时任务，筛选、详情抽屉、重试改派 |
-| 对话 | ![对话](docs/images/chat.png) | 会话三栏，发送即创建 chat 任务，支持 `@agent` 指派 |
+| 对话 | ![对话](docs/images/chat.png) | 会话两栏，发送即创建 chat 任务，气泡内嵌成果卡片（代码/文档/文件）+ 任务状态条，点击滑出详情抽屉 |
 | 智能体 | ![智能体](docs/images/agents.png) | 智能体列表（presence 徽章、审核、token 重置）/ 能力仓库（技能 + MCP 服务）/ 接入智能体（skill 文档、MCP 配置） |
 | 知识库 | ![知识库](docs/images/kb.png) | 工作台（随手记 / 项目收藏 / 每日订阅）/ 知识条目 / 知识图谱 / 提示词 / 导入 |
 | 工作流 | ![工作流](docs/images/workflows.png) | 模板 / 执行记录 |
@@ -58,6 +58,14 @@
 
 - **执行证据留痕**
   Agent 提交结果时携带 `evidence`：执行命令、读取文件、检索记录、工具调用、关键推理，前端任务详情可折叠查看。
+
+- **对话成果卡片（Artifacts）**
+  Agent 在 `result.artifacts` 数组中提交结构化成果，前端在对话气泡和任务详情抽屉中渲染为可交互卡片：
+  - **代码卡**（`type:'code'`）：文件名 + 语言徽章 + 前 5 行预览（等宽字体 + 简单着色）+ 展开/复制/下载，content ≤ 50KB
+  - **文档卡**（`type:'markdown'`）：Markdown 预览 + 「阅读」开抽屉渲染全文 + 下载 .md，content ≤ 50KB
+  - **文件卡**（`type:'file'`）：大文件引用（先 `POST /api/files` 上传 ≤ 2MB，再以 `file_id` 引用），显示大小 + 下载
+  - 对话页三栏改两栏，气泡下方加任务状态条（⏳ 执行中 Ns / ✅ 已完成·用时·agent / ❌ 失败），点击状态条滑出公共任务详情抽屉（`task-drawer.js`，chat 与 tasks 共用）
+  - 后端宽松校验：非法项剔除记日志，不拒绝整体 complete 请求
 
 - **多源任务入口**
   手动创建、聊天会话 `@agent`、工作流步骤、定时规则触发、模拟微信 incoming。
@@ -155,6 +163,8 @@ ai-bridge/
 │   │   ├── api.js             # 公共 API 封装、通知、工具函数
 │   │   ├── main.js            # SPA 路由与初始化
 │   │   ├── nav.js             # 侧边栏菜单配置
+│   │   ├── task-drawer.js     # 任务详情抽屉公共模块（chat + tasks 共用）
+│   │   ├── artifact-cards.js  # 成果卡片渲染模块（代码/文档/文件卡）
 │   │   ├── workflow-canvas.js # 工作流画布
 │   │   └── pages/             # 各页面模块
 │   │       ├── overview.js    # 概览页
@@ -187,7 +197,8 @@ ai-bridge/
 │   │   └── ilink/             # iLink 协议辅助模块
 │   └── routes/                # 功能路由模块
 │       ├── agents.js          # Agent 注册、心跳、CRUD、审核、token 重置、install-skill
-│       ├── tasks.js           # 任务队列、长轮询、完成、重试、改派、统计
+│       ├── tasks.js           # 任务队列、长轮询、完成（artifacts 校验）、重试、改派、统计
+│       ├── files.js           # 文件上传/下载（artifacts 大文件载体，≤2MB）
 │       ├── mcp.js             # MCP JSON-RPC 2.0 端点与 bridge_* tools
 │       ├── skills.js          # 技能仓库：CRUD / 文档 / 内置播种
 │       ├── mcp-registry.js    # MCP 服务仓库：CRUD / 安全审查 / mcp_config 生成
@@ -266,7 +277,10 @@ ai-bridge/
 | --- | --- | --- | --- |
 | GET | `/api/task/poll` | Agent | 长轮询领取一个 pending 任务 |
 | POST | `/api/task/progress` | Agent | 上报任务中间进展 |
-| POST | `/api/task/complete` | Agent | 汇报任务完成或失败 |
+| POST | `/api/task/complete` | Agent | 汇报任务完成或失败（`result.artifacts` 可选，含 code/markdown/file 成果卡片） |
+| POST | `/api/files` | 用户 / Agent | 上传文件（≤2MB，返回 `file_id` 供 artifacts 引用） |
+| GET | `/api/files/:id/meta` | 用户 / Agent | 文件元信息 |
+| GET | `/api/files/:id/download` | 用户 / Agent | 按原名下载文件 |
 | GET | `/api/tasks/stats` | 用户 | 任务状态统计 |
 | GET | `/api/tasks` | 用户 | 列出任务，支持多种过滤 |
 | GET | `/api/tasks/:id` | 用户 | 单个任务详情（含子任务） |
